@@ -33,6 +33,7 @@ access engine; Landfall signs in with it.
 | People, agents, groups, applications, audit, OIDC sign-in | [sign-in.md](sign-in.md), [directory.md](directory.md) | [002-identity-core](../specs/002-identity-core/spec.md) | 1 (first slice ✓) |
 | SCIM provisioning to Landflow and Landfall | | | 2 |
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | | | 3 |
+| Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (proposed) | 3–4 |
 | Just-in-time access: catalog, policies, requests, grants | | | 4 |
 | Agentic identity: sync, sponsors, token exchange, ID-JAG | | | 5 |
 | OpenFGA, AuthZEN, access reviews, Landfall break-glass | | | 6 |

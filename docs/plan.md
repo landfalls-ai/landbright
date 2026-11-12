@@ -144,6 +144,11 @@ interface HrWorker {
 
 ### 3.5 Changes Landflow itself needs (to be filed as Landflow specs)
 
+> Checked against Landflow's source on 12 November 2026 ([spec 003 plan](../specs/003-access-requests-and-approvals/plan.md#design-review-what-changes-in-the-earlier-plan)):
+> L1 must be a host node (remote plugins can't pause a run), and its fallback's resume URL is public, so it is only a
+> nudge; the Landfall Trigger polls, so the Landbright Trigger copies the GitHub Webhook Trigger instead; the SDK has no
+> Standard Webhooks helper.
+
 Small and separable. Each would be a spec in `landflow/docs/specs/` and ship with Landflow's own docs rules.
 
 | # | Change | Why | Until it ships |
