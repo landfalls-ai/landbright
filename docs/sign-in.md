@@ -5,7 +5,8 @@ it to sign in and get back an ID token that says who they are and which groups t
 
 ## The issuer
 
-`http://127.0.0.1:4402/oidc` locally (`<LANDBRIGHT_IDP_URL>/oidc`). Discovery is at
+`http://localhost:4402/oidc` locally (`<LANDBRIGHT_IDP_URL>/oidc`; `localhost`, not `127.0.0.1`, because passkeys
+need a domain). Discovery is at
 `/oidc/.well-known/openid-configuration`, keys at `/oidc/jwks`.
 
 | | |
@@ -18,7 +19,7 @@ it to sign in and get back an ID token that says who they are and which groups t
 
 | Scope | Claims (in the ID token and from userinfo) |
 |---|---|
-| `openid` | `sub`: the identity's id; `amr`: how they signed in, `["pwd"]` or `["pwd", "otp"]` |
+| `openid` | `sub`: the identity's id; `amr`: how they signed in ([below](#how-the-token-says-how)) |
 | `email` | `email`, `email_verified` (true: an administrator or an HR source entered it) |
 | `profile` | `name`, `given_name`, `family_name`, `preferred_username` (the email) |
 | `roles` | `roles` and `groups`: the names of the person's groups, sorted; expired just-in-time memberships left out |
@@ -28,10 +29,10 @@ registered it, so it gets the scopes it asks for.
 
 ## Signing in
 
-The pages are server-rendered by the identity plane, in Landflow's tokens, with no JavaScript and a CSP of
-`default-src 'none'` except data: images for the QR code (`apps/idp/src/pages`). People sign in with email and
-password, then a code from an authenticator app if they have one; passkeys come next. The stylesheet's URL carries a
-hash of its content, so a changed page never shows with an old cached style.
+The pages are server-rendered by the identity plane, in Landflow's tokens, under a CSP of `default-src 'none'` with
+this origin's stylesheet and one script, and data: images for the QR code (`apps/idp/src/pages`). People sign in with
+email and password and then a second step, or with a passkey alone. The stylesheet's and the script's URLs carry a
+hash of their content, so a changed page never runs with an old cached copy.
 
 - A wrong email and a wrong password get the same answer, and take the same time (a decoy argon2 hash).
 - Ten failures for one email in 15 minutes lock that email for the rest of the window. The counter lives in Valkey;
@@ -41,20 +42,49 @@ hash of its content, so a changed page never shows with an old cached style.
 
 ## The second step
 
-An authenticator app (TOTP: 6 digits, 30 seconds, SHA-1, one step of clock drift either way) after the password.
+After the password: a code from an authenticator app (TOTP: 6 digits, 30 seconds, SHA-1, one step of clock drift
+either way) or a passkey.
 
-- **Someone with an app set up** gets a code page after their password. A wrong code counts toward the same lockout as
-  a wrong password. A code is accepted once: the step it belongs to is stored, and only a later step works after it.
-- **Someone without one** is offered it: a QR code and the key to type, then a code to confirm. *Not now* signs them in
-  and isn't asked again for 30 days (kept in Valkey; if Valkey is down they are asked again).
-- **Settings → Require a second step for everyone** (`tenant.mfa_required`) removes *Not now*: anyone without an app
-  sets one up at their next sign-in before going on.
-- **Reset second step** on a person's page deletes their app, for a lost phone; they are offered a new one at their
-  next sign-in (and must set one up when it's required).
+- **Someone with one set up** is asked for it after their password: the code page (with *Use your passkey instead* if
+  they have both), or the passkey page. A wrong code or passkey counts toward the same lockout as a wrong password. A
+  code is accepted once: the step it belongs to is stored, and only a later step works after it.
+- **Someone without one** is offered it: a QR code and the key to type, then a code to confirm; or *Use a passkey
+  instead*. *Not now* signs them in and isn't asked again for 30 days (kept in Valkey; if Valkey is down they are asked
+  again).
+- **Settings → Require a second step for everyone** (`tenant.mfa_required`) removes *Not now*: anyone without one sets
+  one up at their next sign-in before going on.
+- **Reset second step** on a person's page deletes their app and their passkeys, for a lost phone or laptop; they are
+  offered a new second step at their next sign-in (and must set one up when it's required).
 
-The key is sealed with AES-256-GCM under a key derived from `LANDBRIGHT_SECRET_KEY`, like the signing key. The ID
-token's `amr` says whether a second step was used, so an application can ask for it. Audit events:
-`credential.totp_added`, `credential.second_step_reset`, `tenant.sign_in_changed`.
+The app's key is sealed with AES-256-GCM under a key derived from `LANDBRIGHT_SECRET_KEY`, like the signing key.
+Audit events: `credential.totp_added`, `credential.passkey_added`, `credential.second_step_reset`,
+`tenant.sign_in_changed`.
+
+## Passkeys
+
+WebAuthn passkeys, verified with `@simplewebauthn/server`. The relying-party id is the host of `LANDBRIGHT_IDP_URL`
+(`localhost` locally); browsers refuse IP addresses, so with an IP there the pages don't offer passkeys at all.
+
+- **Sign in with a passkey** on the sign-in page needs no email: passkeys are discoverable, and the browser offers the
+  ones it holds for this site. User verification (a PIN or biometric) is required, so a passkey alone is two factors
+  and satisfies *Require a second step*.
+- **Add one** when offered a second step (*Use a passkey instead*). There is no account page to add one later yet
+  (docs/limitations.md).
+- Each ceremony's challenge is kept in Valkey for 10 minutes and taken when the answer comes back, so an answer works
+  once; the authenticator's signature counter is stored and must move forward. Only the public key is stored.
+- The pages' only script (`/assets/passkey.js`) runs the ceremony and submits the form; without it, or in a browser
+  without WebAuthn, the passkey buttons stay hidden.
+
+## How the token says how
+
+The ID token's `amr` (RFC 8176), so an application can ask for a second step itself:
+
+| Signed in with | `amr` |
+|---|---|
+| Password | `["pwd"]` |
+| Password and an authenticator app | `["pwd", "otp", "mfa"]` |
+| Password and a passkey | `["pwd", "pop", "mfa"]` |
+| A passkey alone | `["pop", "mfa"]` |
 
 ## Passwords
 
@@ -86,7 +116,7 @@ Landflow already speaks OIDC (`apps/web/src/lib/server/auth/oidc.ts` in the land
 3. The dialog shows the client secret once, with the lines for Landflow's `.env`:
 
    ```bash
-   LANDFLOW_OIDC_ISSUER=http://127.0.0.1:4402/oidc
+   LANDFLOW_OIDC_ISSUER=http://localhost:4402/oidc
    LANDFLOW_OIDC_CLIENT_ID=landflow
    LANDFLOW_OIDC_CLIENT_SECRET=<shown once>
    LANDFLOW_OIDC_SCOPES="openid email profile roles"
@@ -99,7 +129,7 @@ Landflow already speaks OIDC (`apps/web/src/lib/server/auth/oidc.ts` in the land
 4. Restart Landflow. "Sign in with Landbright" appears on its sign-in page. A person lands with the highest role any of
    their groups maps to; an existing Landflow account with the same verified email is linked.
 
-Run Landflow on the host (its `pnpm dev`) for this. Inside a container `127.0.0.1:4402` is the container itself, and
+Run Landflow on the host (its `pnpm dev`) for this. Inside a container `localhost:4402` is the container itself, and
 Landflow takes the token and key URLs from the discovery document, so `LANDFLOW_OIDC_DISCOVERY_URL` alone doesn't help:
 the issuer would need an address that both the browser and the container reach (docs/limitations.md).
 
@@ -115,10 +145,21 @@ wave 2. Deleting an application revokes its tokens the same way. Rotating its se
 
 ## Keys and secrets
 
-- The signing key is RSA 2048, generated on first start under an advisory lock (so two replicas don't both make one)
-  and stored in `signing_key` with the private half sealed with AES-256-GCM under a key derived from
-  `LANDBRIGHT_SECRET_KEY`.
+- Signing keys are RSA 2048 (RS256). The first is generated on first start under an advisory lock (so two replicas
+  don't both make one) and stored in `signing_key` with the private half sealed with AES-256-GCM under a key derived
+  from `LANDBRIGHT_SECRET_KEY`.
+- **Rotation** (Settings → Signing keys → *Rotate*, or `POST /api/settings/signing-keys/rotate`): a new key signs ID
+  tokens from then on, the key it replaces stays in the JWKS so the tokens it signed still verify, and any older key is
+  retired. So at most two keys are published, the signing one and the verifying one. A rotation that would retire a key
+  whose ID tokens could still be alive is refused (409) until they have expired, which is `LANDBRIGHT_ID_TOKEN_TTL_SECONDS`
+  (an hour) after the current key took over; Settings shows when. Nobody is signed out, and access and refresh tokens
+  are opaque, so they don't depend on the keys. Relying parties pick up the new key from the JWKS when they meet an
+  unknown `kid` (Landflow's `openid-client` refetches it).
+- The identity plane builds its OIDC provider with the published keys and rebuilds it when they change: while requests
+  come in it compares the set at most every five seconds (one small query), so every replica follows a rotation within
+  seconds without a message bus.
 - Client secrets are not stored: each is an HMAC of `clientId:version` under another derived key. The console shows a
   secret on registration and rotation only.
 - Cookie keys for the identity plane are derived from the same secret. Changing `LANDBRIGHT_SECRET_KEY` therefore ends
-  every session, changes every client secret and makes the stored signing key unreadable (a new one is generated).
+  every session, changes every client secret and makes the stored signing keys unreadable (a new one is generated;
+  rotate to retire the unreadable ones from the JWKS).

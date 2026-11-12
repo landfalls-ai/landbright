@@ -11,6 +11,7 @@ import {
 } from '@landbright/persistence';
 import type { Redis } from 'ioredis';
 import { VALKEY } from '../valkey';
+import { PasskeyService } from './passkey.service';
 import { checkTotp, newTotpSecret } from './totp';
 
 /** Someone who got their password right and is between the first and second step of one sign-in. */
@@ -18,8 +19,14 @@ export interface Pending {
   identityId: string;
   email: string;
   displayName: string;
-  /** `verify`: enter a code from an app already set up. `enroll`: set one up now (its seed is here until confirmed). */
+  /**
+   * `verify`: prove it with what's already set up (a code from the app, or a passkey). `enroll`: set one up now (the
+   * app's seed is here until confirmed).
+   */
   mode: 'verify' | 'enroll';
+  /** What they have set up: an authenticator app, a passkey (only when passkeys are on). */
+  totp: boolean;
+  passkey: boolean;
   secret?: string;
   /** Whether the tenant requires a second step, so enrolling can't be skipped. */
   required: boolean;
@@ -36,27 +43,30 @@ export class SecondStepService {
     @Inject(TENANT) private readonly tenant: TenantRef,
     @Inject(CONFIG) private readonly config: Config,
     @Inject(VALKEY) private readonly valkey: Redis,
+    private readonly passkeys: PasskeyService,
   ) {}
 
   /**
-   * What comes after a correct password: a code when the person has an authenticator app; setting one up when the
+   * What comes after a correct password: a code or a passkey when the person has one set up; setting one up when the
    * tenant requires it; an offer to set one up (once every 30 days) otherwise; or nothing.
    */
   async next(
     uid: string,
     who: { identityId: string; email: string; displayName: string },
   ): Promise<Pending | undefined> {
-    const [totp, tenant] = await Promise.all([
+    const [totp, passkey, tenant] = await Promise.all([
       withTenant(this.prisma, this.tenant.id, (tx) =>
         tx.credential.findFirst({ where: { identityId: who.identityId, kind: 'totp' }, select: { id: true } }),
       ),
+      this.passkeys.has(who.identityId),
       this.prisma.tenant.findUnique({ where: { id: this.tenant.id }, select: { mfaRequired: true } }),
     ]);
     const required = Boolean(tenant?.mfaRequired);
+    const has = { totp: Boolean(totp), passkey };
     let pending: Pending | undefined;
-    if (totp) pending = { ...who, mode: 'verify', required };
+    if (has.totp || has.passkey) pending = { ...who, ...has, mode: 'verify', required };
     else if (required || !(await this.skipped(who.identityId)))
-      pending = { ...who, mode: 'enroll', secret: newTotpSecret(), required };
+      pending = { ...who, ...has, mode: 'enroll', secret: newTotpSecret(), required };
     if (pending) await this.valkey.set(this.key(uid), JSON.stringify(pending), 'EX', PENDING_TTL_SECONDS);
     return pending;
   }

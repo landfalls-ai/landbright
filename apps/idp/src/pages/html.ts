@@ -1,3 +1,4 @@
+import { PASSKEY_SCRIPT_HREF } from './passkey-script';
 import { STYLESHEET_HREF } from './stylesheet';
 /** Escapes text for HTML. Every value that reaches a page goes through here or `attr`. */
 export function esc(value: unknown): string {
@@ -33,10 +34,10 @@ export function raw(value: string): Raw {
 }
 
 /**
- * The frame every sign-in page shares: Landflow's tokens (served as /assets/signin.css), the product mark, no
- * script. The CSP comes from Helmet (main.ts).
+ * The frame every sign-in page shares: Landflow's tokens (served as /assets/signin.css), and the passkey script on
+ * pages that offer passkeys. The CSP comes from Helmet (configure.ts).
  */
-export function layout(title: string, body: string): string {
+export function layout(title: string, body: string, opts: { passkeys?: boolean } = {}): string {
   return html`<!doctype html>
     <html lang="en">
       <head>
@@ -45,6 +46,7 @@ export function layout(title: string, body: string): string {
         <meta name="robots" content="noindex" />
         <title>${title} · Landbright</title>
         <link rel="stylesheet" href="${STYLESHEET_HREF}" />
+        ${opts.passkeys ? raw(html`<script src="${PASSKEY_SCRIPT_HREF}" defer></script>`) : ''}
       </head>
       <body>
         <main class="frame">

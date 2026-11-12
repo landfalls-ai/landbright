@@ -42,6 +42,8 @@ export const Person = IdentityRef.extend({
   hasPassword: z.boolean(),
   /** Whether they have an authenticator app for the second step. */
   hasTotp: z.boolean(),
+  /** How many passkeys they have. */
+  passkeys: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

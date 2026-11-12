@@ -20,8 +20,16 @@ First slice done on 2026-11-12.
       sealed keys, `amr` in the ID token, the administrator reset; unit, console and end-to-end tests. Live check;
       fixed: the stylesheet was cached across a change (now content-hashed), `amr` missing from the ID token, the setup
       key wrapping under its label, the services hanging on restart while a browser held a connection.
-- [ ] T010b Passkeys (the identity plane moves to `localhost`: WebAuthn refuses IP addresses).
+- [x] T010b Passkeys: the issuer moves to `localhost`; sign in with a passkey alone, as the second step, or added when
+      offered one; `amr` per RFC 8176 with `mfa`; the person page and Settings; a software authenticator in the e2e.
+      Live check with the software authenticator against the running stack, and the pages in Chrome.
 - [x] T011a Settings: tenant, *Require a second step*, sign-in methods, signing keys (read only).
-- [ ] T011b Signing-key rotation (two published keys).
-- [ ] T012 Playwright for the console and sign-in pages; the OpenID conformance suite in Docker.
+- [x] T011b Signing-key rotation (two published keys): Settings → *Rotate*; the identity plane rebuilds its provider
+      when the published set changes (checked at most every five seconds); a rotation waits until the replaced key's
+      ID tokens have expired; unit tests for the rule, end to end (two rotations, old tokens still verify), live check.
+- [x] T012a Playwright for the console and sign-in pages (`e2e/browser/`): the administrator builds the directory
+      in the console, people set passwords from the invite, add a passkey (Chrome's virtual authenticator) or an
+      authenticator app and sign in to a Landflow-shaped app; every screen captured to `docs/screenshots/`.
+- [ ] T012b The OpenID conformance suite in Docker. Investigated, not run: it needs two decisions first (plan.md,
+      *Conformance suite*).
 - [ ] T013 A live sign-in to a running Landflow (needs Landflow's `.env`; ask first).

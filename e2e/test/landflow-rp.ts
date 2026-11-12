@@ -58,7 +58,7 @@ export class LandflowLikeRp {
   /** Landflow's completeLogin: exchange, verify, then the role it would assign. */
   async complete(
     callback: string,
-  ): Promise<{ claims: Claims; role: 'admin' | 'member' | undefined; accessToken: string }> {
+  ): Promise<{ claims: Claims; role: 'admin' | 'member' | undefined; accessToken: string; idToken: string }> {
     const url = new URL(callback);
     const pending = this.pending!;
     if (url.searchParams.get('state') !== pending.state) throw new Error(`state mismatch: ${callback}`);
@@ -89,7 +89,7 @@ export class LandflowLikeRp {
     if (!response.ok || !tokens.id_token)
       throw new Error(`token request failed: ${response.status} ${JSON.stringify(tokens)}`);
     const claims = await this.verifyIdToken(tokens.id_token, d.jwks_uri, pending.nonce);
-    return { claims, role: this.mappedRole(claims), accessToken: tokens.access_token! };
+    return { claims, role: this.mappedRole(claims), accessToken: tokens.access_token!, idToken: tokens.id_token };
   }
 
   /** Landflow's mappedRole: the highest role any `roles` value maps to. */
@@ -100,7 +100,8 @@ export class LandflowLikeRp {
     return roles.includes('admin') ? 'admin' : roles.includes('member') ? 'member' : undefined;
   }
 
-  private async verifyIdToken(token: string, jwksUri: string, nonce: string): Promise<Claims> {
+  /** What Landflow checks: the signature against the issuer's JWKS (by `kid`), then iss, aud, exp and nonce. */
+  async verifyIdToken(token: string, jwksUri: string, nonce: string): Promise<Claims> {
     const [h, p, s] = token.split('.') as [string, string, string];
     const header = JSON.parse(Buffer.from(h, 'base64url').toString()) as { alg: string; kid: string };
     if (header.alg !== 'RS256') throw new Error(`unexpected alg ${header.alg}`);

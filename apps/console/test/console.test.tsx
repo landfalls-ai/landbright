@@ -31,6 +31,7 @@ function person(overrides: Partial<Person> = {}): Person {
     groups: [{ id: GROUP.id, name: GROUP.name }],
     hasPassword: false,
     hasTotp: false,
+    passkeys: 0,
     createdAt: '2026-11-12T10:00:00.000Z',
     updatedAt: '2026-11-12T10:00:00.000Z',
     ...overrides,
@@ -203,7 +204,17 @@ describe('Settings', () => {
     tenant: { slug: 'local', name: 'Local' },
     issuer: 'http://127.0.0.1:4402/oidc',
     signIn: { mfaRequired, methods: ['password', 'totp'] },
-    signingKeys: [{ kid: 'XVzmfGNSIoqGd7Ue', alg: 'RS256', createdAt: '2026-11-12T10:00:00.000Z', retiredAt: null }],
+    signingKeys: [
+      {
+        kid: 'XVzmfGNSIoqGd7Ue',
+        alg: 'RS256',
+        status: 'signing',
+        createdAt: '2026-11-12T10:00:00.000Z',
+        retiredAt: null,
+      },
+    ],
+    idTokenTtlSeconds: 3600,
+    rotateAfter: null,
   });
 
   it('shows the tenant, the issuer and the signing key', async () => {
@@ -211,6 +222,46 @@ describe('Settings', () => {
     expect(await screen.findByText('XVzmfGNSIoqGd7Ue')).toBeInTheDocument();
     expect(screen.getByText('Signing')).toBeInTheDocument();
     expect(screen.getAllByText('http://127.0.0.1:4402/oidc').length).toBeGreaterThan(0);
+  });
+
+  it('rotates the signing keys after confirming', async () => {
+    const rotated = {
+      ...settings(false),
+      signingKeys: [
+        {
+          kid: 'NewKey0000000000',
+          alg: 'RS256',
+          status: 'signing',
+          createdAt: '2026-11-12T12:00:00.000Z',
+          retiredAt: null,
+        },
+        {
+          kid: 'XVzmfGNSIoqGd7Ue',
+          alg: 'RS256',
+          status: 'verifying',
+          createdAt: '2026-11-12T10:00:00.000Z',
+          retiredAt: null,
+        },
+      ],
+      rotateAfter: '2099-01-01T00:00:00.000Z',
+    };
+    let current: unknown = settings(false);
+    renderAt('/settings', report(), {
+      routes: {
+        '/api/settings': () => current,
+        'POST /api/settings/signing-keys/rotate': () => {
+          current = rotated;
+          return { kid: 'NewKey0000000000', retired: [], settings: rotated };
+        },
+      },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Rotate' }));
+    const dialog = await screen.findByRole('dialog', { name: /Rotate the signing keys/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Rotate' }));
+    expect(await screen.findByText('NewKey0000000000')).toBeInTheDocument();
+    expect(screen.getByText('Verifying')).toBeInTheDocument();
+    // The previous key still verifies tokens, so the next rotation waits.
+    expect(screen.getByRole('button', { name: 'Rotate' })).toBeDisabled();
   });
 
   it('requires a second step for everyone', async () => {
@@ -243,5 +294,12 @@ describe('A person’s second step', () => {
     const dialog = await screen.findByRole('dialog', { name: /Reset Maya Cohen/ });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }));
     await waitFor(() => expect(calls.some((c) => c.key === `POST /api/people/${p.id}/reset-second-step`)).toBe(true));
+  });
+
+  it('counts passkeys, and offers the reset for them alone', async () => {
+    const p = person({ hasPassword: true, passkeys: 2 });
+    renderAt(`/people/${p.id}`, report(), { routes: { [`/api/people/${p.id}`]: p } });
+    expect(await screen.findByText('2 passkeys')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reset' })).toBeInTheDocument();
   });
 });

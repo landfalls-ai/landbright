@@ -18,6 +18,8 @@ export interface Stack {
   idp: string;
   control: string;
   issuer: string;
+  /** Where a browser opens the console: the built console under `vite preview` when asked for, else control. */
+  console: string;
   admin: { email: string; password: string };
   stop(): Promise<void>;
 }
@@ -45,11 +47,17 @@ async function waitFor(url: string, child: ChildProcess, output: () => string): 
   throw new Error(`${url} didn't come up:\n${output()}`);
 }
 
-export async function startStack(): Promise<Stack> {
+/**
+ * Starts the stack. With `console`, the built console runs too (`vite preview`, proxying `/api` to control), and
+ * sign-in returns to it, as in development; without it, the browser talks to control directly.
+ */
+export async function startStack(options: { console?: boolean; idTokenTtlSeconds?: number } = {}): Promise<Stack> {
   const slug = `e2e-${Date.now().toString(36)}`;
-  const [idpPort, controlPort] = [await freePort(), await freePort()];
-  const idp = `http://127.0.0.1:${idpPort}`;
+  const [idpPort, controlPort, consolePort] = [await freePort(), await freePort(), await freePort()];
+  // localhost, not 127.0.0.1: the issuer's host is the passkeys' relying-party id.
+  const idp = `http://localhost:${idpPort}`;
   const control = `http://127.0.0.1:${controlPort}`;
+  const consoleUrl = options.console ? `http://127.0.0.1:${consolePort}` : control;
   const admin = { email: `admin@${slug}.test`, password: 'e2e-admin-password' };
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -61,8 +69,11 @@ export async function startStack(): Promise<Stack> {
     LANDBRIGHT_IDP_PORT: String(idpPort),
     LANDBRIGHT_IDP_URL: idp,
     LANDBRIGHT_CONTROL_PORT: String(controlPort),
-    // No Vite here: the browser talks to control directly, so control is "the console".
-    LANDBRIGHT_CONSOLE_URL: control,
+    // Without the console, the browser talks to control directly, so control is "the console".
+    LANDBRIGHT_CONSOLE_URL: consoleUrl,
+    LANDBRIGHT_CONSOLE_PORT: String(consolePort),
+    // Short only when a test rotates the signing keys twice: a rotation waits for the replaced key's tokens to expire.
+    LANDBRIGHT_ID_TOKEN_TTL_SECONDS: String(options.idTokenTtlSeconds ?? 3600),
     LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL: admin.email,
     LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD: admin.password,
   };
@@ -79,9 +90,14 @@ export async function startStack(): Promise<Stack> {
   execFileSync('node', ['dist/seed-cli.js'], { cwd: persistence, env, stdio: 'pipe' });
 
   const children: ChildProcess[] = [];
-  const start = async (app: string, url: string) => {
+  const start = async (
+    app: string,
+    url: string,
+    args = ['--enable-source-maps', 'dist/main.js'],
+    probe = '/healthz',
+  ) => {
     let output = '';
-    const child = spawn('node', ['--enable-source-maps', 'dist/main.js'], {
+    const child = spawn('node', args, {
       cwd: resolve(root, 'apps', app),
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -89,15 +105,20 @@ export async function startStack(): Promise<Stack> {
     child.stdout!.on('data', (chunk: Buffer) => (output += chunk.toString()));
     child.stderr!.on('data', (chunk: Buffer) => (output += chunk.toString()));
     children.push(child);
-    await waitFor(`${url}/healthz`, child, () => output);
+    await waitFor(`${url}${probe}`, child, () => output);
   };
-  await Promise.all([start('idp', idp), start('control', control)]);
+  await Promise.all([
+    start('idp', idp),
+    start('control', control),
+    ...(options.console ? [start('console', consoleUrl, ['node_modules/vite/bin/vite.js', 'preview'], '/')] : []),
+  ]);
 
   return {
     slug,
     idp,
     control,
     issuer: `${idp}/oidc`,
+    console: consoleUrl,
     admin,
     async stop() {
       await Promise.all(

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { ArrowLeft, Mail, Smartphone, UserX } from 'lucide-react';
+import { ArrowLeft, Fingerprint, Mail, Smartphone, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { InviteResult, Person } from '@landbright/contracts';
 import { Fact, formatDate, StatusBadge } from '@/components/directory/bits';
@@ -129,7 +129,12 @@ export function PersonPage() {
                     <Smartphone className="size-3" /> Authenticator app
                   </Badge>
                 )}
-                {p.hasTotp && (
+                {p.passkeys > 0 && (
+                  <Badge tone="success">
+                    <Fingerprint className="size-3" /> {p.passkeys === 1 ? 'Passkey' : `${p.passkeys} passkeys`}
+                  </Badge>
+                )}
+                {(p.hasTotp || p.passkeys > 0) && (
                   <button
                     type="button"
                     className="text-[12px] text-t3 underline underline-offset-2 hover:text-t1"
@@ -213,7 +218,7 @@ export function PersonPage() {
           title={`Reset ${p.displayName}’s second step?`}
           action="Reset"
           busy={resetSecondStep.isPending}
-          message="Their authenticator app stops working for Landbright. At their next sign-in, after their password, they set up a new one. Use this when they lost their phone."
+          message="Their authenticator app and passkeys stop working for Landbright. At their next sign-in, after their password, they set up a new second step. Use this when they lost their phone or laptop."
           onClose={() => setConfirmReset(false)}
           onConfirm={() =>
             resetSecondStep.mutate(undefined, {

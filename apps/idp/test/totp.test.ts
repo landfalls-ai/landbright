@@ -1,6 +1,7 @@
 import { Secret, TOTP } from 'otpauth';
 import { describe, expect, it } from 'vitest';
-import { enrollTotpPage, totpPage } from '../src/pages/pages';
+import { enrollTotpPage, loginPage, secondStepPage } from '../src/pages/pages';
+import { PASSKEY_SCRIPT_HREF } from '../src/pages/passkey-script';
 import { checkTotp, groupSecret, newTotpSecret, totpQrCode } from '../src/interactions/totp';
 
 const codeAt = (secret: string, ms: number) =>
@@ -46,7 +47,11 @@ describe('TOTP', () => {
 
 describe('second-step pages', () => {
   it('asks for a code, escaping the email', () => {
-    const page = totpPage({ action: '/interaction/u/totp', abort: '/interaction/u/abort', email: '<b>@x' });
+    const page = secondStepPage({
+      totp: { action: '/interaction/u/totp' },
+      abort: '/interaction/u/abort',
+      email: '<b>@x',
+    });
     expect(page).toContain('autocomplete="one-time-code"');
     expect(page).not.toContain('<b>@x');
   });
@@ -56,5 +61,34 @@ describe('second-step pages', () => {
     expect(enrollTotpPage({ ...base, skip: '/s' })).toContain('Not now');
     expect(enrollTotpPage(base)).not.toContain('Not now');
     expect(enrollTotpPage(base)).toContain('Your organization asks');
+  });
+});
+
+describe('passkey forms', () => {
+  const passkey = { action: '/interaction/u/passkey', options: { challenge: 'abc', rpId: 'localhost', note: '"><x>' } };
+
+  it('start hidden, carry their options escaped, and load the script only when offered', () => {
+    const page = loginPage({ action: '/l', abort: '/a', passkey });
+    expect(page).toMatch(/<form[^>]*data-passkey="get"[^>]*hidden/);
+    expect(page).toContain('data-options="{&quot;challenge&quot;:&quot;abc&quot;');
+    expect(page).not.toContain('"><x>');
+    expect(page).toContain(`<script src="${PASSKEY_SCRIPT_HREF}" defer></script>`);
+    expect(loginPage({ action: '/l', abort: '/a' })).not.toContain('<script');
+  });
+
+  it('offers a passkey next to the app when setting up a second step', () => {
+    const base = { action: '/a', abort: '/b', qr: 'data:image/png;base64,AA', secret: 'ABCD EFGH' };
+    expect(enrollTotpPage({ ...base, passkey })).toContain('data-passkey="create"');
+    expect(enrollTotpPage(base)).not.toContain('data-passkey');
+  });
+
+  it('asks for the passkey alone when that is all the person has', () => {
+    const page = secondStepPage({ passkey, abort: '/a', email: 'maya@example.test' });
+    expect(page).toContain('Use your passkey');
+    expect(page).toContain('data-passkey-hint');
+    expect(page).not.toContain('one-time-code');
+    const both = secondStepPage({ totp: { action: '/t' }, passkey, abort: '/a', email: 'maya@example.test' });
+    expect(both).toContain('one-time-code');
+    expect(both).toContain('Use your passkey instead');
   });
 });

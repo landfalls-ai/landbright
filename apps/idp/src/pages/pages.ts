@@ -1,11 +1,43 @@
 import { html, layout, raw } from './html';
 
+/** A passkey ceremony on a page: where the response goes, and the WebAuthn options for the browser. */
+export interface PasskeyForm {
+  action: string;
+  options: unknown;
+}
+
+/**
+ * A form the passkey script drives (passkey-script.ts). Hidden until the script shows it, so browsers without the
+ * script or without WebAuthn never see a button that can't work.
+ */
+function passkeyForm(
+  kind: 'get' | 'create',
+  form: PasskeyForm,
+  label: string,
+  opts: { primary?: boolean; divider?: boolean } = {},
+): string {
+  return html`<form
+    method="post"
+    action="${form.action}"
+    class="stack passkey"
+    data-passkey="${kind}"
+    data-options="${JSON.stringify(form.options)}"
+    hidden
+  >
+    ${opts.divider ? raw('<p class="or">or</p>') : ''}
+    <input type="hidden" name="response" />
+    <button type="submit" class="${opts.primary ? 'primary' : 'ghost'}">${label}</button>
+    <p class="hint center" data-status role="status" aria-live="polite"></p>
+  </form>`;
+}
+
 export function loginPage(opts: {
   action: string;
   clientName?: string;
   email?: string;
   error?: string;
   abort: string;
+  passkey?: PasskeyForm;
 }): string {
   return layout(
     'Sign in',
@@ -21,7 +53,9 @@ export function loginPage(opts: {
         <label>Password<input type="password" name="password" autocomplete="current-password" required /></label>
         <button type="submit" class="primary">Sign in</button>
       </form>
+      ${opts.passkey ? raw(passkeyForm('get', opts.passkey, 'Sign in with a passkey', { divider: true })) : ''}
       <p class="aside"><a href="${opts.abort}">Cancel</a></p>`,
+    { passkeys: Boolean(opts.passkey) },
   );
 }
 
@@ -87,14 +121,38 @@ export function signedOutPage(clientName?: string): string {
   );
 }
 
-/** The second step: a code from the person's authenticator app. */
-export function totpPage(opts: { action: string; abort: string; email: string; error?: string }): string {
+/**
+ * The second step for someone who has one set up: a code from their authenticator app, their passkey, or either.
+ */
+export function secondStepPage(opts: {
+  totp?: { action: string };
+  passkey?: PasskeyForm;
+  abort: string;
+  email: string;
+  error?: string;
+}): string {
+  const aside = html`<p class="aside">
+    Lost your device? Ask an administrator to reset your second step. · <a href="${opts.abort}">Cancel</a>
+  </p>`;
+  const error = opts.error ? html`<p class="alert" role="alert">${opts.error}</p>` : '';
+  if (!opts.totp) {
+    return layout(
+      'Use your passkey',
+      html`<h1>Use your passkey</h1>
+        <p class="sub">Confirm it’s you with your passkey for <strong>${opts.email}</strong>.</p>
+        ${raw(error)}
+        <p class="alert" data-passkey-hint>This browser can’t use passkeys. Try another browser or device.</p>
+        ${opts.passkey ? raw(passkeyForm('get', opts.passkey, 'Use your passkey', { primary: true })) : ''}
+        ${raw(aside)}`,
+      { passkeys: true },
+    );
+  }
   return layout(
     'Enter your code',
     html`<h1>Enter your code</h1>
       <p class="sub">Open your authenticator app and enter the 6-digit code for <strong>${opts.email}</strong>.</p>
-      ${opts.error ? raw(html`<p class="alert" role="alert">${opts.error}</p>`) : ''}
-      <form method="post" action="${opts.action}" class="stack">
+      ${raw(error)}
+      <form method="post" action="${opts.totp.action}" class="stack">
         <label
           >Code<input
             type="text"
@@ -108,9 +166,9 @@ export function totpPage(opts: { action: string; abort: string; email: string; e
         /></label>
         <button type="submit" class="primary">Continue</button>
       </form>
-      <p class="aside">
-        Lost your phone? Ask an administrator to reset your second step. · <a href="${opts.abort}">Cancel</a>
-      </p>`,
+      ${opts.passkey ? raw(passkeyForm('get', opts.passkey, 'Use your passkey instead', { divider: true })) : ''}
+      ${raw(aside)}`,
+    { passkeys: Boolean(opts.passkey) },
   );
 }
 
@@ -122,6 +180,7 @@ export function enrollTotpPage(opts: {
   qr: string;
   secret: string;
   error?: string;
+  passkey?: PasskeyForm;
 }): string {
   return layout(
     'Add a second step',
@@ -153,6 +212,7 @@ export function enrollTotpPage(opts: {
         /></label>
         <button type="submit" class="primary">Turn it on</button>
       </form>
+      ${opts.passkey ? raw(passkeyForm('create', opts.passkey, 'Use a passkey instead', { divider: true })) : ''}
       ${
         opts.skip
           ? raw(
@@ -162,5 +222,6 @@ export function enrollTotpPage(opts: {
             )
           : raw(html`<p class="aside"><a href="${opts.abort}">Cancel</a></p>`)
       }`,
+    { passkeys: Boolean(opts.passkey) },
   );
 }

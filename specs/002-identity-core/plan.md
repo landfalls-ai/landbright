@@ -55,3 +55,81 @@ Landflow is left for the user to run, because it changes Landflow's environment.
   counter is skipped rather than blocking every sign-in.
 - **The superuser bypasses row-level security** even when forced, so only migrations and the bootstrap use the owner,
   and the bootstrap filters by tenant explicitly.
+
+## Passkeys (T010b)
+
+| Project | What it gains |
+|---|---|
+| `libs/platform` | `LANDBRIGHT_IDP_URL` defaults to `http://localhost:4402`: WebAuthn needs a domain for its relying-party id, and browsers refuse IP addresses. The listener stays on `127.0.0.1` (principle IX). |
+| `apps/idp` | `@simplewebauthn/server` 14 for the ceremonies; `PasskeyService` (options, challenges in Valkey, verification, sign counters); routes `POST /interaction/:uid/passkey` (sign in with a passkey alone), `/passkey/verify` (second step), `/passkey/enroll` (add one when offered a second step); `/assets/passkey.js`, the only script, content-hashed, under `script-src 'self'` |
+| `libs/contracts`, `apps/control`, `apps/console` | `Person.passkeys` (a count); the person page shows them and **Reset second step** removes them; Settings lists passkeys among the methods when the issuer is a domain |
+| `e2e` | A software authenticator (P-256, `none` attestation) that registers and signs like a browser's |
+
+Constitution Check, for this slice: I PASS (`@simplewebauthn/server`, not hand-rolled verification); II PASS (the new
+routes are `@Public()` like the rest of the sign-in, and work only with this browser's interaction cookie and a
+challenge issued for it); VI PASS (WebAuthn Level 3, `amr` per RFC 8176); VII PASS (challenges in Valkey, single
+use; counters updated conditionally); VIII PASS (unit, e2e, live); IX PASS.
+
+Decisions:
+
+- **A passkey is two factors.** User verification is required (`userVerification: 'required'`), so a passkey is
+  something you have plus a PIN or biometric. Signing in with one alone satisfies *Require a second step*.
+- **`amr`** follows RFC 8176 and says `mfa` whenever two factors were used: `["pwd"]`, `["pwd", "otp", "mfa"]`,
+  `["pwd", "pop", "mfa"]`, `["pop", "mfa"]` (a passkey alone). This changes the TOTP slice's `["pwd", "otp"]`.
+- **No JavaScript beyond the ceremony.** The pages stay forms: the script fills a hidden field with the
+  authenticator's response and submits the form. Without the script, or without WebAuthn, the passkey buttons stay
+  hidden and the password path works as before.
+- **Discoverable credentials** (`residentKey: 'required'`), so the sign-in page needs no email to offer a passkey.
+- **Where passkeys are added**: on the *Add a second step* page, next to the authenticator app. People who already
+  have an app have no place to add a passkey until a self-service account page exists (docs/limitations.md).
+- **The public key is stored as is** (base64url in `credential.secret`); it isn't a secret.
+
+## Signing-key rotation (T011b)
+
+| Project | What it gains |
+|---|---|
+| `libs/persistence` | `signing-keys.ts` (moved from the idp): `loadSigningKeys`, `signingKeyFingerprint`, `rotateAfter` (the rule), `rotateSigningKeys` (under the same advisory lock as key creation) |
+| `libs/platform` | `LANDBRIGHT_ID_TOKEN_TTL_SECONDS` (default 3600), used for the ID token's lifetime and the rotation rule |
+| `apps/idp` | `OidcProviderRef`: the provider, rebuilt when the published key set changes; `/oidc` and the interaction routes go through it |
+| `libs/contracts`, `apps/control`, `apps/console` | `SigningKey.status`, `Settings.idTokenTtlSeconds` and `rotateAfter`; `POST /api/settings/signing-keys/rotate` (audited `signing_key.rotated`); Settings → *Rotate* with a confirmation |
+| `e2e` | Two rotations in one run (ID tokens live 15 s there): a token signed before the first still verifies, new tokens carry the new `kid`, the second waits with 409, the third retires the oldest key |
+
+Constitution Check, for this slice: I PASS (oidc-provider signs and publishes; Landbright only chooses the keys); II
+PASS (rotation is an administrator's action through control, audited); VI PASS (JWKS with `kid`, as relying parties
+expect for rotation); VII PASS (keys in Postgres under an advisory lock; every replica follows by checking, no
+in-memory coordination); VIII PASS (unit, e2e, live); IX PASS.
+
+Decisions:
+
+- **Two published keys at most.** A rotation keeps the replaced key and retires anything older, so the JWKS stays
+  small and a retired key is really gone.
+- **Wait rather than break tokens.** A rotation that would retire a key whose ID tokens may still be alive is
+  refused until they expire, and Settings says when. Access and refresh tokens are opaque, so only ID tokens matter.
+- **The new key signs at once**, with no pre-publication period. Relying parties that cache the JWKS refetch it on an
+  unknown `kid` (`openid-client` and `jose` do, with a short cooldown), so a token with the new key verifies on the
+  first try or the second.
+- **No message bus.** oidc-provider takes its keys at construction, so the identity plane rebuilds the provider; it
+  learns about a rotation by comparing the published set at most every five seconds while serving requests, which
+  works the same for one replica or several.
+- **Keys stay deployment-wide** while one deployment serves one tenant; the rotation is audited in the
+  administrator's tenant.
+
+## Conformance suite (T012b): what running it takes
+
+Investigated against the suite's current source (gitlab.com/openid/conformance-suite, `master`, November 2026); not
+run yet, because two of the steps are decisions.
+
+- **The suite**: prebuilt images (`docker-compose-prebuilt.yml`: `registry.gitlab.com/openid/conformance-suite`,
+  its nginx, MongoDB) serve it at `https://localhost.emobix.co.uk:8443`, and `scripts/run-test-plan.py` runs a plan
+  headless with a JSON config whose `browser` section fills Landbright's sign-in form. The plan would be
+  `oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]`.
+- **Decision 1, PKCE.** The OIDC Core plans send no `code_challenge`; Landbright requires PKCE for every client (OAuth
+  2.1), so nearly every test would stop at the authorization request. Running the suite needs PKCE to be optional for
+  one marked conformance client (oidc-provider's `pkce.required` can decide per client). That relaxes a security rule,
+  even if only for a test client.
+- **Decision 2, TLS.** The suite fails discovery whose endpoints aren't `https` (`CheckDiscEndpointAllEndpointsAreHttps`
+  and its kin). The local identity plane is plain HTTP, so a TLS proxy (Caddy or the suite's nginx pattern) would front
+  it, and the issuer would be that proxy's URL.
+- **Networking.** The suite runs in Docker and must reach the issuer at the same URL as the discovery document says, so
+  a conformance run uses its own identity plane with `LANDBRIGHT_IDP_URL` set to a name both sides resolve (for
+  example `host.docker.internal` behind the proxy), on its own port, against `landbright_test`.

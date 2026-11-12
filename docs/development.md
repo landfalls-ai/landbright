@@ -29,7 +29,7 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 |---|---|
 | 4400 | Console (Vite); `/api` is proxied to control |
 | 4401 | Control API; `/healthz`, `/api/*`, `/api/docs`, `/api/openapi.json` |
-| 4402 | Identity plane (idp); `/healthz`, the issuer at `/oidc`, sign-in and invite pages |
+| 4402 | Identity plane (idp), at `http://localhost:4402` (passkeys need a domain; it listens on 127.0.0.1); `/healthz`, the issuer at `/oidc`, sign-in and invite pages |
 | 57432 | Postgres 16: `landbright` (app), `landbright_test` (integration tests); owner `landbright` / `landbright-dev-only`, app role `landbright_app` / `landbright-app-dev-only` |
 | 57379 | Valkey 8 |
 | 57025 / 57825 | Mailpit SMTP / web UI |
@@ -42,6 +42,8 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 | `pnpm verify` | Type check, lint, test and build every project. A change is done when this is green. |
 | `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` | Each step on its own (Nx; cached). |
 | `pnpm test:integration` | Tests against the compose stack (`pnpm dev:up` first): row-level security and the audit chain (`db`), control's health (`infra`), and end to end (`e2e`). |
+| `pnpm test:browser` | Real Chromium (Playwright) against the built idp, control and console: the console's pages and the sign-in pages, passkeys through Chrome's virtual authenticator. Needs the compose stack too. |
+| `pnpm screenshots` | The same story, writing every screen to `docs/screenshots/` ([screens.md](screens.md)). |
 | `pnpm db:migrate` / `pnpm db:seed` / `pnpm db:setup` | Apply migrations (and the app role's development password); run the bootstrap; both. Idempotent. |
 | `pnpm --filter @landbright/persistence migrate:dev` | Create a migration after changing `prisma/schema.prisma`. Never reset the database; add a migration. |
 | `pnpm --filter <project> test` | One project: `@landbright/control`, `@landbright/idp`, `@landbright/persistence`, `@landbright/platform`, `@landbright/contracts`, `@landbright/console`, `@land/tokens`. |
@@ -54,12 +56,19 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
   resolve to their source, so a test never needs a build first.
 - Control's route tests fake Postgres, Valkey and the session in memory and serve the identity plane, OpenBao and Mailpit from one
   local HTTP server. `health.integration.test.ts` runs the same code against the real stack.
-- Tests against real services skip unless `LANDBRIGHT_INTEGRATION` names them: `infra`, `db`, `e2e`, or `all`.
+- Tests against real services skip unless `LANDBRIGHT_INTEGRATION` names them: `infra`, `db`, `e2e`, `browser`, or
+  `all`.
 - Database tests use `landbright_test`, migrated on first use. Each end-to-end run creates its own tenant there
   (`e2e-<time>`), so runs never see each other.
 - `e2e/` starts the **built** idp and control as processes on free ports against `landbright_test`, Valkey and
   Mailpit, then drives them like a browser (`browser.ts`, a cookie jar per host) and like Landflow (`landflow-rp.ts`).
   `pnpm test:integration` builds first; run alone, `pnpm build` then `pnpm --filter @landbright/e2e test:integration`.
+- `e2e/browser/` is Playwright 1.62 (Chromium from the shared `~/Library/Caches/ms-playwright`; `npx playwright
+  install chromium` if it is missing). `startStack({ console: true })` adds the built console under `vite preview`, so
+  sign-in returns to it as in development. A Landflow-shaped app on a free port finishes each sign-in like Landflow
+  (`landflow-rp.ts`) and shows the claims. Passkeys use Chrome's virtual authenticator (CDP `WebAuthn`), so the
+  sign-in pages' own script runs the ceremony. One story in order, one worker; traces of failures land in
+  `e2e/test-results/`.
 - The console's tests render the real router in jsdom with `fetch` stubbed (`apps/console/test/render.tsx`).
 - `@land/tokens` checks its copy against Landflow's `globals.css` when the Landflow checkout sits next to this repo
   (`LANDFLOW_DIR` points elsewhere).

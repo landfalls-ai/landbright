@@ -11,6 +11,8 @@ access engine; Landfall signs in with it.
 - [architecture.md](architecture.md): the processes, what each owns, and a code map.
 - [roadmap.md](roadmap.md) (what each wave builds), [limitations.md](limitations.md) (what is missing now),
   [history.md](history.md) (every change in order).
+- [suite.md](suite.md): diagrams of how Landbright, Landflow and Landfall work together, and of Landbright's own
+  processes. [screens.md](screens.md): every screen of the current wave.
 - [concept/index.html](concept/index.html): the concept page with suggestions and mockups.
 
 ## Features

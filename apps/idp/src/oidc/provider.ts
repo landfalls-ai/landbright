@@ -1,10 +1,9 @@
 import { deriveKey, issuerOf, type Config } from '@landbright/platform';
-import type { PrismaClient, TenantRef } from '@landbright/persistence';
+import type { PrismaClient, SigningJwk, TenantRef } from '@landbright/persistence';
 import Provider, { type Configuration, type KoaContextWithOIDC } from 'oidc-provider';
 import { errorPage, logoutPage, signedOutPage } from '../pages/pages';
 import { CLAIMS, loadAccount } from './account';
 import { postgresAdapter } from './adapter';
-import type { SigningJwk } from './keys';
 
 /**
  * The OIDC provider (panva/oidc-provider, OpenID Certified), mounted at /oidc on the identity plane. Authorization
@@ -62,7 +61,8 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
       AccessToken: 3600,
       AuthorizationCode: 60,
       ClientCredentials: 600,
-      IdToken: 3600,
+      // A key rotation keeps the replaced key published at least this long (rotateAfter in @landbright/persistence).
+      IdToken: config.LANDBRIGHT_ID_TOKEN_TTL_SECONDS,
       Interaction: 3600,
       Session: 8 * 3600,
       Grant: 14 * 24 * 3600,

@@ -74,8 +74,14 @@ export class LoginService {
     return (await this.failures(this.failureKey(email))) >= MAX_FAILURES;
   }
 
-  /** A wrong second-step code counts toward the same lockout as a wrong password, and is audited. */
-  async secondStepFailed(identityId: string, displayName: string, email: string, from: string): Promise<void> {
+  /** A wrong second-step code or passkey counts toward the same lockout as a wrong password, and is audited. */
+  async secondStepFailed(
+    identityId: string,
+    displayName: string,
+    email: string,
+    from: string,
+    step: 'totp' | 'passkey' = 'totp',
+  ): Promise<void> {
     await this.countFailure(this.failureKey(email));
     await withTenant(this.prisma, this.tenant.id, (tx) =>
       appendAudit(tx, this.tenant.id, {
@@ -84,7 +90,7 @@ export class LoginService {
         action: 'session.sign_in_failed',
         targetType: 'identity',
         targetId: identityId,
-        data: { from, step: 'totp' },
+        data: { from, step },
       }),
     );
   }
@@ -105,7 +111,7 @@ export class LoginService {
         action: 'session.signed_in',
         targetType: 'identity',
         targetId: identityId,
-        data: { method: methods.join('+'), from },
+        data: { method: methods.filter((m) => m !== 'mfa').join('+'), from },
       }),
     );
   }

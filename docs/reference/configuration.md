@@ -12,11 +12,12 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_CONSOLE_PORT` | `4400` | console (Vite) |
 | `LANDBRIGHT_CONTROL_PORT` | `4401` | control; the console's `/api` proxy |
 | `LANDBRIGHT_IDP_PORT` | `4402` | idp |
-| `LANDBRIGHT_IDP_URL` | `http://127.0.0.1:4402` | The identity plane's public URL. The issuer is `<this>/oidc`; invite links point here. |
+| `LANDBRIGHT_IDP_URL` | `http://localhost:4402` | The identity plane's public URL. The issuer is `<this>/oidc`; invite links point here. Its host is the passkeys' relying-party id, so it must be a domain (`localhost` works over http): with an IP address, passkeys are switched off. |
 | `LANDBRIGHT_CONSOLE_URL` | `http://127.0.0.1:4400` | Where console sign-in returns (`/api/auth/callback`), the only origin allowed to write to control, and the console client's redirect (set when `pnpm db:setup` creates it). |
 | `LANDBRIGHT_DATABASE_URL` | `postgres://landbright_app:landbright-app-dev-only@127.0.0.1:57432/landbright` | idp, control. The app role, under row-level security. |
 | `LANDBRIGHT_DATABASE_ADMIN_URL` | `postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright` | Migrations and the bootstrap only (a superuser bypasses row-level security). |
 | `LANDBRIGHT_TENANT_SLUG` / `_NAME` | `local` / `Local` | The tenant this deployment serves. The services refuse to start until it exists (`pnpm db:setup`). |
+| `LANDBRIGHT_ID_TOKEN_TTL_SECONDS` | `3600` | How long an ID token lives. A signing-key rotation keeps the replaced key published at least this long after it stops signing. The end-to-end tests use 15 to rotate twice in one run. |
 | `LANDBRIGHT_SECRET_KEY` | a development value | Seals signing keys; derives client secrets and the identity plane's cookie keys. 32+ characters. Changing it ends every session, changes every client secret, and replaces the signing key. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL` | `admin@landbright.test` | The first administrator, created by `pnpm db:setup` if missing. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD` | `landbright-dev-only` | Their password (12+ characters). Used only when creating them. |

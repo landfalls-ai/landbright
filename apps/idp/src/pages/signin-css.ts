@@ -1,6 +1,7 @@
-/** The sign-in pages' own rules; /assets/signin.css serves @land/tokens followed by these. No script anywhere. */
+/** The sign-in pages' own rules; /assets/signin.css serves @land/tokens followed by these. */
 export const SIGNIN_CSS = `
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); }
 body { color: var(--t1); font: 14px/1.45 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
 .frame { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px 16px; }
@@ -31,4 +32,10 @@ code { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace
 .key code { word-break: keep-all; }
 .link { background: none; border: 0; height: auto; padding: 0; color: var(--t2); font-weight: 400; font-size: 12px; text-decoration: underline; }
 .link:hover { color: var(--t1); }
+.or { display: flex; align-items: center; gap: 10px; color: var(--t3); font-size: 12px; margin: 2px 0; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--hair); }
+.passkey { margin-top: 14px; }
+[data-status]:empty { display: none; }
+.passkey .ghost { width: 100%; }
+.passkey .primary { margin-top: 0; }
 `;

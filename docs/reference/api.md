@@ -10,13 +10,17 @@ The control API's machine-readable description is at `GET /api/openapi.json` (Op
 | `GET /healthz` | Public | `Liveness`: `{ status: "ok", service: "landbright-idp", version, uptimeSeconds }`. |
 | `/oidc/*` | Public (the protocol authenticates clients itself) | `oidc-provider`: `/.well-known/openid-configuration`, `/auth`, `/token`, `/me` (userinfo), `/jwks`, `/token/introspection`, `/token/revocation`, `/session/end`. [sign-in.md](../sign-in.md) has the scopes and claims. |
 | `GET /interaction/:uid` | Public (people who aren't signed in yet) | The sign-in page for an authorization request in progress. |
-| `POST /interaction/:uid/login` | Public | Email and password (form). Success continues the authorization, or shows the second step: the code page for someone with an authenticator app, the setup page for someone without one (unless they chose *Not now* in the last 30 days and it isn't required). Failure shows the page again. Locked for 15 min after 10 failures per email. |
+| `POST /interaction/:uid/login` | Public | Email and password (form). Success continues the authorization, or shows the second step: the code or passkey page for someone with one set up, the setup page for someone without one (unless they chose *Not now* in the last 30 days and it isn't required). Failure shows the page again. Locked for 15 min after 10 failures per email. |
 | `POST /interaction/:uid/totp` | Public (after the password) | `code` from the authenticator app. A wrong or reused code shows the page again and counts toward the lockout. |
 | `POST /interaction/:uid/totp/enroll` | Public (after the password) | `code` confirming the key just shown; saves it and continues. |
+| `POST /interaction/:uid/passkey` | Public (people who aren't signed in yet) | `response`: a passkey assertion (JSON, from `/assets/passkey.js`) against the challenge on the sign-in page. Signs in with the passkey alone. |
+| `POST /interaction/:uid/passkey/verify` | Public (after the password) | `response`: an assertion from one of this person's passkeys, as the second step. Failures count toward the lockout. |
+| `POST /interaction/:uid/passkey/enroll` | Public (after the password) | `response`: a new passkey (attestation `none`, user verification required); saves it and continues. |
 | `POST /interaction/:uid/totp/skip` | Public (after the password) | *Not now*: continues and doesn't ask for 30 days. When the tenant requires a second step, shows the setup page again with that message. |
 | `GET /interaction/:uid/abort` | Public | Cancel: back to the application with `access_denied`. |
 | `GET /invite/:token` · `POST /invite/:token` | Public (the token is the credential) | Set a password from an invite link. 404 page when used or expired. |
 | `GET /assets/signin.css?v=<hash>` | Public | The pages' stylesheet: `@land/tokens` plus the sign-in styles. The pages link it with a hash of its content, so it is cached for good. |
+| `GET /assets/passkey.js?v=<hash>` | Public | The pages' only script: runs the WebAuthn ceremony for a `form[data-passkey]` and submits it. Content-hashed like the stylesheet. |
 
 ## Control (:4401, and the console at :4400/api)
 
@@ -36,13 +40,13 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 
 | Route | What |
 |---|---|
-| `GET /api/people` | `{ items: Person[] }`, by name. A `Person` has its profile, `manager`, `groups`, `hasPassword`, `hasTotp`, `status`. |
+| `GET /api/people` | `{ items: Person[] }`, by name. A `Person` has its profile, `manager`, `groups`, `hasPassword`, `hasTotp`, `passkeys` (a count), `status`. |
 | `POST /api/people` | `CreatePerson` → 201 `Person`. `sendInvite` (default true) emails the link. 409 if the email exists. |
 | `GET /api/people/:id` · `PATCH /api/people/:id` | One person; `UpdatePerson` (name, department, title, site, manager, dates). |
 | `POST /api/people/:id/deactivate` | Blocks sign-in, revokes sessions and tokens, suspends sponsored agents. 400 for yourself, 409 for the last administrator. |
 | `POST /api/people/:id/reactivate` | Active again. |
 | `POST /api/people/:id/invite` | `InviteResult`: `{ sentTo, expiresAt }`. Cancels earlier links. |
-| `POST /api/people/:id/reset-second-step` | → `Person`. Deletes their authenticator app (and passkeys, when there are any). |
+| `POST /api/people/:id/reset-second-step` | → `Person`. Deletes their authenticator app and passkeys. |
 | `GET /api/agents` · `POST /api/agents` | `{ items: Agent[] }`; `CreateAgent` (sponsor must be an active person) → 201 `Agent`. |
 | `GET /api/agents/:id` · `PATCH /api/agents/:id` | One agent; `UpdateAgent`. |
 | `POST /api/agents/:id/suspend` · `/resume` | Resume needs an active sponsor. |
@@ -64,8 +68,9 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 
 | Route | What |
 |---|---|
-| `GET /api/settings` | `Settings`: `{ tenant: { slug, name }, issuer, signIn: { mfaRequired, methods }, signingKeys[] }`. |
+| `GET /api/settings` | `Settings`: `{ tenant: { slug, name }, issuer, signIn: { mfaRequired, methods }, signingKeys[] (kid, alg, status signing/verifying/retired, dates), idTokenTtlSeconds, rotateAfter }`. `methods` has `passkey` when the issuer is a domain. |
 | `PATCH /api/settings/sign-in` | `UpdateSignIn` (`{ mfaRequired }`) → `Settings`. |
+| `POST /api/settings/signing-keys/rotate` | → `RotationResult` (`{ kid, retired[], settings }`): a new key signs, the replaced key keeps verifying, older keys are retired; audited as `signing_key.rotated`. 409 while the replaced key's ID tokens could still be alive (`Settings.rotateAfter` says until when). |
 
 ### Audit and health (administrators)
 

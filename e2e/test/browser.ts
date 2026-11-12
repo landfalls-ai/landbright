@@ -1,6 +1,6 @@
 /**
- * Just enough of a browser: a cookie jar (cookies are per host, not per port, as in a real browser, so the identity
- * plane and control share one jar on 127.0.0.1), manual redirects, and form posts.
+ * Just enough of a browser: a cookie jar (cookies are per host, not per port, as in a real browser: the identity plane
+ * is on localhost, control on 127.0.0.1), manual redirects, and form posts.
  */
 export class Browser {
   private readonly jar = new Map<string, Map<string, string>>();

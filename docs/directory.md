@@ -14,8 +14,9 @@ dates. Wave 3 fills these from HiBob and Shapes; until then administrators add p
 - **Deactivate** blocks sign-in, revokes every session and token at once, cancels open invites and suspends the agents
   they sponsor. **Reactivate** undoes the first; agents stay suspended until resumed. You can't deactivate yourself or
   the last active administrator.
-- **Reset second step** (shown when they have an authenticator app) deletes it, for a lost phone; they set up a new one
-  at their next sign-in ([sign-in.md](sign-in.md#the-second-step)).
+- **Sign-in** shows how they sign in: password, authenticator app, passkeys. **Reset** (when they have an app or a
+  passkey) deletes both, for a lost phone or laptop; they set up a new second step at their next sign-in
+  ([sign-in.md](sign-in.md#the-second-step)).
 
 ## Agents
 
@@ -41,7 +42,8 @@ into Landflow ([sign-in.md](sign-in.md#connecting-landflow)). **New secret** rot
 
 ## Settings
 
-The tenant (name, slug, issuer), sign-in (**Require a second step for everyone**, and the methods there are), and the
+The tenant (name, slug, issuer), sign-in (**Require a second step for everyone**, and the methods there are: passkeys
+appear when the issuer is a domain), and the
 signing keys published at `/oidc/jwks`. Key rotation comes later in wave 1.
 
 ## Audit log

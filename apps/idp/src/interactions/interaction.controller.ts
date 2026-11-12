@@ -1,24 +1,29 @@
 import { Body, Controller, Get, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import { Public } from '@landbright/platform';
 import type { Request, Response } from 'express';
-import type Provider from 'oidc-provider';
-import { enrollTotpPage, errorPage, loginPage, totpPage } from '../pages/pages';
+import type { OidcProviderRef } from '../oidc/provider-ref';
+import { enrollTotpPage, errorPage, loginPage, secondStepPage } from '../pages/pages';
 import { OIDC_PROVIDER } from '../valkey';
 import { LoginService } from './login.service';
+import { PasskeyService } from './passkey.service';
 import { type Pending, SecondStepService } from './second-step.service';
 import { groupSecret, totpQrCode } from './totp';
 
 /**
  * Landbright's sign-in pages for oidc-provider's interactions. Public: this is where people who aren't signed in
- * yet go. Wave 1 signs in with a password; TOTP and passkeys come next.
+ * yet go. A password and then a second step (an authenticator app or a passkey), or a passkey alone.
+ *
+ * `amr` (RFC 8176) says how: `pwd`, `otp`, `pop` (a passkey), and `mfa` whenever two factors were used. A passkey
+ * requires user verification, so it is two factors on its own.
  */
 @Public()
 @Controller('interaction')
 export class InteractionController {
   constructor(
-    @Inject(OIDC_PROVIDER) private readonly provider: Provider,
+    @Inject(OIDC_PROVIDER) private readonly oidc: OidcProviderRef,
     private readonly login: LoginService,
     private readonly secondStep: SecondStepService,
+    private readonly passkeys: PasskeyService,
   ) {}
 
   @Get(':uid')
@@ -28,20 +33,12 @@ export class InteractionController {
     if (details.uid !== uid) return this.page(res, 400, errorPage('This sign-in link doesn’t match your session.'));
     if (details.prompt.name !== 'login') {
       // Consent is never needed (loadExistingGrant grants registered apps); finish with what was asked.
-      await this.provider.interactionFinished(req, res, {}, { mergeWithLastSubmission: true });
+      await this.oidc.current.interactionFinished(req, res, {}, { mergeWithLastSubmission: true });
       return;
     }
-    const client = await this.provider.Client.find(String(details.params.client_id));
-    this.page(
-      res,
-      200,
-      loginPage({
-        action: `/interaction/${uid}/login`,
-        abort: `/interaction/${uid}/abort`,
-        clientName: client?.clientName,
-        email: typeof details.params.login_hint === 'string' ? details.params.login_hint : undefined,
-      }),
-    );
+    await this.renderLogin(res, uid, details, {
+      email: typeof details.params.login_hint === 'string' ? details.params.login_hint : undefined,
+    });
   }
 
   @Post(':uid/login')
@@ -56,22 +53,11 @@ export class InteractionController {
     const email = String(body?.email ?? '');
     const result = await this.login.verify(email, String(body?.password ?? ''), req.ip ?? 'unknown');
     if (!result.ok) {
-      const client = await this.provider.Client.find(String(details.params.client_id));
       const error =
         result.reason === 'locked'
           ? 'Too many attempts for this email. Try again in 15 minutes.'
           : 'That email and password don’t match.';
-      return this.page(
-        res,
-        200,
-        loginPage({
-          action: `/interaction/${uid}/login`,
-          abort: `/interaction/${uid}/abort`,
-          clientName: client?.clientName,
-          email,
-          error,
-        }),
-      );
+      return this.renderLogin(res, uid, details, { email, error });
     }
     const pending = await this.secondStep.next(uid, result);
     if (pending) return this.showSecondStep(res, uid, pending);
@@ -88,6 +74,7 @@ export class InteractionController {
   ): Promise<void> {
     const pending = await this.pending(req, res, uid, 'verify');
     if (!pending) return;
+    if (!pending.totp) return this.page(res, 400, errorPage('This sign-in has expired. Start again from the app.'));
     if (await this.login.locked(pending.email))
       return this.showSecondStep(res, uid, pending, 'Too many attempts for this email. Try again in 15 minutes.');
     if (!(await this.secondStep.verify(pending, String(body?.code ?? '')))) {
@@ -100,7 +87,7 @@ export class InteractionController {
       );
     }
     await this.secondStep.clear(uid);
-    await this.finish(req, res, pending, ['pwd', 'otp']);
+    await this.finish(req, res, pending, ['pwd', 'otp', 'mfa']);
   }
 
   /** Setting up an authenticator app: the first code confirms it. */
@@ -122,7 +109,79 @@ export class InteractionController {
       );
     }
     await this.secondStep.clear(uid);
-    await this.finish(req, res, pending, ['pwd', 'otp']);
+    await this.finish(req, res, pending, ['pwd', 'otp', 'mfa']);
+  }
+
+  /** Signing in with a passkey alone, from the sign-in page. */
+  @Post(':uid/passkey')
+  async passkey(
+    @Param('uid') uid: string,
+    @Body() body: { response?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const details = await this.details(req, res, uid);
+    if (!details) return;
+    if (!this.passkeys.available) return this.page(res, 404, errorPage('Passkeys aren’t switched on here.'));
+    const result = await this.passkeys.authenticate(uid, String(body?.response ?? ''));
+    if (!result.ok) {
+      if (result.owner) await this.passkeyFailed(req, result.owner);
+      return this.renderLogin(res, uid, details, {
+        error: 'That passkey didn’t work here. Try again, or use your password.',
+      });
+    }
+    await this.secondStep.clear(uid);
+    await this.finish(req, res, result.owner, ['pop', 'mfa']);
+  }
+
+  /** The second step with a passkey, after the password. It must be this person's passkey. */
+  @Post(':uid/passkey/verify')
+  async passkeyVerify(
+    @Param('uid') uid: string,
+    @Body() body: { response?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const pending = await this.pending(req, res, uid, 'verify');
+    if (!pending) return;
+    if (!pending.passkey) return this.page(res, 400, errorPage('This sign-in has expired. Start again from the app.'));
+    if (await this.login.locked(pending.email))
+      return this.showSecondStep(res, uid, pending, 'Too many attempts for this email. Try again in 15 minutes.');
+    const result = await this.passkeys.authenticate(uid, String(body?.response ?? ''), pending.identityId);
+    if (!result.ok) {
+      await this.passkeyFailed(req, pending);
+      return this.showSecondStep(
+        res,
+        uid,
+        pending,
+        'That passkey didn’t work. Use the one you set up for this account.',
+      );
+    }
+    await this.secondStep.clear(uid);
+    await this.finish(req, res, pending, ['pwd', 'pop', 'mfa']);
+  }
+
+  /** Adding a passkey as the second step, when offered one. */
+  @Post(':uid/passkey/enroll')
+  async passkeyEnroll(
+    @Param('uid') uid: string,
+    @Body() body: { response?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const pending = await this.pending(req, res, uid, 'enroll');
+    if (!pending) return;
+    if (!this.passkeys.available) return this.page(res, 404, errorPage('Passkeys aren’t switched on here.'));
+    if (!(await this.passkeys.register(uid, pending, String(body?.response ?? '')))) {
+      return this.showSecondStep(
+        res,
+        uid,
+        pending,
+        'The passkey wasn’t added. Try again, or use an authenticator app.',
+      );
+    }
+    await this.secondStep.clear(uid);
+    await this.finish(req, res, pending, ['pwd', 'pop', 'mfa']);
   }
 
   /** "Not now", when the tenant doesn't require a second step. */
@@ -139,7 +198,7 @@ export class InteractionController {
   @Get(':uid/abort')
   async abort(@Req() req: Request, @Res() res: Response): Promise<void> {
     if (!(await this.details(req, res))) return;
-    await this.provider.interactionFinished(
+    await this.oidc.current.interactionFinished(
       req,
       res,
       { error: 'access_denied', error_description: 'The person cancelled sign-in.' },
@@ -154,7 +213,7 @@ export class InteractionController {
     amr: string[],
   ): Promise<void> {
     await this.login.signedIn(who.identityId, who.displayName, who.email, amr, req.ip ?? 'unknown');
-    await this.provider.interactionFinished(
+    await this.oidc.current.interactionFinished(
       req,
       res,
       { login: { accountId: who.identityId, amr } },
@@ -162,10 +221,48 @@ export class InteractionController {
     );
   }
 
+  private async renderLogin(
+    res: Response,
+    uid: string,
+    details: { params: Record<string, unknown> },
+    opts: { email?: string; error?: string },
+  ): Promise<void> {
+    const client = await this.oidc.current.Client.find(String(details.params.client_id));
+    this.page(
+      res,
+      200,
+      loginPage({
+        action: `/interaction/${uid}/login`,
+        abort: `/interaction/${uid}/abort`,
+        clientName: client?.clientName,
+        ...opts,
+        passkey: this.passkeys.available
+          ? { action: `/interaction/${uid}/passkey`, options: await this.passkeys.authenticationOptions(uid) }
+          : undefined,
+      }),
+    );
+  }
+
   private async showSecondStep(res: Response, uid: string, pending: Pending, error?: string): Promise<void> {
     const abort = `/interaction/${uid}/abort`;
-    if (pending.mode === 'verify')
-      return this.page(res, 200, totpPage({ action: `/interaction/${uid}/totp`, abort, email: pending.email, error }));
+    if (pending.mode === 'verify') {
+      return this.page(
+        res,
+        200,
+        secondStepPage({
+          totp: pending.totp ? { action: `/interaction/${uid}/totp` } : undefined,
+          passkey: pending.passkey
+            ? {
+                action: `/interaction/${uid}/passkey/verify`,
+                options: await this.passkeys.authenticationOptions(uid, pending.identityId),
+              }
+            : undefined,
+          abort,
+          email: pending.email,
+          error,
+        }),
+      );
+    }
     this.page(
       res,
       200,
@@ -176,8 +273,18 @@ export class InteractionController {
         qr: await totpQrCode(pending.secret!, pending.email, 'Landbright'),
         secret: groupSecret(pending.secret!),
         error,
+        passkey: this.passkeys.available
+          ? {
+              action: `/interaction/${uid}/passkey/enroll`,
+              options: await this.passkeys.registrationOptions(uid, pending),
+            }
+          : undefined,
       }),
     );
+  }
+
+  private async passkeyFailed(req: Request, who: { identityId: string; email: string; displayName: string }) {
+    await this.login.secondStepFailed(who.identityId, who.displayName, who.email, req.ip ?? 'unknown', 'passkey');
   }
 
   /** The person between steps of this sign-in, in this browser (interactionDetails checks the interaction cookie). */
@@ -193,7 +300,7 @@ export class InteractionController {
 
   private async details(req: Request, res: Response, uid?: string) {
     try {
-      const details = await this.provider.interactionDetails(req, res);
+      const details = await this.oidc.current.interactionDetails(req, res);
       if (uid && details.uid !== uid) throw new Error('uid mismatch');
       return details;
     } catch {

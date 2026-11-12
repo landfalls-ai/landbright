@@ -3,10 +3,10 @@ import { type Config, createValkey, livenessController } from '@landbright/platf
 import { CONFIG, PersistenceModule, PRISMA, type PrismaClient, TENANT, type TenantRef } from '@landbright/persistence';
 import { InteractionController } from './interactions/interaction.controller';
 import { LoginService } from './interactions/login.service';
+import { PasskeyService } from './interactions/passkey.service';
 import { SecondStepService } from './interactions/second-step.service';
 import { InviteController } from './invite/invite.controller';
-import { loadSigningKeys } from './oidc/keys';
-import { createProvider } from './oidc/provider';
+import { OidcProviderRef } from './oidc/provider-ref';
 import { AssetsController } from './pages/assets.controller';
 import { OIDC_PROVIDER, VALKEY } from './valkey';
 
@@ -19,6 +19,7 @@ import { OIDC_PROVIDER, VALKEY } from './valkey';
   controllers: [livenessController('landbright-idp'), AssetsController, InteractionController, InviteController],
   providers: [
     LoginService,
+    PasskeyService,
     SecondStepService,
     {
       provide: VALKEY,
@@ -28,8 +29,8 @@ import { OIDC_PROVIDER, VALKEY } from './valkey';
     {
       provide: OIDC_PROVIDER,
       inject: [CONFIG, PRISMA, TENANT],
-      useFactory: async (config: Config, prisma: PrismaClient, tenant: TenantRef) =>
-        createProvider(config, prisma, tenant, await loadSigningKeys(prisma, config.LANDBRIGHT_SECRET_KEY)),
+      useFactory: (config: Config, prisma: PrismaClient, tenant: TenantRef) =>
+        OidcProviderRef.create(config, prisma, tenant),
     },
   ],
 })

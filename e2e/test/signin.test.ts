@@ -1,6 +1,15 @@
-import { ApplicationWithSecret, AuditPage, GroupDetail, Me, Person } from '@landbright/contracts';
+import {
+  ApplicationWithSecret,
+  AuditPage,
+  GroupDetail,
+  Me,
+  Person,
+  RotationResult,
+  Settings,
+} from '@landbright/contracts';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { type CreationOptions, passkeyForm, type RequestOptions, SoftAuthenticator } from './authenticator';
 import { Browser, formAction } from './browser';
 import { LandflowLikeRp } from './landflow-rp';
 import { e2eEnabled, MAILPIT, type Stack, startStack } from './stack';
@@ -10,6 +19,9 @@ import { e2eEnabled, MAILPIT, type Stack, startStack } from './stack';
  * and adds a person; the person sets a password from the invite email, signs in to Landflow over OIDC and lands with
  * the role their group maps to. Then deactivating them ends their sign-ins and tokens.
  */
+/** ID tokens live this long here, so the signing keys can rotate twice in one run (see 'signing keys'). */
+const TTL = 15;
+
 describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
   let stack: Stack;
   const admin = new Browser();
@@ -41,7 +53,7 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
     const after = await browser.submit(page.url, formAction(html), { email, password }, back);
     if (back(new URL(after.url)) || after.response.status !== 200) return after;
     const next = await after.response.text();
-    if (second && /\/totp/.test(next)) return second({ html: next, url: after.url });
+    if (second && /\/totp|\/passkey\/(verify|enroll)/.test(next)) return second({ html: next, url: after.url });
     const skip = /action="([^"]+\/totp\/skip)"/.exec(next)?.[1];
     if (skip) return browser.submit(after.url, skip, {}, back);
     return { response: new Response(next, { status: 200 }), url: after.url };
@@ -62,7 +74,7 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
     new TOTP({ secret: Secret.fromBase32(secret.replace(/\s+/g, '')) }).generate({ timestamp: Date.now() + offsetMs });
 
   beforeAll(async () => {
-    stack = await startStack();
+    stack = await startStack({ idTokenTtlSeconds: TTL });
     api = (path, init = {}) =>
       admin.fetch(`${stack.control}${path}`, {
         ...init,
@@ -304,7 +316,11 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
         },
       );
       const result = await rp.complete(landed.url);
-      expect(result.claims).toMatchObject({ email: noa.email, roles: ['Landflow Editors'], amr: ['pwd', 'otp'] });
+      expect(result.claims).toMatchObject({
+        email: noa.email,
+        roles: ['Landflow Editors'],
+        amr: ['pwd', 'otp', 'mfa'],
+      });
       expect(Person.parse(await (await api(`/api/people/${noa.id}`)).json()).hasTotp).toBe(true);
     });
 
@@ -324,7 +340,7 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
           return browser.submit(url, formAction(html), { code: codeFor(secret, 30_000) }, back);
         },
       );
-      expect((await rp.complete(landed.url)).claims.amr).toEqual(['pwd', 'otp']);
+      expect((await rp.complete(landed.url)).claims.amr).toEqual(['pwd', 'otp', 'mfa']);
     });
 
     it('can be reset by an administrator, and is set up again at the next sign-in', async () => {
@@ -339,6 +355,219 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
       expect(offered).toContain('Add a second step');
       await api('/api/settings/sign-in', { method: 'PATCH', body: JSON.stringify({ mfaRequired: false }) });
     });
+  });
+
+  describe('passkeys', () => {
+    let lior: Person;
+    const liorPassword = 'lior-correct-horse-battery';
+    const back = (u: URL) => u.href.startsWith('http://127.0.0.1:3000/');
+    let authenticator: SoftAuthenticator;
+
+    /** The sign-in page for a new authorization request, in a fresh browser. */
+    async function signInPage() {
+      const browser = new Browser();
+      const page = await browser.navigate(await rp.authorizationUrl());
+      return { browser, url: page.url, html: await page.response.text() };
+    }
+
+    it('are on, because the issuer is a domain', async () => {
+      authenticator = new SoftAuthenticator(stack.idp);
+      const settings = (await (await api('/api/settings')).json()) as { signIn: { methods: string[] } };
+      expect(settings.signIn.methods).toContain('passkey');
+      const created = await api('/api/people', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: `lior@${stack.slug}.test`,
+          givenName: 'Lior',
+          familyName: 'Ben-David',
+          groupIds: [editors.id],
+        }),
+      });
+      lior = Person.parse(await created.json());
+      const browser = new Browser();
+      const page = await browser.navigate(await inviteLink(lior.email!));
+      await browser.submit(page.url, formAction(await page.response.text()), {
+        password: liorPassword,
+        confirm: liorPassword,
+      });
+    });
+
+    it('are offered next to the authenticator app, and adding one finishes the sign-in', async () => {
+      const browser = new Browser();
+      const landed = await signIn(
+        browser,
+        await rp.authorizationUrl(),
+        lior.email!,
+        liorPassword,
+        back,
+        async ({ html, url }) => {
+          expect(html).toContain('Add a second step');
+          const form = passkeyForm<CreationOptions>(html, 'create')!;
+          expect(form.options.rp.id).toBe('localhost');
+          expect(form.options.authenticatorSelection).toMatchObject({
+            residentKey: 'required',
+            userVerification: 'required',
+          });
+          expect(Buffer.from(form.options.user.id, 'base64url').toString()).toBe(lior.id);
+          return browser.submit(
+            url,
+            form.action,
+            { response: JSON.stringify(authenticator.create(form.options)) },
+            back,
+          );
+        },
+      );
+      const result = await rp.complete(landed.url);
+      expect(result.claims).toMatchObject({ email: lior.email, amr: ['pwd', 'pop', 'mfa'] });
+      expect(Person.parse(await (await api(`/api/people/${lior.id}`)).json()).passkeys).toBe(1);
+    });
+
+    it('sign in alone, without a password, with the role the group maps to', async () => {
+      const { browser, url, html } = await signInPage();
+      const form = passkeyForm<RequestOptions>(html, 'get')!;
+      expect(form.options.allowCredentials ?? []).toEqual([]); // discoverable: no email needed first
+      expect(form.options.userVerification).toBe('required');
+      const landed = await browser.submit(
+        url,
+        form.action,
+        { response: JSON.stringify(authenticator.get(form.options)) },
+        back,
+      );
+      const result = await rp.complete(landed.url);
+      expect(result.claims).toMatchObject({ email: lior.email, roles: ['Landflow Editors'], amr: ['pop', 'mfa'] });
+      expect(result.role).toBe('member');
+    });
+
+    it('refuse another origin, a used challenge and a missing user verification', async () => {
+      const { browser, url, html } = await signInPage();
+      const first = passkeyForm<RequestOptions>(html, 'get')!;
+      const elsewhere = authenticator.get(first.options, { origin: 'http://127.0.0.1:3000' });
+      const refused = await browser.submit(url, first.action, { response: JSON.stringify(elsewhere) }, back);
+      const again = await refused.response.text();
+      expect(again).toContain('That passkey didn’t work');
+      // The first challenge was taken by that attempt: a good response to it no longer works.
+      const stale = await browser.submit(
+        url,
+        first.action,
+        { response: JSON.stringify(authenticator.get(first.options)) },
+        back,
+      );
+      expect(await stale.response.text()).toContain('That passkey didn’t work');
+      const { browser: b2, url: u2, html: h2 } = await signInPage();
+      const fresh = passkeyForm<RequestOptions>(h2, 'get')!;
+      const unverified = authenticator.get(fresh.options, { userVerified: false });
+      expect(
+        await (await b2.submit(u2, fresh.action, { response: JSON.stringify(unverified) }, back)).response.text(),
+      ).toContain('That passkey didn’t work');
+    });
+
+    it('are the second step after a password, for someone who has one', async () => {
+      const browser = new Browser();
+      const landed = await signIn(
+        browser,
+        await rp.authorizationUrl(),
+        lior.email!,
+        liorPassword,
+        back,
+        async ({ html, url }) => {
+          expect(html).toContain('Use your passkey');
+          expect(html).not.toContain('one-time-code');
+          const form = passkeyForm<RequestOptions>(html, 'get')!;
+          expect(form.options.allowCredentials?.length).toBe(1);
+          return browser.submit(url, form.action, { response: JSON.stringify(authenticator.get(form.options)) }, back);
+        },
+      );
+      expect((await rp.complete(landed.url)).claims.amr).toEqual(['pwd', 'pop', 'mfa']);
+    });
+
+    it('stop working when an administrator resets the second step', async () => {
+      const reset = await api(`/api/people/${lior.id}/reset-second-step`, { method: 'POST' });
+      expect(Person.parse(await reset.json()).passkeys).toBe(0);
+      const { browser, url, html } = await signInPage();
+      const form = passkeyForm<RequestOptions>(html, 'get')!;
+      const refused = await browser.submit(
+        url,
+        form.action,
+        { response: JSON.stringify(authenticator.get(form.options)) },
+        back,
+      );
+      expect(await refused.response.text()).toContain('That passkey didn’t work');
+    });
+  });
+
+  describe('signing keys', () => {
+    const back = (u: URL) => u.href.startsWith('http://127.0.0.1:3000/');
+    const kidOf = (jwt: string) =>
+      (JSON.parse(Buffer.from(jwt.split('.')[0]!, 'base64url').toString()) as { kid: string }).kid;
+    /** An ID token for the administrator (still signed in at the identity plane from the console). */
+    async function idToken() {
+      const landed = await signIn(admin, await rp.authorizationUrl(), stack.admin.email, stack.admin.password, back);
+      return rp.complete(landed.url);
+    }
+    const jwks = async () =>
+      ((await (await fetch(`${stack.issuer}/jwks`)).json()) as { keys: Array<{ kid: string }> }).keys.map((k) => k.kid);
+    /** The identity plane checks the key set at most every five seconds. */
+    async function jwksBecomes(expected: string[]) {
+      for (let i = 0; i < 40 && (await jwks()).join() !== expected.join(); i++)
+        await new Promise((r) => setTimeout(r, 250));
+      expect(await jwks()).toEqual(expected);
+    }
+    const settings = async () => Settings.parse(await (await api('/api/settings')).json());
+    const rotate = () => api('/api/settings/signing-keys/rotate', { method: 'POST' });
+    let first: { kid: string; idToken: string; nonce: string };
+    let second: string;
+
+    it('rotate: a new key signs, and the replaced key still verifies its tokens', async () => {
+      const before = await settings();
+      const signing = before.signingKeys.find((k) => k.status === 'signing')!;
+      expect(before.rotateAfter).toBeNull();
+      const t1 = await idToken();
+      expect(kidOf(t1.idToken)).toBe(signing.kid);
+      first = { kid: signing.kid, idToken: t1.idToken, nonce: String(t1.claims.nonce) };
+
+      const response = await rotate();
+      expect(response.status).toBe(200);
+      const result = RotationResult.parse(await response.json());
+      second = result.kid;
+      // Whatever an earlier run left published besides the signing key is retired now.
+      expect(result.retired).not.toContain(signing.kid);
+      expect(result.settings.signingKeys.filter((k) => k.status !== 'retired').map((k) => [k.kid, k.status])).toEqual([
+        [second, 'signing'],
+        [signing.kid, 'verifying'],
+      ]);
+
+      await jwksBecomes([second, signing.kid]);
+      // A token signed before the rotation still verifies, the way Landflow checks it.
+      const { jwks_uri } = await rp.discovery();
+      await expect(rp.verifyIdToken(first.idToken, jwks_uri, first.nonce)).resolves.toMatchObject({
+        email: stack.admin.email,
+      });
+      const t2 = await idToken();
+      expect(kidOf(t2.idToken)).toBe(second);
+    });
+
+    it('waits before the next rotation, while the replaced key may still have live tokens', async () => {
+      const response = await rotate();
+      expect(response.status).toBe(409);
+      expect(((await response.json()) as { message: string }).message).toContain('still verifies ID tokens until');
+      const s = await settings();
+      expect(new Date(s.rotateAfter!).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it(
+      'retires the oldest key at the next rotation, once its tokens have expired',
+      async () => {
+        const { rotateAfter } = await settings();
+        await new Promise((r) => setTimeout(r, Math.max(0, new Date(rotateAfter!).getTime() - Date.now()) + 200));
+        const response = await rotate();
+        expect(response.status).toBe(200);
+        const result = RotationResult.parse(await response.json());
+        expect(result.retired).toEqual([first.kid]);
+        await jwksBecomes([result.kid, second]);
+        expect(kidOf((await idToken()).idToken)).toBe(result.kid);
+      },
+      TTL * 1000 + 20_000,
+    );
   });
 
   it('refuses writes from another origin', async () => {
@@ -360,6 +589,8 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
       'client.created',
       'identity.invited',
       'credential.password_set',
+      'credential.passkey_added',
+      'signing_key.rotated',
       'session.signed_in',
       'session.sign_in_failed',
       'console.signed_in',

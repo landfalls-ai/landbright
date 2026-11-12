@@ -12,7 +12,7 @@ Three processes and four pieces of infrastructure, all on this machine.
 
 | Process | Owns | Now (wave 1) | Next |
 |---|---|---|---|
-| **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter; password sign-in with lockout and an authenticator-app second step; invite pages; sealed signing keys | Passkeys, key rotation |
+| **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter, rebuilt when the signing keys change; password, authenticator-app and passkey sign-in with lockout; invite pages; sealed signing keys with rotation | Token exchange (wave 5) |
 | **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health | SCIM out (wave 2) |
 | **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health, Settings | Requests and grants (wave 4) |
 
@@ -48,14 +48,15 @@ test fails when they drift from Landflow's `globals.css`.
 ## Code map
 
 ```
-apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,adapter,account,keys} ·
+apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,provider-ref,adapter,account} ·
                          interactions/ (sign-in, lockout) · invite/ · pages/ (server-rendered HTML)
 apps/control/src/        main.ts · configure.ts (prefix, origin check, session, OpenAPI) · auth/ (console sign-in) ·
                          directory/ (people, agents, groups) · applications/ · audit/ · mail/ · health/ · common/
 apps/console/src/        router.tsx · nav.ts · routes/ · components/{shell,ui,directory}/ · lib/api.ts
-libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap}.ts
+libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap,signing-keys}.ts
 libs/platform/src/       config.ts · crypto.ts · valkey.ts · bootstrap.ts · auth/ · health/ · telemetry/
 libs/contracts/src/      health · directory · applications · audit · session
-e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · signin.test.ts
+e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · authenticator.ts · signin.test.ts
+e2e/browser/             console.spec.ts (Playwright: the console and sign-in pages in Chromium; the screenshots)
 deploy/                  compose.infra.yml · infra/postgres/init.sql
 ```
