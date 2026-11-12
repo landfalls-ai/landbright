@@ -18,7 +18,7 @@ it to sign in and get back an ID token that says who they are and which groups t
 
 | Scope | Claims (in the ID token and from userinfo) |
 |---|---|
-| `openid` | `sub`: the identity's id |
+| `openid` | `sub`: the identity's id; `amr`: how they signed in, `["pwd"]` or `["pwd", "otp"]` |
 | `email` | `email`, `email_verified` (true: an administrator or an HR source entered it) |
 | `profile` | `name`, `given_name`, `family_name`, `preferred_username` (the email) |
 | `roles` | `roles` and `groups`: the names of the person's groups, sorted; expired just-in-time memberships left out |
@@ -29,12 +29,32 @@ registered it, so it gets the scopes it asks for.
 ## Signing in
 
 The pages are server-rendered by the identity plane, in Landflow's tokens, with no JavaScript and a CSP of
-`default-src 'none'` (`apps/idp/src/pages`). Wave 1 signs in with email and password; passkeys and TOTP come next.
+`default-src 'none'` except data: images for the QR code (`apps/idp/src/pages`). People sign in with email and
+password, then a code from an authenticator app if they have one; passkeys come next. The stylesheet's URL carries a
+hash of its content, so a changed page never shows with an old cached style.
 
 - A wrong email and a wrong password get the same answer, and take the same time (a decoy argon2 hash).
 - Ten failures for one email in 15 minutes lock that email for the rest of the window. The counter lives in Valkey;
   if Valkey is down, sign-in still works without it.
-- Every success and failure is in the audit log (`session.signed_in`, `session.sign_in_failed`).
+- Every success and failure is in the audit log (`session.signed_in` with the methods used,
+  `session.sign_in_failed` with the step that failed).
+
+## The second step
+
+An authenticator app (TOTP: 6 digits, 30 seconds, SHA-1, one step of clock drift either way) after the password.
+
+- **Someone with an app set up** gets a code page after their password. A wrong code counts toward the same lockout as
+  a wrong password. A code is accepted once: the step it belongs to is stored, and only a later step works after it.
+- **Someone without one** is offered it: a QR code and the key to type, then a code to confirm. *Not now* signs them in
+  and isn't asked again for 30 days (kept in Valkey; if Valkey is down they are asked again).
+- **Settings → Require a second step for everyone** (`tenant.mfa_required`) removes *Not now*: anyone without an app
+  sets one up at their next sign-in before going on.
+- **Reset second step** on a person's page deletes their app, for a lost phone; they are offered a new one at their
+  next sign-in (and must set one up when it's required).
+
+The key is sealed with AES-256-GCM under a key derived from `LANDBRIGHT_SECRET_KEY`, like the signing key. The ID
+token's `amr` says whether a second step was used, so an application can ask for it. Audit events:
+`credential.totp_added`, `credential.second_step_reset`, `tenant.sign_in_changed`.
 
 ## Passwords
 

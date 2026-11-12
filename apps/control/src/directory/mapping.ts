@@ -4,7 +4,7 @@ import { isoDate } from '../common/tenant-db';
 
 export const personInclude = {
   person: true,
-  credentials: { where: { kind: 'password' }, select: { id: true } },
+  credentials: { where: { kind: { in: ['password', 'totp'] } }, select: { id: true, kind: true } },
   memberships: { include: { group: { select: { id: true, name: true } } } },
 } satisfies Prisma.IdentityInclude;
 export type PersonRow = Prisma.IdentityGetPayload<{ include: typeof personInclude }>;
@@ -49,7 +49,8 @@ export function toPerson(row: PersonRow, managers: Map<string, IdentityBase>): P
     startDate: isoDate(p?.startDate),
     endDate: isoDate(p?.endDate),
     groups: groupsOf(row.memberships),
-    hasPassword: row.credentials.length > 0,
+    hasPassword: row.credentials.some((c) => c.kind === 'password'),
+    hasTotp: row.credentials.some((c) => c.kind === 'totp'),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

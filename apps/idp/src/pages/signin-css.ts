@@ -4,8 +4,6 @@ export const SIGNIN_CSS = `
 html, body { margin: 0; background: var(--bg); }
 body { color: var(--t1); font: 14px/1.45 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
 .frame { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 32px 16px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; }
-.mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--acbd); background: var(--ac2); color: var(--on-ac); font-size: 12px; font-weight: 700; letter-spacing: .02em; }
 .card { width: 100%; max-width: 380px; background: var(--sf); border: 1px solid var(--hair); border-radius: 16px; padding: 26px 24px 22px; }
 h1 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 4px; }
 .sub { color: var(--t2); margin: 0 0 18px; font-size: 13px; }
@@ -25,4 +23,12 @@ button { height: 36px; border-radius: 999px; border: 1px solid transparent; font
 a { color: var(--t2); }
 a:hover { color: var(--t1); }
 .foot { color: var(--t3); font-size: 12px; margin: 0; }
+.qr { display: grid; place-items: center; margin: 4px 0 10px; }
+.qr img { border-radius: 10px; border: 1px solid var(--hair); background: #fff; padding: 6px; }
+.center { text-align: center; margin: 0 0 6px; }
+.key { margin: 0 0 18px; padding: 8px 10px; border: 1px solid var(--bd); border-radius: 10px; background: var(--bg); text-align: center; }
+code { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--t1); letter-spacing: .04em; }
+.key code { word-break: keep-all; }
+.link { background: none; border: 0; height: auto; padding: 0; color: var(--t2); font-weight: 400; font-size: 12px; text-decoration: underline; }
+.link:hover { color: var(--t1); }
 `;

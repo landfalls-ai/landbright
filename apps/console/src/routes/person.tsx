@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { ArrowLeft, Mail, UserX } from 'lucide-react';
+import { ArrowLeft, Mail, Smartphone, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { InviteResult, Person } from '@landbright/contracts';
 import { Fact, formatDate, StatusBadge } from '@/components/directory/bits';
@@ -23,6 +23,8 @@ export function PersonPage() {
   const deactivate = useWrite(() => send('POST', `/api/people/${id}/deactivate`, undefined, Person));
   const reactivate = useWrite(() => send('POST', `/api/people/${id}/reactivate`, undefined, Person));
   const invite = useWrite(() => send('POST', `/api/people/${id}/invite`, undefined, InviteResult));
+  const resetSecondStep = useWrite(() => send('POST', `/api/people/${id}/reset-second-step`, undefined, Person));
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const p = person.data;
   if (!p) {
@@ -120,7 +122,23 @@ export function PersonPage() {
             </Fact>
             <Fact label="Start date">{formatDate(p.startDate)}</Fact>
             <Fact label="Sign-in">
-              {p.hasPassword ? <Badge>Password set</Badge> : <Badge tone="warning">Invite not accepted</Badge>}
+              <span className="flex flex-wrap items-center gap-1.5">
+                {p.hasPassword ? <Badge>Password set</Badge> : <Badge tone="warning">Invite not accepted</Badge>}
+                {p.hasTotp && (
+                  <Badge tone="success">
+                    <Smartphone className="size-3" /> Authenticator app
+                  </Badge>
+                )}
+                {p.hasTotp && (
+                  <button
+                    type="button"
+                    className="text-[12px] text-t3 underline underline-offset-2 hover:text-t1"
+                    onClick={() => setConfirmReset(true)}
+                  >
+                    Reset
+                  </button>
+                )}
+              </span>
             </Fact>
           </dl>
         </Card>
@@ -190,6 +208,24 @@ export function PersonPage() {
         />
       )}
       {editing && <EditPersonDialog person={p} onClose={() => setEditing(false)} />}
+      {confirmReset && (
+        <ConfirmDialog
+          title={`Reset ${p.displayName}’s second step?`}
+          action="Reset"
+          busy={resetSecondStep.isPending}
+          message="Their authenticator app stops working for Landbright. At their next sign-in, after their password, they set up a new one. Use this when they lost their phone."
+          onClose={() => setConfirmReset(false)}
+          onConfirm={() =>
+            resetSecondStep.mutate(undefined, {
+              onSuccess: () => {
+                setConfirmReset(false);
+                toast.success('Second step reset');
+              },
+              onError: (e) => toast.error(e.message),
+            })
+          }
+        />
+      )}
     </>
   );
 }

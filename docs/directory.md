@@ -14,6 +14,8 @@ dates. Wave 3 fills these from HiBob and Shapes; until then administrators add p
 - **Deactivate** blocks sign-in, revokes every session and token at once, cancels open invites and suspends the agents
   they sponsor. **Reactivate** undoes the first; agents stay suspended until resumed. You can't deactivate yourself or
   the last active administrator.
+- **Reset second step** (shown when they have an authenticator app) deletes it, for a lost phone; they set up a new one
+  at their next sign-in ([sign-in.md](sign-in.md#the-second-step)).
 
 ## Agents
 
@@ -36,6 +38,11 @@ Kinds: *static* (managed here), *birthright* (given by HR rules, wave 3) and *ju
 The OIDC clients that sign in with Landbright. Registering one shows its client secret once, with the settings to paste
 into Landflow ([sign-in.md](sign-in.md#connecting-landflow)). **New secret** rotates it (the old one stops at once);
 **Delete** revokes its tokens. The console's own client is shown but can't be changed here.
+
+## Settings
+
+The tenant (name, slug, issuer), sign-in (**Require a second step for everyone**, and the methods there are), and the
+signing keys published at `/oidc/jwks`. Key rotation comes later in wave 1.
 
 ## Audit log
 

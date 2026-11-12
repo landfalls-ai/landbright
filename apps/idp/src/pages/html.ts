@@ -1,3 +1,4 @@
+import { STYLESHEET_HREF } from './stylesheet';
 /** Escapes text for HTML. Every value that reaches a page goes through here or `attr`. */
 export function esc(value: unknown): string {
   return String(value ?? '')
@@ -43,11 +44,10 @@ export function layout(title: string, body: string): string {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex" />
         <title>${title} · Landbright</title>
-        <link rel="stylesheet" href="/assets/signin.css" />
+        <link rel="stylesheet" href="${STYLESHEET_HREF}" />
       </head>
       <body>
         <main class="frame">
-          <div class="brand"><span class="mark">LB</span><span>Landbright</span></div>
           <section class="card">${raw(body)}</section>
           <p class="foot">Landbright signs you in to your organization’s apps.</p>
         </main>

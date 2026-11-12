@@ -47,6 +47,9 @@ administrators sign in to, and an audit log that records all of it.
 
 ## Out of scope (later in wave 1 or after)
 
+The second slice took on TOTP and the Settings page ([tasks.md](tasks.md), T010a and T011a).
+
+
 Passkeys and TOTP; upstream Google/Entra federation; the Settings page (tenant, signing keys, rotation); Playwright and
 the OpenID conformance suite; editing applications' redirect URIs from the console (the API supports it); SCIM (wave
 2); HR sources (wave 3); agent credentials (wave 5).

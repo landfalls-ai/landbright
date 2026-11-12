@@ -21,6 +21,7 @@ import { PeopleService } from './directory/people.service';
 import { HealthController } from './health/health.controller';
 import { HealthService } from './health/health.service';
 import { Mailer } from './mail/mailer';
+import { SettingsController } from './settings/settings.controller';
 
 /**
  * The control plane. Every request body is validated and every response serialized against its zod contract
@@ -37,6 +38,7 @@ import { Mailer } from './mail/mailer';
     GroupsController,
     ApplicationsController,
     AuditController,
+    SettingsController,
   ],
   providers: [
     HealthService,

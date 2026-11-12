@@ -9,6 +9,7 @@ import {
   Me,
   PeopleList,
   Person,
+  Settings,
 } from '@landbright/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -115,6 +116,9 @@ export const useGroup = (id: string) =>
 export const useApplications = () =>
   useQuery({ queryKey: ['applications'], queryFn: () => getJson('/api/applications', ApplicationList), retry: quiet });
 
+export const useSettings = () =>
+  useQuery({ queryKey: ['settings'], queryFn: () => getJson('/api/settings', Settings), retry: quiet });
+
 export function useAudit() {
   return useInfiniteQuery({
     queryKey: ['audit'],
@@ -131,7 +135,7 @@ export function useWrite<A, R>(fn: (args: A) => Promise<R>) {
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      for (const key of ['people', 'agents', 'groups', 'applications', 'audit'])
+      for (const key of ['people', 'agents', 'groups', 'applications', 'audit', 'settings'])
         void client.invalidateQueries({ queryKey: [key] });
     },
   });

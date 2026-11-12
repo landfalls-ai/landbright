@@ -7,7 +7,7 @@ and in the browser, and its bugs fixed in the same wave. The console's Home page
 | Wave | Status | First slice |
 |---|---|---|
 | **0. Foundations** | ✓ Done 2026-11-12 ([spec 001](../specs/001-foundations/spec.md)) | `pnpm dev:up && pnpm serve` brings up a console in Landflow's shell with a health page |
-| **1. Identity core and sign-in** | In progress: first slice done 2026-11-12 ([spec 002](../specs/002-identity-core/spec.md)) | A person created in the console signs into Landflow over OIDC and lands with the role their group maps to |
+| **1. Identity core and sign-in** | In progress: identity core and the second step done 2026-11-12 ([spec 002](../specs/002-identity-core/spec.md)) | A person created in the console signs into Landflow over OIDC and lands with the role their group maps to |
 | **2. Provisioning out** | Planned | Deactivating a person signs them out of Landflow within seconds |
 | **3. Landflow plugins and HR lifecycle** | Planned | A signed HiBob `employee.joined` creates the person and adds birthright groups |
 | **4. Just-in-time access** | Planned | Editor on a Landflow project for 2 hours: requested, approved in Slack, granted, removed at expiry |
@@ -34,5 +34,9 @@ Landflow-shaped application over OIDC and gets the role their group maps to.
 - The console: the sign-in gate and the Directory, Applications and Audit pages.
 - `e2e/`: the whole flow against the built services, including deactivation revoking tokens.
 
-Still to come in wave 1: passkeys and TOTP, Settings with signing-key rotation, Playwright and the OpenID conformance
-suite, a live sign-in to a running Landflow.
+The second slice adds an authenticator app (TOTP) as a second step at sign-in: offered to everyone, required when
+**Settings → Require a second step** is on, reset by an administrator, and reported to applications in `amr`. The
+console gains the Settings page.
+
+Still to come in wave 1: passkeys, signing-key rotation, Playwright and the OpenID conformance suite, a live sign-in to
+a running Landflow.

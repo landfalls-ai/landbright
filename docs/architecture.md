@@ -10,11 +10,11 @@ Three processes and four pieces of infrastructure, all on this machine.
  relying parties (Landflow, Landfall) ───────▶ idp: /oidc (discovery, auth, token, JWKS, userinfo, logout)
 ```
 
-| Process | Owns | Now (wave 1, first slice) | Next |
+| Process | Owns | Now (wave 1) | Next |
 |---|---|---|---|
-| **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter; password sign-in with lockout; invite pages; sealed signing keys | Passkeys, TOTP, key rotation |
+| **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter; password sign-in with lockout and an authenticator-app second step; invite pages; sealed signing keys | Passkeys, key rotation |
 | **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health | SCIM out (wave 2) |
-| **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health | Settings |
+| **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health, Settings | Requests and grants (wave 4) |
 
 ## Data (`libs/persistence`)
 

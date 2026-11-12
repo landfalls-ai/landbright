@@ -20,7 +20,9 @@ export interface ServiceOptions {
  * and a listener on 127.0.0.1 only (constitution principle IX: local only).
  */
 export async function startService(module: Type<unknown>, options: ServiceOptions): Promise<INestApplication> {
-  const app = await NestFactory.create(module, { bodyParser: options.bodyParser ?? true });
+  // forceCloseConnections: a browser's keep-alive connection would otherwise hold shutdown (and the watcher's restart)
+  // open until the browser lets go.
+  const app = await NestFactory.create(module, { bodyParser: options.bodyParser ?? true, forceCloseConnections: true });
   applyServiceDefaults(app, options);
   await options.configure?.(app);
   await app.listen(options.port, '127.0.0.1');

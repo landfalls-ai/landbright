@@ -30,6 +30,7 @@ function person(overrides: Partial<Person> = {}): Person {
     endDate: null,
     groups: [{ id: GROUP.id, name: GROUP.name }],
     hasPassword: false,
+    hasTotp: false,
     createdAt: '2026-11-12T10:00:00.000Z',
     updatedAt: '2026-11-12T10:00:00.000Z',
     ...overrides,
@@ -194,5 +195,53 @@ describe('Audit log', () => {
   it('says so when the chain is broken', async () => {
     renderAt('/audit', report(), { routes: { '/api/audit': page(false) } });
     expect(await screen.findByText('Chain broken')).toBeInTheDocument();
+  });
+});
+
+describe('Settings', () => {
+  const settings = (mfaRequired: boolean) => ({
+    tenant: { slug: 'local', name: 'Local' },
+    issuer: 'http://127.0.0.1:4402/oidc',
+    signIn: { mfaRequired, methods: ['password', 'totp'] },
+    signingKeys: [{ kid: 'XVzmfGNSIoqGd7Ue', alg: 'RS256', createdAt: '2026-11-12T10:00:00.000Z', retiredAt: null }],
+  });
+
+  it('shows the tenant, the issuer and the signing key', async () => {
+    renderAt('/settings', report(), { routes: { '/api/settings': settings(false) } });
+    expect(await screen.findByText('XVzmfGNSIoqGd7Ue')).toBeInTheDocument();
+    expect(screen.getByText('Signing')).toBeInTheDocument();
+    expect(screen.getAllByText('http://127.0.0.1:4402/oidc').length).toBeGreaterThan(0);
+  });
+
+  it('requires a second step for everyone', async () => {
+    renderAt('/settings', report(), {
+      routes: {
+        '/api/settings': settings(false),
+        'PATCH /api/settings/sign-in': (body: unknown) => settings((body as { mfaRequired: boolean }).mfaRequired),
+      },
+    });
+    const toggle = await screen.findByRole('switch', { name: 'Require a second step' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(calls.find((c) => c.key === 'PATCH /api/settings/sign-in')?.body).toEqual({ mfaRequired: true }),
+    );
+  });
+});
+
+describe('A person’s second step', () => {
+  it('shows the authenticator app and resets it after confirming', async () => {
+    const p = person({ hasPassword: true, hasTotp: true });
+    renderAt(`/people/${p.id}`, report(), {
+      routes: {
+        [`/api/people/${p.id}`]: p,
+        [`POST /api/people/${p.id}/reset-second-step`]: () => ({ ...p, hasTotp: false }),
+      },
+    });
+    expect(await screen.findByText('Authenticator app')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    const dialog = await screen.findByRole('dialog', { name: /Reset Maya Cohen/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(calls.some((c) => c.key === `POST /api/people/${p.id}/reset-second-step`)).toBe(true));
   });
 });

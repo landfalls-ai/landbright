@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CLAIMS } from '../src/oidc/account';
 import { esc } from '../src/pages/html';
 import { invitePage, loginPage } from '../src/pages/pages';
+import { STYLESHEET_HREF } from '../src/pages/stylesheet';
 
 /** The identity plane's pages are server-rendered strings: everything interpolated must come out escaped. */
 describe('idp pages', () => {
@@ -31,5 +32,12 @@ describe('idp pages', () => {
 
   it('puts group names in the roles scope, for Landflow’s role map', () => {
     expect(CLAIMS.roles).toEqual(['roles', 'groups']);
+  });
+});
+
+describe('the stylesheet link', () => {
+  it('carries a content hash, so a new version is never served from cache', () => {
+    expect(STYLESHEET_HREF).toMatch(/^\/assets\/signin\.css\?v=[0-9a-f]{12}$/);
+    expect(loginPage({ action: '/a', abort: '/b' })).toContain(STYLESHEET_HREF);
   });
 });

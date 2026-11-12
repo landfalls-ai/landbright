@@ -16,7 +16,8 @@ import { VALKEY } from '../valkey';
 export const MAX_FAILURES = 10;
 export const FAILURE_WINDOW_SECONDS = 15 * 60;
 
-export type LoginResult = { ok: true; identityId: string } | { ok: false; reason: 'invalid' | 'locked' };
+export type LoginResult =
+  { ok: true; identityId: string; email: string; displayName: string } | { ok: false; reason: 'invalid' | 'locked' };
 
 @Injectable()
 export class LoginService {
@@ -35,7 +36,7 @@ export class LoginService {
    */
   async verify(rawEmail: string, password: string, from: string): Promise<LoginResult> {
     const email = rawEmail.trim().toLowerCase();
-    const key = `lb:login:failures:${this.tenant.id}:${email}`;
+    const key = this.failureKey(email);
     if ((await this.failures(key)) >= MAX_FAILURES) return { ok: false, reason: 'locked' };
 
     const identity = await withTenant(this.prisma, this.tenant.id, (tx) =>
@@ -62,19 +63,55 @@ export class LoginService {
       }
       return { ok: false, reason: 'invalid' };
     }
-    await this.valkey.del(key).catch(() => undefined);
-    await withTenant(this.prisma, this.tenant.id, async (tx) => {
-      await tx.credential.update({ where: { id: identity.credentials[0]!.id }, data: { lastUsedAt: new Date() } });
-      await appendAudit(tx, this.tenant.id, {
-        actorId: identity.id,
-        actorLabel: identity.displayName,
+    await withTenant(this.prisma, this.tenant.id, (tx) =>
+      tx.credential.update({ where: { id: identity.credentials[0]!.id }, data: { lastUsedAt: new Date() } }),
+    );
+    return { ok: true, identityId: identity.id, email, displayName: identity.displayName };
+  }
+
+  /** Whether this email is locked out (too many wrong passwords or codes in the window). */
+  async locked(email: string): Promise<boolean> {
+    return (await this.failures(this.failureKey(email))) >= MAX_FAILURES;
+  }
+
+  /** A wrong second-step code counts toward the same lockout as a wrong password, and is audited. */
+  async secondStepFailed(identityId: string, displayName: string, email: string, from: string): Promise<void> {
+    await this.countFailure(this.failureKey(email));
+    await withTenant(this.prisma, this.tenant.id, (tx) =>
+      appendAudit(tx, this.tenant.id, {
+        actorId: identityId,
+        actorLabel: displayName,
+        action: 'session.sign_in_failed',
+        targetType: 'identity',
+        targetId: identityId,
+        data: { from, step: 'totp' },
+      }),
+    );
+  }
+
+  /** Sign-in finished: clears the failure count and records how the person proved who they are. */
+  async signedIn(
+    identityId: string,
+    displayName: string,
+    email: string,
+    methods: string[],
+    from: string,
+  ): Promise<void> {
+    await this.valkey.del(this.failureKey(email)).catch(() => undefined);
+    await withTenant(this.prisma, this.tenant.id, (tx) =>
+      appendAudit(tx, this.tenant.id, {
+        actorId: identityId,
+        actorLabel: displayName,
         action: 'session.signed_in',
         targetType: 'identity',
-        targetId: identity.id,
-        data: { method: 'password', from },
-      });
-    });
-    return { ok: true, identityId: identity.id };
+        targetId: identityId,
+        data: { method: methods.join('+'), from },
+      }),
+    );
+  }
+
+  private failureKey(email: string): string {
+    return `lb:login:failures:${this.tenant.id}:${email.trim().toLowerCase()}`;
   }
 
   private async failures(key: string): Promise<number> {

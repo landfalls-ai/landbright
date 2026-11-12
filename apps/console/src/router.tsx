@@ -11,6 +11,7 @@ import { HomePage } from './routes/home';
 import { NotFoundPage } from './routes/not-found';
 import { PeoplePage } from './routes/people';
 import { PersonPage } from './routes/person';
+import { SettingsPage } from './routes/settings';
 import { UpcomingPage } from './routes/upcoming';
 
 export const routes: RouteObject[] = [
@@ -26,6 +27,7 @@ export const routes: RouteObject[] = [
       { path: 'groups/:id', element: <GroupPage /> },
       { path: 'applications', element: <ApplicationsPage /> },
       { path: 'audit', element: <AuditLogPage /> },
+      { path: 'settings', element: <SettingsPage /> },
       ...ALL_PAGES.filter(isUpcoming).map((item) => ({
         path: item.href.slice(1),
         element: <UpcomingPage item={item} />,

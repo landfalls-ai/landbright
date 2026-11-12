@@ -180,6 +180,22 @@ export class PeopleService {
     return this.get(id);
   }
 
+  /** For someone who lost their phone: removes their authenticator app; they set up a new one at the next sign-in. */
+  async resetSecondStep(id: string, actor: Principal): Promise<Person> {
+    await this.db.tx(async (tx) => {
+      await this.find(tx, id);
+      const removed = await tx.credential.deleteMany({ where: { identityId: id, kind: { in: ['totp', 'passkey'] } } });
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(actor),
+        action: 'credential.second_step_reset',
+        targetType: 'identity',
+        targetId: id,
+        data: { removed: removed.count },
+      });
+    });
+    return this.get(id);
+  }
+
   /** A one-time link to set a password, by email. Sending a new one cancels the old. */
   async invite(id: string, actor: Principal): Promise<InviteResult> {
     const { token, hash } = newToken();

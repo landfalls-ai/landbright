@@ -35,8 +35,17 @@ export async function loadAccount(prisma: PrismaClient, tenant: TenantRef, sub: 
   return { accountId: identity.id, claims: () => claims };
 }
 
+/**
+ * Scopes and the claims they release. `acr`, `auth_time`, `sid` and `iss` are oidc-provider's standalone claims (its
+ * defaults, restated because this map replaces them). `amr` (how the person signed in: `pwd`, `otp`) comes with
+ * `openid`, so every ID token carries it.
+ */
 export const CLAIMS = {
-  openid: ['sub'],
+  acr: null,
+  auth_time: null,
+  sid: null,
+  iss: null,
+  openid: ['sub', 'amr'],
   email: ['email', 'email_verified'],
   profile: ['name', 'given_name', 'family_name', 'preferred_username'],
   roles: ['roles', 'groups'],

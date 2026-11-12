@@ -15,10 +15,12 @@ datasource db {
 /// A customer organization. Read before a tenant is known (by slug), so it has no row-level security; the app may
 /// only read it.
 model Tenant {
-  id        String   @id @default(uuid()) @db.Uuid
-  slug      String   @unique
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  /// Whether everyone must use a second step (TOTP) at sign-in. Set from the console's Settings.
+  mfaRequired Boolean  @default(false) @map("mfa_required")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("tenant")
 }
@@ -180,13 +182,21 @@ enum CredentialKind {
   @@map("credential_kind")
 }
 
-/// A way to sign in. Passwords are argon2id hashes; TOTP seeds and passkeys come later in wave 1.
+/// A way to sign in. `secret` holds a password's argon2id hash, a TOTP seed sealed under LANDBRIGHT_SECRET_KEY, or a
+/// passkey's public key.
 model Credential {
   id         String         @id @default(uuid()) @db.Uuid
   tenantId   String         @map("tenant_id") @db.Uuid
   identityId String         @map("identity_id") @db.Uuid
   kind       CredentialKind
   secret     String
+  /// TOTP: the last time step accepted (a code works once). Passkeys: the authenticator's signature counter.
+  counter    BigInt         @default(0)
+  /// Passkeys: the credential id the authenticator gives back, base64url.
+  externalId String?        @unique @map("external_id")
+  transports String[]       @default([])
+  /// What the person calls it ("Authenticator app", "MacBook").
+  label      String?
   createdAt  DateTime       @default(now()) @map("created_at")
   lastUsedAt DateTime?      @map("last_used_at")
 

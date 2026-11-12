@@ -50,6 +50,16 @@ export class PeopleController {
     return this.people.reactivate(id, actor);
   }
 
+  @Post(':id/reset-second-step')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Remove their authenticator app (a lost phone); they set up a new one at their next sign-in.',
+  })
+  @ZodResponse({ type: PersonDto })
+  resetSecondStep(@Param('id', ParseUUIDPipe) id: string, @Actor() actor: Principal) {
+    return this.people.resetSecondStep(id, actor);
+  }
+
   @Post(':id/invite')
   @HttpCode(200)
   @ApiOperation({ summary: 'Email a new one-time link to set a password; earlier links stop working.' })

@@ -40,6 +40,8 @@ export const Person = IdentityRef.extend({
   groups: z.array(GroupRef),
   /** Whether a password is set; false until the person accepts their invite. */
   hasPassword: z.boolean(),
+  /** Whether they have an authenticator app for the second step. */
+  hasTotp: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

@@ -156,7 +156,6 @@ export const SETTINGS: NavItem = {
   label: 'Settings',
   icon: Settings,
   wave: 1,
-  later: true,
   summary: 'The tenant, sign-in methods, signing keys and API credentials.',
 };
 

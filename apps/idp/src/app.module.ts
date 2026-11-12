@@ -3,6 +3,7 @@ import { type Config, createValkey, livenessController } from '@landbright/platf
 import { CONFIG, PersistenceModule, PRISMA, type PrismaClient, TENANT, type TenantRef } from '@landbright/persistence';
 import { InteractionController } from './interactions/interaction.controller';
 import { LoginService } from './interactions/login.service';
+import { SecondStepService } from './interactions/second-step.service';
 import { InviteController } from './invite/invite.controller';
 import { loadSigningKeys } from './oidc/keys';
 import { createProvider } from './oidc/provider';
@@ -18,6 +19,7 @@ import { OIDC_PROVIDER, VALKEY } from './valkey';
   controllers: [livenessController('landbright-idp'), AssetsController, InteractionController, InviteController],
   providers: [
     LoginService,
+    SecondStepService,
     {
       provide: VALKEY,
       inject: [CONFIG],

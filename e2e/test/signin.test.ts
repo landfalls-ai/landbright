@@ -1,4 +1,5 @@
 import { ApplicationWithSecret, AuditPage, GroupDetail, Me, Person } from '@landbright/contracts';
+import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Browser, formAction } from './browser';
 import { LandflowLikeRp } from './landflow-rp';
@@ -21,20 +22,44 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
   let rp: LandflowLikeRp;
   let accessToken: string;
 
-  /** Signs in through the identity plane's pages; returns the redirect back to the app (not followed). */
+  /**
+   * Signs in through the identity plane's pages; returns the redirect back to the app (not followed). After the
+   * password, an optional offer to set up an authenticator app is declined unless `second` handles the page.
+   */
   async function signIn(
     browser: Browser,
     startUrl: string,
     email: string,
     password: string,
     back: (u: URL) => boolean,
+    second?: (page: { html: string; url: string }) => Promise<{ response: Response; url: string }>,
   ) {
     const page = await browser.navigate(startUrl, {}, back);
     if (back(new URL(page.url))) return page; // already signed in at the identity plane
     expect(page.response.status).toBe(200);
     const html = await page.response.text();
-    return browser.submit(page.url, formAction(html), { email, password }, back);
+    const after = await browser.submit(page.url, formAction(html), { email, password }, back);
+    if (back(new URL(after.url)) || after.response.status !== 200) return after;
+    const next = await after.response.text();
+    if (second && /\/totp/.test(next)) return second({ html: next, url: after.url });
+    const skip = /action="([^"]+\/totp\/skip)"/.exec(next)?.[1];
+    if (skip) return browser.submit(after.url, skip, {}, back);
+    return { response: new Response(next, { status: 200 }), url: after.url };
   }
+
+  /** The newest invite link mailed to `email` (Mailpit). */
+  async function inviteLink(email: string): Promise<string> {
+    const search = (await (
+      await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)
+    ).json()) as { messages: Array<{ ID: string }> };
+    const message = (await (await fetch(`${MAILPIT}/api/v1/message/${search.messages[0]!.ID}`)).json()) as {
+      Text: string;
+    };
+    return /http:\/\/\S+\/invite\/[A-Za-z0-9_-]+/.exec(message.Text)![0];
+  }
+
+  const codeFor = (secret: string, offsetMs = 0) =>
+    new TOTP({ secret: Secret.fromBase32(secret.replace(/\s+/g, '')) }).generate({ timestamp: Date.now() + offsetMs });
 
   beforeAll(async () => {
     stack = await startStack();
@@ -223,6 +248,97 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
     expect(
       (await api(`/api/applications/${apps.items.find((a) => a.system)!.id}/rotate-secret`, { method: 'POST' })).status,
     ).toBe(403);
+  });
+
+  describe('a second step', () => {
+    let noa: Person;
+    let secret = '';
+    let enrolledCode = '';
+    const noaPassword = 'noa-correct-horse-battery';
+    const back = (u: URL) => u.href.startsWith('http://127.0.0.1:3000/');
+
+    it('is required for everyone once Settings says so', async () => {
+      const settings = await api('/api/settings/sign-in', {
+        method: 'PATCH',
+        body: JSON.stringify({ mfaRequired: true }),
+      });
+      expect(settings.status).toBe(200);
+      expect(((await settings.json()) as { signIn: { mfaRequired: boolean } }).signIn.mfaRequired).toBe(true);
+
+      const created = await api('/api/people', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: `noa@${stack.slug}.test`,
+          givenName: 'Noa',
+          familyName: 'Levi',
+          groupIds: [editors.id],
+        }),
+      });
+      noa = Person.parse(await created.json());
+      const browser = new Browser();
+      const link = await inviteLink(noa.email!);
+      const page = await browser.navigate(link);
+      await browser.submit(page.url, formAction(await page.response.text()), {
+        password: noaPassword,
+        confirm: noaPassword,
+      });
+    });
+
+    it('is set up at sign-in, with no way to skip it, and the token says so', async () => {
+      const browser = new Browser();
+      const landed = await signIn(
+        browser,
+        await rp.authorizationUrl(),
+        noa.email!,
+        noaPassword,
+        back,
+        async ({ html, url }) => {
+          expect(html).toContain('Add a second step');
+          expect(html).not.toContain('Not now');
+          expect(html).toContain('data:image/png;base64,');
+          secret = /data-secret>([A-Z2-7 ]+)</.exec(html)![1]!;
+          const wrong = await browser.submit(url, formAction(html), { code: '000000' }, back);
+          expect(await wrong.response.text()).toContain('didn’t match');
+          enrolledCode = codeFor(secret);
+          return browser.submit(url, formAction(html), { code: enrolledCode }, back);
+        },
+      );
+      const result = await rp.complete(landed.url);
+      expect(result.claims).toMatchObject({ email: noa.email, roles: ['Landflow Editors'], amr: ['pwd', 'otp'] });
+      expect(Person.parse(await (await api(`/api/people/${noa.id}`)).json()).hasTotp).toBe(true);
+    });
+
+    it('asks for a code next time, and a code works once', async () => {
+      const browser = new Browser();
+      const landed = await signIn(
+        browser,
+        await rp.authorizationUrl(),
+        noa.email!,
+        noaPassword,
+        back,
+        async ({ html, url }) => {
+          expect(html).toContain('Enter your code');
+          const replay = await browser.submit(url, formAction(html), { code: enrolledCode }, back);
+          expect(await replay.response.text()).toContain('each works once');
+          // The next 30-second step's code is within the allowed drift, and newer than the one used.
+          return browser.submit(url, formAction(html), { code: codeFor(secret, 30_000) }, back);
+        },
+      );
+      expect((await rp.complete(landed.url)).claims.amr).toEqual(['pwd', 'otp']);
+    });
+
+    it('can be reset by an administrator, and is set up again at the next sign-in', async () => {
+      const reset = await api(`/api/people/${noa.id}/reset-second-step`, { method: 'POST' });
+      expect(Person.parse(await reset.json()).hasTotp).toBe(false);
+      const browser = new Browser();
+      let offered = '';
+      await signIn(browser, await rp.authorizationUrl(), noa.email!, noaPassword, back, async ({ html, url }) => {
+        offered = html;
+        return { response: new Response(html), url };
+      });
+      expect(offered).toContain('Add a second step');
+      await api('/api/settings/sign-in', { method: 'PATCH', body: JSON.stringify({ mfaRequired: false }) });
+    });
   });
 
   it('refuses writes from another origin', async () => {

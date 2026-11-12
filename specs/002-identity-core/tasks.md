@@ -16,7 +16,12 @@ First slice done on 2026-11-12.
 - [x] T008 Live check on the local stack in the browser (sign-in, group, person, invite, password, application,
       Landflow-shaped sign-in, audit, sign-out). Bug fixed: "1 groups".
 - [x] T009 Docs: this spec, `docs/sign-in.md`, `docs/directory.md`, reference, limitations, roadmap, history.
-- [ ] T010 Passkeys and TOTP at sign-in.
-- [ ] T011 Settings: tenant, signing-key rotation (two published keys), sign-in methods.
+- [x] T010a TOTP at sign-in: the second-step pages (code, setup with QR, *Not now* for 30 days), single use per step,
+      sealed keys, `amr` in the ID token, the administrator reset; unit, console and end-to-end tests. Live check;
+      fixed: the stylesheet was cached across a change (now content-hashed), `amr` missing from the ID token, the setup
+      key wrapping under its label, the services hanging on restart while a browser held a connection.
+- [ ] T010b Passkeys (the identity plane moves to `localhost`: WebAuthn refuses IP addresses).
+- [x] T011a Settings: tenant, *Require a second step*, sign-in methods, signing keys (read only).
+- [ ] T011b Signing-key rotation (two published keys).
 - [ ] T012 Playwright for the console and sign-in pages; the OpenID conformance suite in Docker.
 - [ ] T013 A live sign-in to a running Landflow (needs Landflow's `.env`; ask first).
