@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Landbright concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Landflow's tokens, which are "after the Landfall design system": monochrome editorial, near-black accent,
+   brick red / forest green / amber for state. Layout: a reading column for suggestions, full-width framed mockups. */
+:root {
+  --bg: #ffffff; --sf: #ffffff; --sf2: #fafafa; --wl: #f6f6f6;
+  --hair: rgba(0,0,0,.08); --bd: #e4e4e4;
+  --t1: #141414; --t2: #5a5a5a; --t3: #737373;
+  --ac: #141414; --ac2-hover: #333333; --on-ac: #ffffff; --acdim: rgba(0,0,0,.05); --acbd: rgba(0,0,0,.16);
+  --rd: #c0271e; --rddim: rgba(192,39,30,.07); --rdbd: rgba(192,39,30,.26);
+  --warn: #8a5700; --warndim: rgba(245,163,0,.13); --warnbd: rgba(138,87,0,.32);
+  --gn: #2e7d46; --gndim: rgba(46,125,70,.09); --gnbd: rgba(46,125,70,.28);
+  --canvas-dot: rgba(0,0,0,.13); --shadow-pop: 0 18px 40px rgba(0,0,0,.10);
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100; --viz-5: #e87ba4; --viz-7: #4a3aa7;
+  --font-display: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0d0d; --sf: #161616; --sf2: #111111; --wl: #1a1a1a;
+    --hair: rgba(255,255,255,.09); --bd: rgba(255,255,255,.16);
+    --t1: #f2f2f2; --t2: #a8a8a8; --t3: #858585;
+    --ac: #fafafa; --ac2-hover: #e0e0e0; --on-ac: #0d0d0d; --acdim: rgba(255,255,255,.08); --acbd: rgba(255,255,255,.22);
+    --rd: #ff6157; --rddim: rgba(255,97,87,.12); --rdbd: rgba(255,97,87,.3);
+    --warn: #f5b84a; --warndim: rgba(245,184,74,.14); --warnbd: rgba(245,184,74,.32);
+    --gn: #5bb97e; --gndim: rgba(91,185,126,.12); --gnbd: rgba(91,185,126,.3);
+    --canvas-dot: rgba(255,255,255,.11); --shadow-pop: 0 18px 40px rgba(0,0,0,.5);
+    --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500; --viz-5: #d55181; --viz-7: #9085e9;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0d0d; --sf: #161616; --sf2: #111111; --wl: #1a1a1a;
+  --hair: rgba(255,255,255,.09); --bd: rgba(255,255,255,.16);
+  --t1: #f2f2f2; --t2: #a8a8a8; --t3: #858585;
+  --ac: #fafafa; --ac2-hover: #e0e0e0; --on-ac: #0d0d0d; --acdim: rgba(255,255,255,.08); --acbd: rgba(255,255,255,.22);
+  --rd: #ff6157; --rddim: rgba(255,97,87,.12); --rdbd: rgba(255,97,87,.3);
+  --warn: #f5b84a; --warndim: rgba(245,184,74,.14); --warnbd: rgba(245,184,74,.32);
+  --gn: #5bb97e; --gndim: rgba(91,185,126,.12); --gnbd: rgba(91,185,126,.3);
+  --canvas-dot: rgba(255,255,255,.11); --shadow-pop: 0 18px 40px rgba(0,0,0,.5);
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500; --viz-5: #d55181; --viz-7: #9085e9;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--t1); font: 15px/1.6 var(--font-body); }
+a { color: inherit; text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+h1, h2, h3, h4 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+p { margin: 0; }
+.mono { font-family: var(--font-mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.read { max-width: 68ch; }
+
+/* Page header */
+.top { border-bottom: 1px solid var(--hair); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 14px; padding-bottom: 14px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.mark { width: 22px; height: 22px; border-radius: 6px; background: var(--ac); display: grid; place-items: center; color: var(--on-ac); }
+.top nav { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--t2); }
+.top nav a { text-decoration: none; }
+.top nav a:hover { color: var(--t1); }
+
+.hero { padding: 56px 0 40px; display: grid; gap: 18px; }
+.eyebrow { font: 500 12px/1 var(--font-mono); color: var(--t3); text-transform: uppercase; letter-spacing: .06em; }
+.hero h1 { font-size: clamp(32px, 5vw, 48px); line-height: 1.08; font-weight: 600; }
+.hero .lede { font-size: 18px; color: var(--t2); max-width: 64ch; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+
+section.block { padding: 48px 0; border-top: 1px solid var(--hair); }
+.sec-head { display: grid; gap: 8px; margin-bottom: 28px; }
+.sec-head h2 { font-size: 26px; font-weight: 600; }
+.sec-head p { color: var(--t2); max-width: 70ch; }
+
+/* Chips and badges, as in Landflow's ui/badge */
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--bd); background: var(--sf); font-size: 12px; font-weight: 500; color: var(--t2); white-space: nowrap; }
+.chip.gn { color: var(--gn); background: var(--gndim); border-color: var(--gnbd); }
+.chip.rd { color: var(--rd); background: var(--rddim); border-color: var(--rdbd); }
+.chip.warn { color: var(--warn); background: var(--warndim); border-color: var(--warnbd); }
+.chip.ac { color: var(--on-ac); background: var(--ac); border-color: var(--ac); }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* Suggestions */
+.sugs { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1px; background: var(--hair); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+.sug { background: var(--sf); padding: 22px 22px 24px; display: grid; gap: 10px; align-content: start; }
+.sug .n { font: 500 12px/1 var(--font-mono); color: var(--t3); }
+.sug h3 { font-size: 17px; font-weight: 600; line-height: 1.3; }
+.sug p { color: var(--t2); font-size: 14px; }
+.sug .why { font-size: 13px; color: var(--t3); border-top: 1px dashed var(--bd); padding-top: 10px; }
+
+/* Diagram */
+figure { margin: 0; }
+figure.diagram { border: 1px solid var(--hair); border-radius: 12px; padding: 20px; background: var(--sf2); overflow-x: auto; }
+figure.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--t1); }
+figcaption { font-size: 13px; color: var(--t3); margin-top: 12px; max-width: 80ch; }
+
+table.own { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 24px; }
+table.own th, table.own td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+table.own th { font-size: 12px; color: var(--t3); font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+table.own td:first-child { color: var(--t1); font-weight: 500; }
+table.own td { color: var(--t2); }
+.tbl { overflow-x: auto; }
+
+/* Mockup frames */
+.mock-group { display: grid; gap: 40px; }
+.mock-item { display: grid; gap: 14px; }
+.mock-item > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.mock-item > header h3 { font-size: 18px; font-weight: 600; }
+.mock-item > header .where { font: 12px var(--font-mono); color: var(--t3); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 24px; font-size: 13px; color: var(--t2); }
+.notes div { padding-left: 14px; position: relative; }
+.notes div::before { content: ''; position: absolute; left: 0; top: 9px; width: 6px; height: 1px; background: var(--t3); }
+.frame { border: 1px solid var(--bd); border-radius: 12px; background: var(--bg); box-shadow: var(--shadow-pop); overflow: hidden; }
+.frame-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--hair); background: var(--sf2); }
+.frame-bar .lights { display: flex; gap: 6px; }
+.frame-bar .lights i { width: 10px; height: 10px; border-radius: 50%; background: var(--bd); display: block; }
+.frame-bar .url { flex: 1; font: 12px var(--font-mono); color: var(--t3); background: var(--sf); border: 1px solid var(--hair); border-radius: 6px; padding: 3px 10px; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frame-bar .tag { font: 11px var(--font-mono); color: var(--t3); margin-left: auto; }
+.scroll-x { overflow-x: auto; }
+
+/* The console shell, after Landflow's sidebar */
+.app { display: grid; grid-template-columns: 208px 1fr; min-width: 940px; font-size: 13px; }
+.side { border-right: 1px solid var(--hair); background: var(--sf2); padding: 12px 10px; display: flex; flex-direction: column; gap: 14px; }
+.side .org { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; font-weight: 600; }
+.side .org small { display: block; font-weight: 400; color: var(--t3); font-size: 11px; }
+.side .grp { display: grid; gap: 1px; }
+.side .grp > span { font-size: 11px; color: var(--t3); text-transform: uppercase; letter-spacing: .06em; padding: 0 8px 4px; }
+.side .it { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; color: var(--t2); }
+.side .it svg { width: 15px; height: 15px; flex: none; }
+.side .it.on { background: var(--acdim); color: var(--t1); font-weight: 500; }
+.side .it .cnt { margin-left: auto; font-size: 11px; color: var(--t3); }
+.side .it.on .cnt, .side .it .cnt.hot { color: var(--on-ac); background: var(--ac); border-radius: 999px; padding: 0 6px; }
+.side .me { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px 6px 2px; border-top: 1px solid var(--hair); }
+.main { padding: 18px 22px 22px; display: grid; gap: 16px; align-content: start; background: var(--bg); }
+.ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ph h4 { font-size: 20px; font-weight: 600; }
+.ph .sub { color: var(--t3); font-size: 12px; }
+.ph .acts { display: flex; gap: 8px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--bd); background: var(--sf); color: var(--t1); font: 500 12px var(--font-body); cursor: default; white-space: nowrap; }
+.btn.pri { background: var(--ac); color: var(--on-ac); border-color: var(--ac); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--t2); }
+.btn.danger { color: var(--rd); border-color: var(--rdbd); }
+.kbd { font: 11px var(--font-mono); color: var(--t3); border: 1px solid var(--bd); border-radius: 4px; padding: 0 4px; }
+.card { border: 1px solid var(--bd); border-radius: 10px; background: var(--sf); }
+.card > .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--hair); }
+.card > .hd h5 { margin: 0; font-size: 13px; font-weight: 600; }
+.card > .hd span { color: var(--t3); font-size: 12px; }
+.row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--hair); }
+.row:last-child { border-bottom: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .t { color: var(--t1); font-weight: 500; }
+.row .s { color: var(--t3); font-size: 12px; }
+.stripe { width: 3px; align-self: stretch; border-radius: 2px; background: var(--bd); flex: none; }
+.stripe.rd { background: var(--rd); } .stripe.warn { background: var(--warn); } .stripe.gn { background: var(--gn); } .stripe.ac { background: var(--ac); }
+.g2 { display: grid; grid-template-columns: 1.45fr 1fr; gap: 16px; align-items: start; }
+.g2b { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+
+/* Avatars: a circle is a person, a rounded square is an agent */
+.av { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border-radius: 50%; color: #fff; font: 600 10px var(--font-body); }
+.av.agent { border-radius: 7px; }
+.av.lg { width: 40px; height: 40px; font-size: 13px; }
+.v1 { background: var(--viz-1); } .v2 { background: var(--viz-2); } .v3 { background: var(--viz-3); } .v4 { background: var(--viz-4); } .v5 { background: var(--viz-5); } .v7 { background: var(--viz-7); } .vn { background: var(--t3); }
+
+.meter { height: 4px; border-radius: 2px; background: var(--acdim); overflow: hidden; width: 90px; }
+.meter i { display: block; height: 100%; background: var(--t2); border-radius: 2px; }
+.meter.rd i { background: var(--rd); } .meter.warn i { background: var(--warn); }
+
+/* Request timeline */
+.tl { display: grid; padding: 6px 14px 12px; }
+.ev { display: grid; grid-template-columns: 46px 18px 1fr; gap: 8px; padding: 8px 0; }
+.ev .tm { color: var(--t3); font: 12px var(--font-mono); padding-top: 1px; }
+.ev .pin { position: relative; display: flex; justify-content: center; }
+.ev .pin::before { content: ''; position: absolute; top: 0; bottom: -16px; width: 1px; background: var(--bd); }
+.ev:last-child .pin::before { display: none; }
+.ev .pin i { position: relative; width: 9px; height: 9px; border-radius: 50%; background: var(--ac); margin-top: 5px; }
+.ev.future .pin i { background: var(--bg); border: 1px dashed var(--t3); }
+.ev.future .what, .ev.future .tm { color: var(--t3); }
+.ev .what { display: grid; gap: 2px; }
+.ev .what b { font-weight: 500; }
+.ev .what span { color: var(--t3); font-size: 12px; }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; padding: 12px 14px; font-size: 12.5px; }
+.kv dt { color: var(--t3); } .kv dd { margin: 0; color: var(--t1); }
+
+/* Grants timeline */
+.gantt { padding: 10px 14px 14px; display: grid; gap: 0; }
+.gantt .axis, .gantt .lane { display: grid; grid-template-columns: 190px 1fr; align-items: center; }
+.gantt .axis .ticks { display: grid; grid-template-columns: repeat(12, 1fr); font: 11px var(--font-mono); color: var(--t3); }
+.gantt .lane { height: 40px; border-top: 1px solid var(--hair); }
+.gantt .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gantt .who b { font-weight: 500; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt .who small { display: block; color: var(--t3); font-size: 11px; }
+.gantt .track { position: relative; height: 100%; background-image: linear-gradient(to right, var(--hair) 1px, transparent 1px); background-size: calc(100% / 12) 100%; }
+.bar { position: absolute; top: 11px; height: 18px; border-radius: 4px; font: 11px/18px var(--font-body); padding: 0 6px; white-space: nowrap; overflow: hidden; color: var(--t1); border: 1px solid var(--acbd); background: var(--acdim); }
+.bar.act { background: var(--ac); color: var(--on-ac); border-color: var(--ac); }
+.bar.exp { color: var(--t3); background: transparent; border-style: dashed; }
+.bar.warnb { background: var(--warndim); border-color: var(--warnbd); color: var(--warn); }
+.bar.open { background: repeating-linear-gradient(135deg, var(--rddim) 0 6px, transparent 6px 12px); border-color: var(--rdbd); color: var(--rd); }
+.now { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid var(--rd); z-index: 2; }
+.now span { position: absolute; top: -2px; left: 4px; font: 10px var(--font-mono); color: var(--rd); background: var(--sf); padding: 0 2px; }
+
+/* Agent roster */
+.roster { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.ag { border: 1px solid var(--bd); border-radius: 10px; background: var(--sf); padding: 14px; display: grid; gap: 12px; }
+.ag.bad { border-color: var(--rdbd); }
+.ag .hd { display: flex; gap: 10px; align-items: center; }
+.ag .hd .nm { flex: 1; min-width: 0; }
+.ag .hd .nm b { display: block; font-size: 14px; }
+.ag .hd .nm span { color: var(--t3); font-size: 12px; }
+.ag dl { display: grid; grid-template-columns: 92px 1fr; gap: 6px 10px; margin: 0; font-size: 12px; }
+.ag dt { color: var(--t3); } .ag dd { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ag .ft { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--hair); padding-top: 10px; }
+.warnbox { font-size: 12px; color: var(--rd); background: var(--rddim); border: 1px solid var(--rdbd); border-radius: 6px; padding: 6px 8px; }
+
+pre.code { margin: 0; padding: 14px; font: 12px/1.6 var(--font-mono); color: var(--t1); background: var(--sf2); overflow-x: auto; }
+.code .k { color: var(--t3); } .code .hl { background: var(--warndim); border-radius: 3px; padding: 0 2px; }
+
+/* Landflow editor canvas */
+.lf-top { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--hair); font-size: 13px; }
+.lf-top .crumb { color: var(--t3); } .lf-top b { font-weight: 600; }
+.lf-top .tabs { margin-left: auto; display: flex; gap: 2px; background: var(--acdim); border-radius: 7px; padding: 2px; }
+.lf-top .tabs span { padding: 3px 10px; border-radius: 5px; color: var(--t2); font-size: 12px; }
+.lf-top .tabs span.on { background: var(--sf); color: var(--t1); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.canvas { min-width: 1060px; padding: 26px 24px 30px; display: grid; gap: 22px; background-color: var(--sf2); background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 18px 18px; }
+.lane-title { font: 11px var(--font-mono); color: var(--t3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+.flow { display: flex; align-items: center; }
+.node { width: 148px; flex: none; border: 1px solid var(--bd); border-radius: 10px; background: var(--sf); padding: 10px; display: grid; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.04); position: relative; }
+.node.trig { border-radius: 22px 10px 10px 22px; }
+.node .ic { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: #fff; font: 700 11px var(--font-body); }
+.node b { font-size: 12px; font-weight: 600; line-height: 1.25; }
+.node span { font-size: 11px; color: var(--t3); line-height: 1.3; }
+.node .new { position: absolute; top: -9px; right: 8px; }
+.wire { flex: 1; min-width: 22px; height: 1.5px; background: var(--t3); position: relative; }
+.wire::after { content: ''; position: absolute; right: -1px; top: -3.5px; border-left: 6px solid var(--t3); border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.branch { display: grid; gap: 10px; }
+.branch .flow .lbl { font: 10px var(--font-mono); color: var(--t3); margin-right: 6px; width: 54px; text-align: right; flex: none; }
+.bwrap { display: flex; align-items: center; }
+.fork { width: 22px; align-self: stretch; border: 1.5px solid var(--t3); border-right: 0; border-radius: 8px 0 0 8px; margin: 26px 0; }
+
+/* Chat approval (a generic chat client, not a real product's look) */
+.chat { padding: 16px 18px; display: grid; gap: 10px; font-size: 13.5px; background: var(--sf); min-height: 100%; }
+.chat .chan { font-weight: 600; color: var(--t2); font-size: 12px; border-bottom: 1px solid var(--hair); padding-bottom: 8px; }
+.msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; }
+.msg .who { font-weight: 600; } .msg .who small { color: var(--t3); font-weight: 400; margin-left: 6px; font-size: 11px; }
+.att { border-left: 3px solid var(--ac); padding: 8px 12px; margin-top: 6px; display: grid; gap: 8px; background: var(--sf2); border-radius: 0 6px 6px 0; }
+.att .f { display: grid; grid-template-columns: 76px 1fr; gap: 4px 10px; font-size: 12.5px; }
+.att .f dt { color: var(--t3); } .att .f dd { margin: 0; }
+.att .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.att .foot { color: var(--t3); font-size: 11.5px; }
+
+/* Portal and sign-in */
+.portal { padding: 20px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; background: var(--bg); font-size: 13px; }
+.field { display: grid; gap: 6px; }
+.field label { font-size: 12px; font-weight: 500; color: var(--t2); }
+.input { border: 1px solid var(--bd); border-radius: 7px; padding: 8px 10px; background: var(--sf); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.input.area { min-height: 64px; align-items: flex-start; color: var(--t1); }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg span { border: 1px solid var(--bd); border-radius: 7px; padding: 5px 10px; font-size: 12px; background: var(--sf); }
+.seg span.on { background: var(--ac); color: var(--on-ac); border-color: var(--ac); }
+.seg span.off { color: var(--t3); border-style: dashed; }
+.signin { display: grid; place-items: center; padding: 34px 16px 40px; background: var(--sf2); }
+.sbox { width: 320px; max-width: 100%; background: var(--sf); border: 1px solid var(--bd); border-radius: 14px; padding: 24px; display: grid; gap: 12px; font-size: 13px; }
+.sbox .who-asks { display: flex; align-items: center; gap: 8px; color: var(--t2); font-size: 12px; background: var(--acdim); border-radius: 7px; padding: 6px 8px; }
+.sbox h5 { font-size: 18px; margin: 4px 0 0; font-family: var(--font-display); }
+.sbox .btn { height: 36px; justify-content: center; font-size: 13px; width: 100%; }
+.or { display: flex; align-items: center; gap: 8px; color: var(--t3); font-size: 11px; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--hair); }
+
+/* Waves and decisions */
+.waves { display: grid; gap: 0; border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+.wave { display: grid; grid-template-columns: 56px 1fr 1.25fr; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--hair); background: var(--sf); }
+.wave:last-child { border-bottom: 0; }
+.wave .w { font: 600 22px/1 var(--font-mono); color: var(--t3); }
+.wave h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.wave p { font-size: 13px; color: var(--t2); }
+.wave .slice { font-size: 13px; color: var(--t1); border-left: 2px solid var(--ac); padding-left: 12px; }
+.wave .slice small { display: block; color: var(--t3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.decs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.dec { border: 1px solid var(--bd); border-radius: 10px; padding: 16px; background: var(--sf); display: grid; gap: 8px; align-content: start; }
+.dec h4 { font-size: 15px; font-weight: 600; }
+.dec p { font-size: 13px; color: var(--t2); }
+.dec .rec { font-size: 13px; color: var(--t1); display: flex; gap: 8px; align-items: baseline; }
+.dec .rec .chip { flex: none; }
+
+footer.end { padding: 32px 0 48px; border-top: 1px solid var(--hair); color: var(--t3); font-size: 13px; }
+
+@media (max-width: 900px) {
+  .roster { grid-template-columns: 1fr; }
+  .wave { grid-template-columns: 40px 1fr; }
+  .wave .slice { grid-column: 2; }
+  .portal { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px; }
+  .top nav { display: none; }
+  .hero { padding-top: 36px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar.act { transition: opacity .2s; }
+}
+</style>
+</head>
+<body>
+
+<!-- Small line icons, drawn after lucide's style -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-6h6v6"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5 6.5-5s5.5 1.5 6.5 5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .7 3 2.3 3.5 5"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v18M5 21h14M6 7h12"/><path d="M6 7 3 14h6zM18 7l-3 7h6z"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/></symbol>
+    <symbol id="i-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-hook" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><circle cx="12" cy="6" r="3"/><path d="M10.5 8.6 7.5 14.4M13.5 8.6l3 5.8M9 17h6"/></symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></symbol>
+  </defs>
+</svg>
+
+<div class="top">
+  <div class="wrap">
+    <div class="brand"><span class="mark"><svg width="12" height="12"><use href="#i-key"/></svg></span> Landbright</div>
+    <nav aria-label="Sections">
+      <a href="#suggestions">Suggestions</a>
+      <a href="#fit">How it fits</a>
+      <a href="#console">Console</a>
+      <a href="#jit">Access</a>
+      <a href="#agents">Agents</a>
+      <a href="#flows">Landflow flows</a>
+      <a href="#ask">Ask and sign in</a>
+      <a href="#waves">Waves</a>
+      <a href="#decisions">Decisions</a>
+    </nav>
+  </div>
+</div>
+
+<main>
+<div class="wrap">
+  <header class="hero">
+    <span class="eyebrow">land-* family · concept · 12 Nov 2026 · proposed</span>
+    <h1>Landbright: identity for people and their agents</h1>
+    <p class="lede">An identity provider where every agent has an accountable person, every grant has an end, and Landflow does the work: HR joiners and leavers, approvals in Slack, and granting and revoking access in the systems people actually use.</p>
+    <div class="facts">
+      <span class="chip">Pairs with Landflow (JIT engine)</span>
+      <span class="chip">Signs in Landflow and Landfall</span>
+      <span class="chip">HR sources: HiBob, Shapes</span>
+      <span class="chip warn"><span class="dot"></span>Mockups use example data</span>
+    </div>
+  </header>
+</div>
+
+<!-- SUGGESTIONS -->
+<section class="block" id="suggestions">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>What we suggest</h2>
+      <p>Six choices that shape everything else, in the order they matter. Each comes from what Landflow and Landfall already do, and from what Apono, Okta and Microsoft Entra have learned about access for agents.</p>
+    </div>
+    <div class="sugs">
+      <article class="sug">
+        <span class="n">01</span>
+        <h3>Landbright decides and remembers. Landflow acts.</h3>
+        <p>Landbright keeps the directory, the access catalog, the policies and a ledger of every grant. Landflow receives HR events, asks approvers, and provisions and revokes through its plugins.</p>
+        <p class="why">Apono's model, with connectors and flows as ordinary Landflow plugins and workflows that people can open, read and change.</p>
+      </article>
+      <article class="sug">
+        <span class="n">02</span>
+        <h3>Every agent has a sponsor and no standing secrets</h3>
+        <p>Each Landflow agent gets a twin identity with a sponsor, a risk tier and short-lived tokens. Acting for a person, its token names the person and the agent, scoped to what both may do.</p>
+        <p class="why">When a sponsor leaves, their agents are suspended until someone else takes them on.</p>
+      </article>
+      <article class="sug">
+        <span class="n">03</span>
+        <h3>Every grant ends, even if Landflow is down</h3>
+        <p>Access is requested for a duration. Landflow revokes at the end, and Landbright revokes its own side (groups, SCIM, tokens) on time whatever happens, then keeps asking until every target confirms.</p>
+        <p class="why">Permanent access is the exception. It needs an owner, a reason and a review.</p>
+      </article>
+      <article class="sug">
+        <span class="n">04</span>
+        <h3>Start where no code is needed: OIDC and SCIM</h3>
+        <p>Landflow and Landfall already accept OIDC sign-in and SCIM provisioning. Landbright plugs in as their identity provider on day one, and time-bound access to a Landflow project is just a SCIM group.</p>
+        <p class="why">The first JIT target ships without changing Landflow.</p>
+      </article>
+      <article class="sug">
+        <span class="n">05</span>
+        <h3>Adopt the protocol engine, build the identity core</h3>
+        <p>An OpenID-certified engine (<span class="mono">oidc-provider</span>) handles OIDC and OAuth. We build what is ours: agent identities, the grant ledger, policies and the Landflow integration. Keycloak 26.8 is the fallback.</p>
+        <p class="why">Landfall's first principle, adopt over build, applied to the part that isn't the product.</p>
+      </article>
+      <article class="sug">
+        <span class="n">06</span>
+        <h3>One design language across the family</h3>
+        <p>The same tokens as Landflow (taken from Landfall's design system), Landflow's grouped sidebar, its agent faces, and Landfall's rule that people see <span class="mono">ACME REQ-128</span>, never a UUID.</p>
+        <p class="why">Someone moving from Landflow to Landbright shouldn't notice a seam.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT FITS -->
+<section class="block" id="fit">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>How it fits together</h2>
+      <p>HR events and access requests enter through Landflow and Landbright. Landbright records the decision, and Landflow carries it into each system. Landbright also signs people into Landflow and Landfall directly.</p>
+    </div>
+    <figure class="diagram">
+      <svg viewBox="0 0 1000 400" role="img" aria-label="HR sources send events to Landflow; Landflow calls Landbright's API and receives its signed events; Landflow provisions and revokes in target systems; Landbright signs people into Landflow and Landfall and pushes users and groups over SCIM.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g font-family="Geist, system-ui, sans-serif" fill="currentColor">
+          <!-- sources -->
+          <rect x="20" y="40" width="170" height="52" rx="8" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+          <text x="36" y="62" font-size="13" font-weight="600">HiBob</text>
+          <text x="36" y="80" font-size="11" fill-opacity=".6">webhooks, signed</text>
+          <rect x="20" y="112" width="170" height="52" rx="8" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+          <text x="36" y="134" font-size="13" font-weight="600">Shapes</text>
+          <text x="36" y="152" font-size="11" fill-opacity=".6">GraphQL, polled</text>
+          <rect x="20" y="262" width="170" height="70" rx="8" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+          <text x="36" y="285" font-size="13" font-weight="600">Requesters</text>
+          <text x="36" y="303" font-size="11" fill-opacity=".6">people · agents</text>
+          <text x="36" y="319" font-size="11" fill-opacity=".6">Landfall incidents</text>
+
+          <!-- Landflow -->
+          <rect x="300" y="30" width="380" height="140" rx="10" fill="none" stroke="currentColor" stroke-opacity=".6"/>
+          <text x="318" y="56" font-size="15" font-weight="600">Landflow</text>
+          <text x="318" y="75" font-size="11" fill-opacity=".6">acts: everything that touches another system</text>
+          <g font-size="11">
+            <rect x="318" y="96" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="358" y="113" text-anchor="middle">HR triggers</text>
+            <rect x="406" y="96" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="446" y="113" text-anchor="middle">JML flows</text>
+            <rect x="494" y="96" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="534" y="113" text-anchor="middle">Approval</text>
+            <rect x="582" y="96" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="622" y="113" text-anchor="middle">Provision</text>
+          </g>
+          <text x="318" y="152" font-size="11" fill-opacity=".6">plugins: landbright · hris · github · databases · google · landfall</text>
+
+          <!-- Landbright -->
+          <rect x="300" y="230" width="380" height="140" rx="10" fill="none" stroke="currentColor" stroke-width="2.2"/>
+          <text x="318" y="256" font-size="15" font-weight="700">Landbright</text>
+          <text x="318" y="275" font-size="11" fill-opacity=".6">decides and remembers</text>
+          <g font-size="11">
+            <rect x="318" y="296" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="358" y="313" text-anchor="middle">Directory</text>
+            <rect x="406" y="296" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="446" y="313" text-anchor="middle">Policies</text>
+            <rect x="494" y="296" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="534" y="313" text-anchor="middle">Grant ledger</text>
+            <rect x="582" y="296" width="80" height="26" rx="13" fill="none" stroke="currentColor" stroke-opacity=".35"/><text x="622" y="313" text-anchor="middle">Tokens</text>
+          </g>
+          <text x="318" y="352" font-size="11" fill-opacity=".6">people · agents · sponsors · every grant has an end</text>
+
+          <!-- targets -->
+          <rect x="790" y="58" width="190" height="62" rx="8" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+          <text x="806" y="82" font-size="13" font-weight="600">Target systems</text>
+          <text x="806" y="100" font-size="11" fill-opacity=".6">GitHub · Postgres · Google · AWS</text>
+          <rect x="790" y="258" width="190" height="62" rx="8" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+          <text x="806" y="282" font-size="13" font-weight="600">Landflow · Landfall</text>
+          <text x="806" y="300" font-size="11" fill-opacity=".6">as apps people sign into</text>
+
+          <!-- arrows -->
+          <g stroke="currentColor" stroke-width="1.4" fill="none" marker-end="url(#arr)">
+            <path d="M190 66 H296"/>
+            <path d="M190 138 H296"/>
+            <path d="M190 297 H296"/>
+            <path d="M450 170 V226"/>
+            <path d="M530 230 V174"/>
+            <path d="M680 100 H786"/>
+            <path d="M680 289 H786"/>
+          </g>
+          <g font-size="11" fill-opacity=".75">
+            <text x="243" y="58" text-anchor="middle">employee.*</text>
+            <text x="243" y="130" text-anchor="middle">every 5 min</text>
+            <text x="243" y="289" text-anchor="middle">ask for access</text>
+            <text x="442" y="203" text-anchor="end">calls API as its</text>
+            <text x="442" y="217" text-anchor="end">own service identity</text>
+            <text x="538" y="203">signed events: request.created,</text>
+            <text x="538" y="217">grant.expiring, grant.expired</text>
+            <text x="733" y="92" text-anchor="middle">grant, revoke</text>
+            <text x="733" y="281" text-anchor="middle">OIDC + SCIM</text>
+          </g>
+        </g>
+      </svg>
+      <figcaption>The two arrows between Landflow and Landbright are the whole contract: Landflow calls Landbright's API with its own service identity, and Landbright tells Landflow what happened with signed webhooks (Standard Webhooks, idempotent by <span class="mono">webhook-id</span>).</figcaption>
+    </figure>
+
+    <div class="tbl">
+      <table class="own">
+        <thead><tr><th>Concern</th><th>Owner</th><th>Already there, or new</th></tr></thead>
+        <tbody>
+          <tr><td>Sign-in to Landflow and Landfall</td><td>Landbright</td><td>Both already accept OIDC. No code in either.</td></tr>
+          <tr><td>Users and groups in Landflow and Landfall</td><td>Landbright pushes</td><td>Both are SCIM 2.0 servers; Landflow maps groups to roles and projects.</td></tr>
+          <tr><td>HR events (joiner, mover, leaver)</td><td>Landflow triggers</td><td>New <span class="mono">hris</span> plugin: HiBob Trigger and node; Shapes once its API is shared.</td></tr>
+          <tr><td>Approvals mid-flow</td><td>Landflow</td><td>New Approval node (L1). Until then: Wait node resumed by Landbright's inbox.</td></tr>
+          <tr><td>Agent definition / agent identity</td><td>Landflow / Landbright</td><td>Synced by id; Landflow agents gain an identity link (L3).</td></tr>
+          <tr><td>Break-glass in an incident</td><td>Landflow, from Landfall's trigger</td><td>Landfall never executes a change, so Landflow does it under a policy a person approved.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- CONSOLE HOME -->
+<section class="block" id="console">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>The console</h2>
+      <p>Landflow's shell with Landbright's pages: Directory, Access, Connect, Govern. Home answers one question, “what needs me?”, before anything else.</p>
+    </div>
+    <div class="mock-group">
+      <div class="mock-item">
+        <header><h3>Home</h3><span class="where">id.acme.dev · signed in as an admin</span></header>
+        <div class="frame">
+          <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">id.acme.dev/</span><span class="tag">mockup</span></div>
+          <div class="scroll-x">
+            <div class="app">
+              <aside class="side">
+                <div class="org"><span class="mark"><svg width="12" height="12"><use href="#i-key"/></svg></span><div>Landbright<small>ACME</small></div></div>
+                <div class="grp"><span>Directory</span>
+                  <div class="it on"><svg><use href="#i-home"/></svg>Home</div>
+                  <div class="it"><svg><use href="#i-user"/></svg>People<span class="cnt num">214</span></div>
+                  <div class="it"><svg><use href="#i-bot"/></svg>Agents<span class="cnt num">4</span></div>
+                  <div class="it"><svg><use href="#i-users"/></svg>Groups</div>
+                </div>
+                <div class="grp"><span>Access</span>
+                  <div class="it"><svg><use href="#i-inbox"/></svg>Requests<span class="cnt hot num">2</span></div>
+                  <div class="it"><svg><use href="#i-clock"/></svg>Grants</div>
+                  <div class="it"><svg><use href="#i-box"/></svg>Catalog</div>
+                  <div class="it"><svg><use href="#i-scale"/></svg>Policies</div>
+                </div>
+                <div class="grp"><span>Connect</span>
+                  <div class="it"><svg><use href="#i-plug"/></svg>Sources</div>
+                  <div class="it"><svg><use href="#i-app"/></svg>Applications</div>
+                  <div class="it"><svg><use href="#i-hook"/></svg>Webhooks</div>
+                </div>
+                <div class="grp"><span>Govern</span>
+                  <div class="it"><svg><use href="#i-scroll"/></svg>Audit log</div>
+                  <div class="it"><svg><use href="#i-check"/></svg>Access reviews</div>
+                  <div class="it"><svg><use href="#i-gear"/></svg>Settings</div>
+                </div>
+                <div class="me"><span class="av v1">MC</span><div>Maya Cohen<br><span style="color:var(--t3);font-size:11px">Admin · Data lead</span></div></div>
+              </aside>
+              <div class="main">
+                <div class="ph">
+                  <div><h4>Home</h4><span class="sub">Thursday 12 November · 14:20</span></div>
+                  <div class="acts"><span class="btn"><svg width="13" height="13"><use href="#i-search"/></svg>Find <span class="kbd">⌘K</span></span><span class="btn pri">Request access</span></div>
+                </div>
+
+                <div class="card" style="border-color:var(--rdbd)">
+                  <div class="row"><span class="stripe rd"></span><div class="grow"><div class="t">1 grant ended but is still active in GitHub</div><div class="s">Jonas Weber · GitHub team <span class="mono">sre</span> · ended 10 Nov 18:00 · Landflow revoke flow failed 3 times (403 from GitHub)</div></div><span class="btn">Open run in Landflow</span><span class="btn danger">Revoke by hand</span></div>
+                </div>
+
+                <div class="g2">
+                  <div class="card">
+                    <div class="hd"><h5>Needs you</h5><span class="num">3</span></div>
+                    <div class="row"><span class="stripe ac"></span><span class="av v2">OK</span><div class="grow"><div class="t">Omer Katz asks for <span class="mono">prod-db-read</span>, 4 hours</div><div class="s">ACME REQ-131 · “INC-2207 checkout 5xx, need to check the orders table” · you own this bundle</div></div><span class="btn">Deny</span><span class="btn pri">Approve</span></div>
+                    <div class="row"><span class="stripe ac"></span><span class="av agent v7">SI</span><div class="grow"><div class="t">SRE Investigator asks for GitHub <span class="mono">sre</span> read, 15 min</div><div class="s">ACME REQ-132 · agent request, acting for Ilan Shapiro · you sponsor this agent</div></div><span class="btn">Deny</span><span class="btn pri">Approve</span></div>
+                    <div class="row"><span class="stripe rd"></span><span class="av agent vn">RN</span><div class="grow"><div class="t">Release Notes Writer has no sponsor</div><div class="s">Jonas Weber left on 10 Nov · agent suspended in Landbright and unpublished in Landflow</div></div><span class="btn">Pick a sponsor</span></div>
+                  </div>
+                  <div class="card">
+                    <div class="hd"><h5>Ending today</h5><span>access that ends by 23:59</span></div>
+                    <div class="row"><span class="av agent v7">SI</span><div class="grow"><div class="t"><span class="mono">prod-db-read</span></div><div class="s">SRE Investigator for Ilan</div></div><div style="text-align:right"><div class="meter rd"><i style="width:8%"></i></div><div class="s num">9 min</div></div></div>
+                    <div class="row"><span class="av v3">PR</span><div class="grow"><div class="t">Landflow · Data editor</div><div class="s">Priya Raman · REQ-128</div></div><div style="text-align:right"><div class="meter warn"><i style="width:32%"></i></div><div class="s num">1 h 47 min</div></div></div>
+                    <div class="row"><span class="av v2">OK</span><div class="grow"><div class="t">AWS · billing read</div><div class="s">Omer Katz · REQ-127</div></div><div style="text-align:right"><div class="meter"><i style="width:55%"></i></div><div class="s num">3 h 10 min</div></div></div>
+                  </div>
+                </div>
+
+                <div class="g2b">
+                  <div class="card">
+                    <div class="hd"><h5>Joiners and leavers this week</h5><span>from HiBob</span></div>
+                    <div class="row"><span class="stripe gn"></span><span class="av v4">NB</span><div class="grow"><div class="t">Noa Ben-David joins Mon 16 Nov</div><div class="s">Data · Analyst · manager Maya Cohen · pre-hire, 3 birthright bundles ready</div></div><span class="chip gn">Ready</span></div>
+                    <div class="row"><span class="stripe"></span><span class="av vn">JW</span><div class="grow"><div class="t">Jonas Weber left Tue 10 Nov</div><div class="s">Deactivated · signed out of Landflow and Landfall · 4 of 5 grants revoked · 1 agent suspended</div></div><span class="chip rd">1 stuck</span></div>
+                  </div>
+                  <div class="card">
+                    <div class="hd"><h5>Sources</h5><span>last sync</span></div>
+                    <div class="row"><span class="chip gn"><span class="dot"></span>Healthy</span><div class="grow"><div class="t">HiBob</div><div class="s">via Landflow · last event 13:58 · <span class="mono">employee.updated</span></div></div></div>
+                    <div class="row"><span class="chip gn"><span class="dot"></span>Healthy</span><div class="grow"><div class="t">Landflow agents</div><div class="s">4 agents in sync · 30 s ago</div></div></div>
+                    <div class="row"><span class="chip warn"><span class="dot"></span>Not set up</span><div class="grow"><div class="t">Shapes</div><div class="s">Waiting for the API schema from Shapes</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="notes">
+          <div>The sidebar groups pages like Landflow's (Build, Extend), with the same counts and active state.</div>
+          <div>A grant past its end that a target still holds is the one red banner. It's the failure that matters most.</div>
+          <div>People are circles, agents are rounded squares, everywhere in the console.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- JIT ACCESS -->
+<section class="block" id="jit">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Just-in-time access</h2>
+      <p>One request object, whether it starts in the portal, in Slack, from an agent's tool call or from a Landfall incident. Its page shows the whole life of the grant, from the policy that judged it to the revocation still to come.</p>
+    </div>
+    <div class="mock-group">
+      <div class="mock-item">
+        <header><h3>A request and its grant</h3><span class="where">Access → Requests → ACME REQ-128</span></header>
+        <div class="frame">
+          <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">id.acme.dev/requests/128</span><span class="tag">mockup</span></div>
+          <div class="scroll-x">
+            <div class="main" style="min-width:900px">
+              <div class="ph">
+                <div style="display:grid;gap:4px">
+                  <span class="sub mono">ACME REQ-128</span>
+                  <h4>Priya Raman · Landflow Data editor · 2 hours</h4>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip gn"><span class="dot"></span>Active · ends 16:07</span><span class="chip">Policy: Data editors v4</span><span class="chip">LIN-482</span></div>
+                </div>
+                <div class="acts"><span class="btn">Extend</span><span class="btn danger">Revoke now</span></div>
+              </div>
+              <div class="g2">
+                <div class="card">
+                  <div class="hd"><h5>Timeline</h5><span>from the grant ledger</span></div>
+                  <div class="tl">
+                    <div class="ev"><span class="tm">14:02</span><span class="pin"><i></i></span><div class="what"><b>Requested in Slack</b><span>/access landflow-data-editor 2h “Fix the nightly enrichment flow (LIN-482)”</span></div></div>
+                    <div class="ev"><span class="tm">14:02</span><span class="pin"><i></i></span><div class="what"><b>Policy: eligible, needs the manager</b><span>department = Data ✓ · 2 h ≤ max 8 h ✓ · approver: manager from HiBob (Maya Cohen)</span></div></div>
+                    <div class="ev"><span class="tm">14:06</span><span class="pin"><i></i></span><div class="what"><b>Approved by Maya Cohen in Slack</b><span>through Landflow's Approval node · run 8812</span></div></div>
+                    <div class="ev"><span class="tm">14:07</span><span class="pin"><i></i></span><div class="what"><b>Provisioned in Landflow</b><span>SCIM: added to group <span class="mono">jit-data-editor</span> → project Data, editor</span></div></div>
+                    <div class="ev future"><span class="tm">15:52</span><span class="pin"><i></i></span><div class="what"><b>Ending soon</b><span><span class="mono">grant.expiring</span> → Priya gets a Slack DM with Extend</span></div></div>
+                    <div class="ev future"><span class="tm">16:07</span><span class="pin"><i></i></span><div class="what"><b>Ends</b><span>Landbright removes the SCIM membership on time; Landflow's revoke flow records the result</span></div></div>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="hd"><h5>Details</h5></div>
+                  <dl class="kv">
+                    <dt>For</dt><dd>Priya Raman · Data</dd>
+                    <dt>Asked by</dt><dd>Priya Raman</dd>
+                    <dt>Bundle</dt><dd>Landflow · Data editor</dd>
+                    <dt>Grants</dt><dd>Landflow project Data, editor (via SCIM)</dd>
+                    <dt>Approved by</dt><dd>Maya Cohen, 14:06</dd>
+                    <dt>Duration</dt><dd class="num">2 h · 14:07 to 16:07</dd>
+                    <dt>Provisioning</dt><dd>Landbright only (no Landflow run needed)</dd>
+                    <dt>Audit</dt><dd>6 entries · chain verified</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="notes">
+          <div>Ids follow Landfall's rule: <span class="mono">ACME REQ-128</span>, not a UUID.</div>
+          <div>Upcoming steps show dashed, so “what happens next” is never a guess.</div>
+          <div>The policy's reasoning is shown, not only its verdict.</div>
+        </div>
+      </div>
+
+      <div class="mock-item">
+        <header><h3>Who held what, and when</h3><span class="where">Access → Grants → prod-db-read · today</span></header>
+        <div class="frame">
+          <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">id.acme.dev/grants?bundle=prod-db-read</span><span class="tag">mockup</span></div>
+          <div class="scroll-x">
+            <div class="main" style="min-width:900px">
+              <div class="ph"><div><h4><span class="mono">prod-db-read</span></h4><span class="sub">Postgres role <span class="mono">ro</span> on <span class="mono">orders-prod</span> · owner Omer Katz · provisioned by Landflow flow “Postgres role”</span></div><div class="acts"><span class="btn">Today</span><span class="btn ghost">7 days</span><span class="btn ghost">Replay at…</span></div></div>
+              <div class="card">
+                <div class="gantt">
+                  <div class="axis"><span></span><div class="ticks num"><span>08</span><span>09</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span></div></div>
+                  <div class="lane"><div class="who"><span class="av v3">PR</span><div><b>Priya Raman</b><small>REQ-121 · ended</small></div></div><div class="track"><span class="bar exp" style="left:8.33%;width:16.67%">09:00 to 11:00</span><span class="now" style="left:52.8%"><span>14:20</span></span></div></div>
+                  <div class="lane"><div class="who"><span class="av v5">IS</span><div><b>Ilan Shapiro</b><small>on call · INC-2207</small></div></div><div class="track"><span class="bar open" style="left:42.4%;width:57.6%">Break-glass until the war room closes</span><span class="now" style="left:52.8%"></span></div></div>
+                  <div class="lane"><div class="who"><span class="av v2">OK</span><div><b>Omer Katz</b><small>REQ-131 · waiting</small></div></div><div class="track"><span class="bar" style="left:52.8%;width:33.3%">Asked: 4 h from approval</span><span class="now" style="left:52.8%"></span></div></div>
+                  <div class="lane"><div class="who"><span class="av agent v7">SI</span><div><b>SRE Investigator</b><small>for Ilan · 15 min max</small></div></div><div class="track"><span class="bar warnb" style="left:50.7%;width:2.1%" title="14:05 to 14:20"></span><span class="now" style="left:52.8%"></span></div></div>
+                  <div class="lane"><div class="who"><span class="av v1">MC</span><div><b>Maya Cohen</b><small>REQ-124 · active</small></div></div><div class="track"><span class="bar act" style="left:37.5%;width:25%">12:30 to 15:30</span><span class="now" style="left:52.8%"></span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="notes">
+          <div>Striped red: open-ended break-glass from a Landfall incident, ended by <span class="mono">incident.ended</span>.</div>
+          <div>Amber: an agent's grant, capped at 15 minutes by its blueprint.</div>
+          <div>“Replay at…” rebuilds who held access at any past moment from the event log.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AGENTS -->
+<section class="block" id="agents">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Agents as identities</h2>
+      <p>The roster mirrors Landflow's agent list from the identity side: the same faces, plus who answers for each agent, what it may reach, and what it holds right now.</p>
+    </div>
+    <div class="mock-group">
+      <div class="mock-item">
+        <header><h3>Agents</h3><span class="where">Directory → Agents</span></header>
+        <div class="frame">
+          <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">id.acme.dev/agents</span><span class="tag">mockup</span></div>
+          <div class="main">
+            <div class="ph">
+              <div><h4>Agents</h4><span class="sub">In sync with Landflow (landflow.acme.dev) · 30 s ago</span></div>
+              <div class="acts" style="flex-wrap:wrap"><span class="chip ac">All 4</span><span class="chip rd">Needs a sponsor 1</span><span class="chip">Privileged 0</span><span class="btn">Register an outside agent</span></div>
+            </div>
+            <div class="roster">
+              <article class="ag">
+                <div class="hd"><span class="av agent lg v7">SI</span><div class="nm"><b>SRE Investigator</b><span>Investigates incidents with read-only tools</span></div><span class="chip gn"><span class="dot"></span>Active</span></div>
+                <dl>
+                  <dt>Sponsor</dt><dd><span class="av v1" style="width:18px;height:18px;font-size:8px">MC</span>Maya Cohen</dd>
+                  <dt>Blueprint</dt><dd>SRE investigator · <span class="chip warn">Elevated</span></dd>
+                  <dt>Runs on</dt><dd>Landflow v7 · kagent</dd>
+                  <dt>Acts for</dt><dd>people in project SRE</dd>
+                  <dt>Holds now</dt><dd><span class="mono">prod-db-read</span> · 9 min left</dd>
+                  <dt>Last token</dt><dd>2 min ago, for Ilan Shapiro</dd>
+                </dl>
+                <div class="ft"><span class="btn ghost">Open in Landflow</span><span class="btn danger">Suspend</span></div>
+              </article>
+              <article class="ag">
+                <div class="hd"><span class="av agent lg v3">AC</span><div class="nm"><b>Access Concierge</b><span>Turns “I need…” in Slack into requests</span></div><span class="chip gn"><span class="dot"></span>Active</span></div>
+                <dl>
+                  <dt>Sponsor</dt><dd><span class="av v1" style="width:18px;height:18px;font-size:8px">MC</span>Maya Cohen</dd>
+                  <dt>Blueprint</dt><dd>Concierge · <span class="chip">Low</span></dd>
+                  <dt>Runs on</dt><dd>Landflow v3 · Slack</dd>
+                  <dt>Acts for</dt><dd>anyone who messages it</dd>
+                  <dt>Holds now</dt><dd>nothing; it files requests, never decides</dd>
+                  <dt>Last token</dt><dd>14:02, for Priya Raman</dd>
+                </dl>
+                <div class="ft"><span class="btn ghost">Open in Landflow</span><span class="btn danger">Suspend</span></div>
+              </article>
+              <article class="ag">
+                <div class="hd"><span class="av agent lg v4">TB</span><div class="nm"><b>Triage Bot</b><span>Sorts alerts before a war room opens</span></div><span class="chip gn"><span class="dot"></span>Active</span></div>
+                <dl>
+                  <dt>Sponsor</dt><dd><span class="av v2" style="width:18px;height:18px;font-size:8px">OK</span>Omer Katz</dd>
+                  <dt>Blueprint</dt><dd>Triage · <span class="chip">Low</span></dd>
+                  <dt>Runs on</dt><dd>Landflow v12 · schedule</dd>
+                  <dt>Acts for</dt><dd>nobody: acts as itself</dd>
+                  <dt>Holds now</dt><dd>2 standing grants · reviewed 1 Nov</dd>
+                  <dt>Last token</dt><dd>40 s ago</dd>
+                </dl>
+                <div class="ft"><span class="btn ghost">Open in Landflow</span><span class="btn danger">Suspend</span></div>
+              </article>
+              <article class="ag bad">
+                <div class="hd"><span class="av agent lg vn">RN</span><div class="nm"><b>Release Notes Writer</b><span>Drafts release notes from merged PRs</span></div><span class="chip rd"><span class="dot"></span>Suspended</span></div>
+                <div class="warnbox">No sponsor: Jonas Weber left on 10 Nov. Tokens revoked and the agent unpublished in Landflow until someone takes it on.</div>
+                <dl>
+                  <dt>Blueprint</dt><dd>Writer · <span class="chip">Low</span></dd>
+                  <dt>Runs on</dt><dd>Landflow v5 · unpublished</dd>
+                </dl>
+                <div class="ft"><span class="btn ghost">Retire</span><span class="btn pri">Pick a sponsor</span></div>
+              </article>
+            </div>
+          </div>
+        </div>
+        <div class="notes">
+          <div>The faces come from Landflow (its agent avatars), so an agent looks the same in both products.</div>
+          <div>Blueprints, after Microsoft Entra Agent ID: a Landflow persona template sets the limits of every agent made from it.</div>
+          <div>“Acts for” is the delegation rule: whose access an agent may borrow, never exceed.</div>
+        </div>
+      </div>
+
+      <div class="g2b">
+        <div class="mock-item">
+          <header><h3>The token an agent carries</h3><span class="where">a chat run, decoded</span></header>
+          <div class="frame">
+            <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">token exchange, RFC 8693</span><span class="tag">mockup</span></div>
+<pre class="code"><span class="k">{</span>
+  "iss":   "https://id.acme.dev",
+  "sub":   <span class="hl">"idn_ilan"</span>,            <span class="k">// Ilan Shapiro, who asked</span>
+  "act":   { "sub": <span class="hl">"agt_sre_investigator"</span> },
+  "aud":   "https://landflow.acme.dev/mcp/plugins/databases",
+  "scope": "db.read",              <span class="k">// Ilan's access ∩ the agent's</span>
+  "grant": "ACME REQ-130",
+  "exp":   1794500400              <span class="k">// 15 minutes</span>
+<span class="k">}</span></pre>
+          </div>
+          <div class="notes"><div>Tools and audit logs see both the person and the agent. The agent can never do more than the person could.</div></div>
+        </div>
+        <div class="mock-item">
+          <header><h3>The same agent in Landflow</h3><span class="where">Landflow → Agents → SRE Investigator</span></header>
+          <div class="frame">
+            <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">landflow.acme.dev/agents/sre-investigator</span><span class="tag">mockup · needs Landflow change L3</span></div>
+            <div class="main">
+              <div class="ph"><div style="display:flex;gap:10px;align-items:center"><span class="av agent lg v7">SI</span><div><h4>SRE Investigator</h4><span class="sub">Published v7 · kagent · 3 tools need approval</span></div></div></div>
+              <div class="card">
+                <div class="hd"><h5>Identity</h5><span>Landbright</span></div>
+                <dl class="kv">
+                  <dt>Identity</dt><dd class="mono">agt_sre_investigator</dd>
+                  <dt>Sponsor</dt><dd>Maya Cohen</dd>
+                  <dt>Risk tier</dt><dd><span class="chip warn">Elevated</span></dd>
+                  <dt>Live access</dt><dd><span class="mono">prod-db-read</span>, ends 14:20</dd>
+                </dl>
+                <div class="row" style="border-top:1px solid var(--hair)"><div class="grow s">Changes to who this agent may act for are made in Landbright.</div><span class="btn">Open in Landbright</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LANDFLOW FLOWS -->
+<section class="block" id="flows">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>The work, as Landflow flows</h2>
+      <p>Joiner, mover, leaver and every JIT bundle ship as Landflow team templates. A customer starts from a flow that works and changes it on the canvas, with no Landbright code.</p>
+    </div>
+    <div class="mock-item">
+      <header><h3>Joiner from HiBob, and a JIT bundle</h3><span class="where">Landflow editor · two published workflows</span></header>
+      <div class="frame">
+        <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">landflow.acme.dev/workflows</span><span class="tag">mockup</span></div>
+        <div class="lf-top"><span class="crumb">Identity /</span><b>Joiner from HiBob</b><span class="chip gn"><span class="dot"></span>Published</span><div class="tabs"><span class="on">Editor</span><span>Executions</span><span>Settings</span></div></div>
+        <div class="scroll-x">
+          <div class="canvas">
+            <div>
+              <div class="lane-title">Joiner · runs on employee.joined</div>
+              <div class="flow">
+                <div class="node trig"><span class="ic" style="background:#e5484d">B</span><b>HiBob Trigger</b><span>employee.joined · signature checked</span></div>
+                <span class="wire"></span>
+                <div class="node"><span class="ic" style="background:#e5484d">B</span><b>HiBob</b><span>People → Get · email, manager, department</span></div>
+                <span class="wire"></span>
+                <div class="node"><span class="ic" style="background:var(--t2)">{}</span><b>Birthright bundles</b><span>Data → “All staff”, “Dept: Data”, Landflow viewer</span></div>
+                <span class="wire"></span>
+                <div class="node"><span class="ic" style="background:var(--ac);color:var(--on-ac)">LB</span><b>Landbright</b><span>Identity → Create · pre-hire until start date</span></div>
+                <span class="wire"></span>
+                <div class="node"><span class="ic" style="background:var(--ac);color:var(--on-ac)">LB</span><b>Landbright</b><span>Group → Add Member · birthright groups</span></div>
+                <span class="wire"></span>
+                <div class="node"><span class="ic" style="background:#4a154b">#</span><b>Slack</b><span>DM the manager what day one includes</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="lane-title">JIT bundle prod-db-read · runs on request.created</div>
+              <div class="flow">
+                <div class="node trig"><span class="ic" style="background:var(--ac);color:var(--on-ac)">LB</span><b>Landbright Trigger</b><span>request.created · bundle prod-db-read</span></div>
+                <span class="wire"></span>
+                <div class="node"><span class="chip ac new">New · L1</span><span class="ic" style="background:var(--viz-4)">✓</span><b>Approval</b><span>Ask in Slack · approvers from the policy · 1 h timeout</span></div>
+                <div class="bwrap">
+                  <span class="wire" style="flex:none;width:18px"></span>
+                  <div class="fork"></div>
+                  <div class="branch">
+                    <div class="flow"><span class="lbl">approved</span><span class="wire" style="flex:none;width:18px"></span><div class="node"><span class="ic" style="background:var(--viz-1)">PG</span><b>Postgres</b><span>GRANT ro TO the person, VALID UNTIL the end</span></div><span class="wire" style="flex:none;width:26px"></span><div class="node"><span class="ic" style="background:var(--ac);color:var(--on-ac)">LB</span><b>Landbright</b><span>Grant → Record Provisioned</span></div></div>
+                    <div class="flow"><span class="lbl">denied</span><span class="wire" style="flex:none;width:18px"></span><div class="node"><span class="ic" style="background:var(--ac);color:var(--on-ac)">LB</span><b>Landbright</b><span>Request → Decide · denied, with the comment</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div>HiBob's events are thin, so the second node fetches the full employee. Bob fires lifecycle events at midnight on the effective date.</div>
+        <div>The Postgres grant also expires on its own (<span class="mono">VALID UNTIL</span>), a second backstop beside Landbright's sweeper.</div>
+        <div>The Approval node is one of five small Landflow changes (L1 to L5) in the plan.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ASK AND SIGN IN -->
+<section class="block" id="ask">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Asking for access, and signing in</h2>
+      <p>Most people never open the console. They ask in Slack or on one small page, and approvers answer where they already are.</p>
+    </div>
+    <div class="mock-group">
+      <div class="g2b">
+        <div class="mock-item">
+          <header><h3>The approval, in Slack</h3><span class="where">#access-requests · posted by Landflow</span></header>
+          <div class="frame">
+            <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">chat · #access-requests</span><span class="tag">mockup</span></div>
+            <div class="chat">
+              <div class="chan"># access-requests</div>
+              <div class="msg">
+                <span class="av agent v3" style="width:34px;height:34px">AC</span>
+                <div>
+                  <div class="who">Access Concierge<small>app · 14:19</small></div>
+                  <div>Omer Katz asks for <b>prod-db-read</b> for <b>4 hours</b>.</div>
+                  <div class="att">
+                    <dl class="f">
+                      <dt>Reason</dt><dd>INC-2207 checkout 5xx, need to check the orders table</dd>
+                      <dt>Incident</dt><dd>Landfall ACME 2207 · sev2 · open</dd>
+                      <dt>Policy</dt><dd>Prod data v3 · approver: bundle owner</dd>
+                      <dt>Ends</dt><dd>automatically, 4 h after approval</dd>
+                    </dl>
+                    <div class="btns"><span class="btn pri">Approve 4 h</span><span class="btn">Approve 1 h</span><span class="btn danger">Deny</span></div>
+                    <div class="foot">ACME REQ-131 · only Maya Cohen can approve · Omer can't approve his own request</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mock-item">
+          <header><h3>Sign in</h3><span class="where">id.acme.dev · Landflow is the app asking</span></header>
+          <div class="frame">
+            <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">id.acme.dev/sign-in?client=landflow</span><span class="tag">mockup</span></div>
+            <div class="signin">
+              <div class="sbox">
+                <div class="who-asks"><span class="av agent" style="width:18px;height:18px;background:var(--ac);color:var(--on-ac);font-size:8px">LF</span>Landflow wants you to sign in</div>
+                <h5>Sign in to ACME</h5>
+                <span class="btn pri"><svg width="14" height="14"><use href="#i-key"/></svg>Continue with a passkey</span>
+                <div class="or">or</div>
+                <div class="input" style="color:var(--t3)">you@acme.dev</div>
+                <span class="btn">Continue with email</span>
+                <span class="btn ghost" style="border-color:var(--bd)">Continue with Google</span>
+                <span style="font-size:11px;color:var(--t3);text-align:center">Signed in for 14 days on this device. Your manager or IT can sign you out everywhere.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mock-item">
+        <header><h3>The request portal</h3><span class="where">id.acme.dev/request · for everyone</span></header>
+        <div class="frame">
+          <div class="frame-bar"><div class="lights"><i></i><i></i><i></i></div><span class="url">id.acme.dev/request</span><span class="tag">mockup</span></div>
+          <div class="portal">
+            <div style="display:grid;gap:14px">
+              <h4 style="font-size:18px">Request access</h4>
+              <div class="field"><label for="m-b">What do you need?</label><div class="input" id="m-b"><span><b>prod-db-read</b> <span style="color:var(--t3)">· Postgres orders-prod, read only</span></span><span class="kbd">⌘K</span></div></div>
+              <div class="field"><label>For how long?</label><div class="seg"><span>15 min</span><span>1 h</span><span class="on">4 h</span><span>8 h</span><span class="off">Longer needs a review</span></div></div>
+              <div class="field"><label for="m-r">Why?</label><div class="input area" id="m-r">INC-2207 checkout 5xx, need to check the orders table</div></div>
+              <div class="field"><label for="m-t">Ticket or incident</label><div class="input" id="m-t"><span>Landfall ACME 2207 · sev2 · open</span><span class="chip gn">Linked</span></div></div>
+              <div style="display:flex;gap:8px"><span class="btn pri">Send request</span><span class="btn ghost">Cancel</span></div>
+            </div>
+            <div style="display:grid;gap:12px;align-content:start">
+              <div class="card">
+                <div class="hd"><h5>What happens next</h5></div>
+                <div class="row"><span class="stripe ac"></span><div class="grow"><div class="t">Maya Cohen approves</div><div class="s">bundle owner · usually within 6 min</div></div></div>
+                <div class="row"><span class="stripe ac"></span><div class="grow"><div class="t">Landflow grants it</div><div class="s">flow “Postgres role” · about 30 s</div></div></div>
+                <div class="row"><span class="stripe"></span><div class="grow"><div class="t">It ends on its own</div><div class="s">4 h after approval · you can ask to extend</div></div></div>
+              </div>
+              <div class="card">
+                <div class="hd"><h5>Your access</h5><span>Omer Katz</span></div>
+                <div class="row"><div class="grow"><div class="t">AWS · billing read</div><div class="s">ends 17:30</div></div><span class="btn">Extend</span></div>
+                <div class="row"><div class="grow"><div class="t">All staff · Dept: Platform</div><div class="s">standing, from HiBob</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WAVES -->
+<section class="block" id="waves">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>The order of work</h2>
+      <p>Seven waves, each ending with a first slice that works end to end, every suite green and a live check on the local OrbStack stack, the way Landflow ships.</p>
+    </div>
+    <div class="waves">
+      <div class="wave"><span class="w">0</span><div><h4>Foundations</h4><p>Nx + NestJS repo, constitution, compose infra (Postgres, Valkey, Mailpit, OpenBao), OpenTelemetry, console shell with the shared tokens.</p></div><div class="slice"><small>First slice</small>One command brings up a console in Landflow's look with a health page.</div></div>
+      <div class="wave"><span class="w">1</span><div><h4>Identity core and sign-in</h4><p>People, agents, groups; OIDC provider; passkeys, password + TOTP; Directory and Applications pages.</p></div><div class="slice"><small>First slice</small>A person created in Landbright signs into Landflow with the right role. No Landflow code changed.</div></div>
+      <div class="wave"><span class="w">2</span><div><h4>Provisioning out</h4><p>SCIM client with retries and reconciliation to Landflow and Landfall; group to project mapping.</p></div><div class="slice"><small>First slice</small>Deactivating someone signs them out of Landflow within seconds.</div></div>
+      <div class="wave"><span class="w">3</span><div><h4>Landflow plugins and HR lifecycle</h4><p><span class="mono">landbright</span> and <span class="mono">hris</span> plugins, the normalized worker record, joiner / mover / leaver templates.</p></div><div class="slice"><small>First slice</small>A signed HiBob <span class="mono">employee.joined</span> creates the person, adds birthright groups, and they sign into Landflow on day one.</div></div>
+      <div class="wave"><span class="w">4</span><div><h4>Just-in-time access</h4><p>Catalog, bundles, policies, requests, the grant ledger and sweeper, the portal, the Approval node (L1).</p></div><div class="slice"><small>First slice</small>“Data editor for 2 hours”, asked in the portal, approved in Slack, removed on time, every step on the timeline.</div></div>
+      <div class="wave"><span class="w">5</span><div><h4>Agentic identity</h4><p>Agent sync, blueprints, sponsors, token exchange with <span class="mono">act</span>, ID-JAG, the kill switch, CAEP signals (L2 to L5).</p></div><div class="slice"><small>First slice</small>A Landflow agent asks in Slack for 15 minutes of DB read; the sponsor approves; the call carries person and agent; it ends on time.</div></div>
+      <div class="wave"><span class="w">6</span><div><h4>Policy, reviews, signals</h4><p>OpenFGA, an AuthZEN endpoint, access reviews an agent drafts and people decide, Landfall break-glass.</p></div><div class="slice"><small>First slice</small>A sev1 in Landfall gives the on-call responder the incident bundle until the room closes, with a note in the room.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- DECISIONS -->
+<section class="block" id="decisions">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Decisions for you</h2>
+      <p>Each has our suggestion. The rest of the plan holds either way.</p>
+    </div>
+    <div class="decs">
+      <div class="dec"><h4>Name and home</h4><p>The product's name and where its repo lives.</p><div class="rec"><span class="chip ac">We suggest</span><span><span class="mono">landbright</span>, a private repo under <span class="mono">landfalls-ai</span>.</span></div></div>
+      <div class="dec"><h4>Tenancy</h4><p>One customer per deployment, or multi-tenant from the start.</p><div class="rec"><span class="chip ac">We suggest</span><span>One per deployment, with the tenant boundary designed in from day one.</span></div></div>
+      <div class="dec"><h4>Protocol engine</h4><p><span class="mono">oidc-provider</span> inside NestJS, or Keycloak 26.8 with Landbright as its control plane.</p><div class="rec"><span class="chip ac">We suggest</span><span><span class="mono">oidc-provider</span>: the agent model stays in one place and in TypeScript.</span></div></div>
+      <div class="dec"><h4>Shapes</h4><p>It has no public API reference, and its webhooks are unsigned.</p><div class="rec"><span class="chip ac">We suggest</span><span>Ask Shapes for the GraphQL schema; build HiBob first.</span></div></div>
+      <div class="dec"><h4>Landflow changes L1 to L5</h4><p>Approval node, <span class="mono">agents:read</span> scope, identity link, agent grant subject, token exchange in runs.</p><div class="rec"><span class="chip ac">We suggest</span><span>Write them as specs in <span class="mono">landflow/docs/specs/</span> now.</span></div></div>
+      <div class="dec"><h4>First targets after Landflow</h4><p>GitHub teams, Postgres roles, Google groups, AWS permission sets.</p><div class="rec"><span class="chip ac">We suggest</span><span>Postgres and GitHub: Landflow already has their plugins.</span></div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="end">
+  <div class="wrap">Landbright concept · the plan and research are in <span class="mono">landbright/docs/plan.md</span> and <span class="mono">research.md</span>. All names, people and numbers in the mockups are examples.</div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,74 @@
+# Landbright development and test infrastructure.
+#
+#   pnpm dev:up      # docker compose -f deploy/compose.infra.yml up -d --wait
+#   pnpm dev:down    # stop (volumes kept)
+#
+# Ports, credentials and URLs: docs/development.md. Defaults live here; deploy/.env overrides them.
+# Every credential is for local development only. Ports sit in the 57xxx band so they never collide with Landflow
+# (55432, 56379, 51025, 58025, ...) or Landfall on the same Docker engine.
+
+name: landbright-infra
+
+x-healthcheck: &healthcheck
+  interval: 3s
+  timeout: 5s
+  retries: 40
+  start_period: 5s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${LANDBRIGHT_POSTGRES_USER:-landbright}
+      POSTGRES_PASSWORD: ${LANDBRIGHT_POSTGRES_PASSWORD:-landbright-dev-only}
+      POSTGRES_DB: ${LANDBRIGHT_POSTGRES_DB:-landbright}
+    ports:
+      - ${LANDBRIGHT_BIND_ADDR:-127.0.0.1}:${LANDBRIGHT_POSTGRES_PORT:-57432}:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      <<: *healthcheck
+      test: ['CMD-SHELL', 'pg_isready -U landbright -d landbright']
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ['valkey-server', '--appendonly', 'yes']
+    ports:
+      - ${LANDBRIGHT_BIND_ADDR:-127.0.0.1}:${LANDBRIGHT_VALKEY_PORT:-57379}:6379
+    volumes:
+      - valkey:/data
+    healthcheck:
+      <<: *healthcheck
+      test: ['CMD-SHELL', 'valkey-cli ping | grep -q PONG']
+
+  # SMTP sink for sign-in links, approval emails and notifications. Accepts any user and password.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - ${LANDBRIGHT_BIND_ADDR:-127.0.0.1}:${LANDBRIGHT_SMTP_PORT:-57025}:1025
+      - ${LANDBRIGHT_BIND_ADDR:-127.0.0.1}:${LANDBRIGHT_MAIL_UI_PORT:-57825}:8025
+    healthcheck:
+      <<: *healthcheck
+      test: ['CMD', '/mailpit', 'readyz']
+
+  # Signing keys and secrets. Dev mode: in memory, unsealed, a fixed root token. Wave 1 keeps token-signing keys here.
+  openbao:
+    image: openbao/openbao:latest
+    restart: unless-stopped
+    command: ['server', '-dev', '-dev-listen-address=0.0.0.0:8200']
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${LANDBRIGHT_OPENBAO_TOKEN:-landbright-dev-only}
+    cap_add: [IPC_LOCK]
+    ports:
+      - ${LANDBRIGHT_BIND_ADDR:-127.0.0.1}:${LANDBRIGHT_OPENBAO_PORT:-57200}:8200
+    healthcheck:
+      <<: *healthcheck
+      test: ['CMD-SHELL', 'BAO_ADDR=http://127.0.0.1:8200 bao status >/dev/null']
+
+volumes:
+  postgres:
+  valkey:

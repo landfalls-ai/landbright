@@ -1,0 +1,127 @@
+/*
+ * @land/tokens: the land-* design tokens, after the Landfall design system: a monochrome editorial palette
+ * (near-black accent on white), brick red for danger, forest green for good, amber for caution. Light by default;
+ * dark follows the OS unless <html data-theme="light|dark"> says otherwise. Text on an accent fill uses --on-ac,
+ * never a literal white (it would vanish in dark mode).
+ *
+ * Copied verbatim from landflow/apps/web/src/app/globals.css. test/drift.test.ts fails when the two differ, so a
+ * change lands in both (or Landflow adopts this package).
+ */
+:root {
+  --bg: #ffffff;
+  --sf: #ffffff;
+  --sf2: #fafafa;
+  --wl: #fafafa;
+  --hair: rgba(0, 0, 0, 0.08);
+  --bd: #e4e4e4;
+  --t1: #141414;
+  --t2: #5a5a5a;
+  --t3: #737373;
+  --ac: #141414;
+  --ac2: #141414;
+  --ac2-hover: #333333;
+  --on-ac: #ffffff;
+  --acdim: rgba(0, 0, 0, 0.05);
+  --acbd: rgba(0, 0, 0, 0.16);
+  --rd: #c0271e;
+  --rddim: rgba(192, 39, 30, 0.07);
+  --rdbd: rgba(192, 39, 30, 0.26);
+  --warn: #8a5700;
+  --warndim: rgba(245, 163, 0, 0.13);
+  --warnbd: rgba(138, 87, 0, 0.32);
+  --gn: #2e7d46;
+  --gndim: rgba(46, 125, 70, 0.09);
+  --gnbd: rgba(46, 125, 70, 0.28);
+  --nudim: rgba(0, 0, 0, 0.05);
+  --overlay: rgba(20, 20, 20, 0.45);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --canvas-dot: rgba(0, 0, 0, 0.13);
+  --shadow-pop: 0 24px 48px rgba(0, 0, 0, 0.16);
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-7: #4a3aa7;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0d0d0d;
+    --sf: #161616;
+    --sf2: #111111;
+    --wl: #111111;
+    --hair: rgba(255, 255, 255, 0.09);
+    --bd: rgba(255, 255, 255, 0.16);
+    --t1: #f2f2f2;
+    --t2: #a8a8a8;
+    --t3: #858585;
+    --ac: #fafafa;
+    --ac2: #fafafa;
+    --ac2-hover: #e0e0e0;
+    --on-ac: #0d0d0d;
+    --acdim: rgba(255, 255, 255, 0.08);
+    --acbd: rgba(255, 255, 255, 0.22);
+    --rd: #ff6157;
+    --rddim: rgba(255, 97, 87, 0.12);
+    --rdbd: rgba(255, 97, 87, 0.3);
+    --warn: #f5b84a;
+    --warndim: rgba(245, 184, 74, 0.14);
+    --warnbd: rgba(245, 184, 74, 0.32);
+    --gn: #5bb97e;
+    --gndim: rgba(91, 185, 126, 0.12);
+    --gnbd: rgba(91, 185, 126, 0.3);
+    --nudim: rgba(255, 255, 255, 0.08);
+    --overlay: rgba(0, 0, 0, 0.6);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+    --canvas-dot: rgba(255, 255, 255, 0.11);
+    --shadow-pop: 0 24px 48px rgba(0, 0, 0, 0.5);
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
+    --viz-4: #c98500;
+    --viz-5: #d55181;
+    --viz-7: #9085e9;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0d0d0d;
+  --sf: #161616;
+  --sf2: #111111;
+  --wl: #111111;
+  --hair: rgba(255, 255, 255, 0.09);
+  --bd: rgba(255, 255, 255, 0.16);
+  --t1: #f2f2f2;
+  --t2: #a8a8a8;
+  --t3: #858585;
+  --ac: #fafafa;
+  --ac2: #fafafa;
+  --ac2-hover: #e0e0e0;
+  --on-ac: #0d0d0d;
+  --acdim: rgba(255, 255, 255, 0.08);
+  --acbd: rgba(255, 255, 255, 0.22);
+  --rd: #ff6157;
+  --rddim: rgba(255, 97, 87, 0.12);
+  --rdbd: rgba(255, 97, 87, 0.3);
+  --warn: #f5b84a;
+  --warndim: rgba(245, 184, 74, 0.14);
+  --warnbd: rgba(245, 184, 74, 0.32);
+  --gn: #5bb97e;
+  --gndim: rgba(91, 185, 126, 0.12);
+  --gnbd: rgba(91, 185, 126, 0.3);
+  --nudim: rgba(255, 255, 255, 0.08);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --canvas-dot: rgba(255, 255, 255, 0.11);
+  --shadow-pop: 0 24px 48px rgba(0, 0, 0, 0.5);
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-7: #9085e9;
+  color-scheme: dark;
+}

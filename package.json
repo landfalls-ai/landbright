@@ -1,0 +1,47 @@
+{
+  "name": "landbright",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Landbright: the identity provider of the land-* family, for people and agents.",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:up": "docker compose -f deploy/compose.infra.yml up -d --wait",
+    "dev:down": "docker compose -f deploy/compose.infra.yml down",
+    "dev:logs": "docker compose -f deploy/compose.infra.yml logs -f",
+    "serve": "nx run-many -t serve --outputStyle=stream",
+    "build": "nx run-many -t build --outputStyle=static",
+    "typecheck": "nx run-many -t typecheck --outputStyle=static",
+    "test": "nx run-many -t test --outputStyle=static",
+    "test:integration": "nx run-many -t test:integration --outputStyle=static",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild",
+      "nx"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@nestjs/cli": "^11.0.24",
+    "@swc/core": "^1.16.22",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "nx": "^22.7.12",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "unplugin-swc": "^2.0.0",
+    "vitest": "^5.0.5"
+  }
+}

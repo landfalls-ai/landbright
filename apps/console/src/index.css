@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+@import '@land/tokens/tokens.css';
+@import '@land/tokens/theme.css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/* Landflow gets these from next/font; here they name the @fontsource families. */
+:root {
+  --font-geist-sans: 'Geist Variable';
+  --font-geist-mono: 'Geist Mono Variable';
+}

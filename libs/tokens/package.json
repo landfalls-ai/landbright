@@ -1,0 +1,17 @@
+{
+  "name": "@land/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The land-* design tokens (Landfall design system, as Landflow uses them) and a Tailwind 4 theme over them.",
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./theme.css": "./src/theme.css"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}
