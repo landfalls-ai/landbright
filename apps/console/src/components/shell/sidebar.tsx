@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { HeartPulse, Menu, X } from 'lucide-react';
-import { CURRENT_WAVE, NAV_GROUPS, type NavItem, SETTINGS } from '@/nav';
-import { useHealth } from '@/lib/api';
+import { HeartPulse, LogOut, Menu, X } from 'lucide-react';
+import type { Me } from '@landbright/contracts';
+import { isUpcoming, NAV_GROUPS, type NavItem, SETTINGS } from '@/nav';
+import { signOut, useHealth } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { StatusDot } from '../ui/badge';
 import { healthSummary } from './health-summary';
@@ -12,7 +13,7 @@ import { ThemeToggle } from './theme-toggle';
  * The left rail, after Landflow's components/shell/sidebar.tsx: product mark, environment, grouped navigation, the
  * stack's health, theme. On a phone (below `md`) it is a drawer behind a slim top bar.
  */
-export function Sidebar() {
+export function Sidebar({ me }: { me: Me }) {
   const { pathname } = useLocation();
   const [openOn, setOpenOn] = useState<string>();
   const open = openOn === pathname;
@@ -22,7 +23,7 @@ export function Sidebar() {
       {open && (
         <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setOpenOn(undefined)} aria-hidden />
       )}
-      <Rail open={open} onClose={() => setOpenOn(undefined)} />
+      <Rail me={me} open={open} onClose={() => setOpenOn(undefined)} />
     </>
   );
 }
@@ -74,7 +75,7 @@ function NavRow({ item }: { item: NavItem }) {
     >
       <Icon className="size-[18px] shrink-0" strokeWidth={1.7} />
       <span className="truncate">{item.label}</span>
-      {item.wave > CURRENT_WAVE && (
+      {isUpcoming(item) && (
         <span className="ml-auto font-mono text-[10px] font-normal text-t3" title={`Arrives in wave ${item.wave}`}>
           w{item.wave}
         </span>
@@ -83,7 +84,7 @@ function NavRow({ item }: { item: NavItem }) {
   );
 }
 
-function Rail({ open, onClose }: { open: boolean; onClose: () => void }) {
+function Rail({ me, open, onClose }: { me: Me; open: boolean; onClose: () => void }) {
   const health = useHealth();
   const summary = healthSummary(health.data, health.isError);
   const environment = health.data?.environment;
@@ -151,7 +152,35 @@ function Rail({ open, onClose }: { open: boolean; onClose: () => void }) {
           {summary.label}
         </div>
         <ThemeToggle />
+        <div className="flex items-center gap-2 border-t border-hair pt-2.5" data-testid="user-menu">
+          <span
+            className="grid size-7 shrink-0 place-items-center rounded-full bg-acdim text-[11px] font-semibold text-ac"
+            aria-hidden
+          >
+            {initials(me.displayName)}
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-[12px] font-semibold text-t1">{me.displayName}</div>
+            <div className="truncate text-[11px] text-t3" title={me.email}>
+              {me.email}
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={() => void signOut()}
+            className="grid size-7 shrink-0 place-items-center rounded-full text-t3 hover:bg-acdim hover:text-t1"
+          >
+            <LogOut className="size-3.5" />
+          </button>
+        </div>
       </div>
     </aside>
   );
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase() || '?';
 }

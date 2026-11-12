@@ -11,16 +11,24 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@land/tokens": "workspace:*",
     "@landbright/contracts": "workspace:*",
+    "@landbright/persistence": "workspace:*",
     "@landbright/platform": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "ioredis": "^5.11.1",
+    "oidc-provider": "^9.14.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.0",
+    "@types/express": "^5.0.6",
+    "@types/oidc-provider": "^9.13.1",
     "unplugin-swc": "^2.0.0",
     "vitest": "^5.0.5"
   }

@@ -4,7 +4,7 @@ import { Card, PageBody, PageHeader } from '@/components/shell/page-header';
 import { healthSummary } from '@/components/shell/health-summary';
 import { Badge, StatusDot } from '@/components/ui/badge';
 import { SectionLabel } from '@/components/ui/section-label';
-import { useHealth } from '@/lib/api';
+import { useAgents, useApplications, useGroups, useHealth, usePeople } from '@/lib/api';
 import { CURRENT_WAVE } from '@/nav';
 import { cn } from '@/lib/utils';
 import { WAVES } from '@/waves';
@@ -20,11 +20,14 @@ export function HomePage() {
         <div className="animate-fade-up">
           <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-t1">Nothing needs you yet.</h2>
           <p className="mt-1 max-w-[70ch] text-[13px] leading-relaxed text-t2">
-            Landbright is at wave {CURRENT_WAVE}, the foundations. The identity and control services, this console and
-            the local stack are running. People, agents and sign-in come in wave 1. After that, this page lists the
-            requests waiting for you, grants that end today, joiners and leavers, and agents without a sponsor.
+            Landbright is at wave {CURRENT_WAVE}, identity and sign-in. Add people and their groups, register Landflow
+            as an application, and they sign in to it with Landbright, with the role their group maps to. From wave 4
+            this page lists the requests waiting for you, grants that end today, joiners and leavers, and agents without
+            a sponsor.
           </p>
         </div>
+
+        <DirectoryCounts />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
           <Card className="flex flex-col gap-3 p-0">
@@ -76,5 +79,44 @@ export function HomePage() {
         </div>
       </PageBody>
     </>
+  );
+}
+
+/** The directory at a glance, each count a link to its page. */
+function DirectoryCounts() {
+  const people = usePeople();
+  const agents = useAgents();
+  const groups = useGroups();
+  const apps = useApplications();
+  const tiles = [
+    {
+      to: '/people',
+      label: 'People',
+      count: people.data?.items.filter((p) => p.status === 'active').length,
+      note: 'active',
+    },
+    {
+      to: '/agents',
+      label: 'Agents',
+      count: agents.data?.items.filter((a) => a.status === 'active').length,
+      note: 'active',
+    },
+    { to: '/groups', label: 'Groups', count: groups.data?.items.length },
+    { to: '/applications', label: 'Applications', count: apps.data?.items.length },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {tiles.map((t) => (
+        <Link key={t.to} to={t.to} className="group" data-testid={`count-${t.label}`}>
+          <Card className="transition-colors duration-[120ms] group-hover:border-bd">
+            <SectionLabel>{t.label}</SectionLabel>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className="text-[22px] font-semibold tabular-nums text-t1">{t.count ?? '–'}</span>
+              {t.note && <span className="text-[12px] text-t3">{t.note}</span>}
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
   );
 }

@@ -19,13 +19,19 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+    "verify": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "db:migrate": "pnpm --filter @landbright/persistence migrate",
+    "db:seed": "pnpm --filter @landbright/persistence build && pnpm --filter @landbright/persistence seed",
+    "db:setup": "pnpm db:migrate && pnpm db:seed"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
       "@swc/core",
       "esbuild",
-      "nx"
+      "nx",
+      "prisma"
     ]
   },
   "devDependencies": {

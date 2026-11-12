@@ -1,0 +1,37 @@
+{
+  "name": "@landbright/persistence",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Landbright's database: the Prisma schema and migrations, the tenant-scoped transaction, the audit chain, the bootstrap.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "prisma"
+  ],
+  "scripts": {
+    "generate": "node scripts/prisma.mjs generate",
+    "build": "node scripts/prisma.mjs generate && tsc -p tsconfig.lib.json",
+    "typecheck": "node scripts/prisma.mjs generate && tsc --noEmit",
+    "test": "node scripts/prisma.mjs generate && vitest run",
+    "migrate": "node scripts/prisma.mjs migrate deploy && node scripts/prisma.mjs db execute --file prisma/dev-roles.sql",
+    "migrate:dev": "node scripts/prisma.mjs migrate dev",
+    "seed": "node dist/seed-cli.js",
+    "test:integration": "node scripts/prisma.mjs generate && LANDBRIGHT_INTEGRATION=db vitest run test/rls.integration.test.ts"
+  },
+  "dependencies": {
+    "@landbright/platform": "workspace:*",
+    "@node-rs/argon2": "^2.2.2",
+    "@prisma/client": "^6.19.3"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.1.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.1.0",
+    "prisma": "^6.19.3",
+    "typescript": "^5.9.3",
+    "unplugin-swc": "^2.0.0",
+    "vitest": "^5.0.5"
+  }
+}

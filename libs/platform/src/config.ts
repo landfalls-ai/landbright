@@ -12,13 +12,42 @@ export const ConfigSchema = z.object({
   LANDBRIGHT_CONTROL_PORT: z.coerce.number().int().positive().default(4401),
   LANDBRIGHT_IDP_PORT: z.coerce.number().int().positive().default(4402),
   LANDBRIGHT_IDP_URL: z.url().default('http://127.0.0.1:4402'),
-  LANDBRIGHT_DATABASE_URL: z.url().default('postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright'),
+  LANDBRIGHT_CONSOLE_URL: z.url().default('http://127.0.0.1:4400'),
+  /** The services' connection: the landbright_app role, under row-level security. */
+  LANDBRIGHT_DATABASE_URL: z
+    .url()
+    .default('postgres://landbright_app:landbright-app-dev-only@127.0.0.1:57432/landbright'),
+  /** The owner's connection: migrations and the bootstrap only. */
+  LANDBRIGHT_DATABASE_ADMIN_URL: z
+    .url()
+    .default('postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright'),
+  /** The tenant this deployment serves (one per deployment for now; the boundary is in every table). */
+  LANDBRIGHT_TENANT_SLUG: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .default('local'),
+  LANDBRIGHT_TENANT_NAME: z.string().default('Local'),
+  /**
+   * Seals signing keys and derives client secrets and cookie keys. At least 32 characters. Changing it invalidates
+   * every client secret and session, and makes sealed keys unreadable (new ones are generated).
+   */
+  LANDBRIGHT_SECRET_KEY: z.string().min(32).default('landbright-dev-only-secret-key-do-not-use-anywhere-real'),
+  LANDBRIGHT_SMTP_URL: z.string().default('smtp://127.0.0.1:57025'),
+  LANDBRIGHT_MAIL_FROM: z.string().default('Landbright <no-reply@landbright.test>'),
+  /** The first administrator, created by the bootstrap (pnpm db:seed) if missing. */
+  LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL: z.email().default('admin@landbright.test'),
+  LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).default('landbright-dev-only'),
   LANDBRIGHT_VALKEY_URL: z.url().default('redis://127.0.0.1:57379'),
   LANDBRIGHT_OPENBAO_ADDR: z.url().default('http://127.0.0.1:57200'),
   LANDBRIGHT_OPENBAO_TOKEN: z.string().min(1).default('landbright-dev-only'),
   LANDBRIGHT_MAILPIT_URL: z.url().default('http://127.0.0.1:57825'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
+
+/** The issuer URL tokens carry: the identity plane's OIDC mount. */
+export function issuerOf(config: Pick<Config, 'LANDBRIGHT_IDP_URL'>): string {
+  return new URL('/oidc', config.LANDBRIGHT_IDP_URL).href;
+}
 
 /** Parses the environment, failing fast with every invalid variable named. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {

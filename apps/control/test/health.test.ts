@@ -9,11 +9,31 @@ import { type Config, DefaultDenyGuard, loadConfig } from '@landbright/platform'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureControl } from '../src/configure';
-import { CONFIG, PG_POOL, VALKEY } from '../src/infra/infra.module';
+import { CONFIG, PRISMA, TENANT } from '@landbright/persistence';
+import type { NextFunction, Request, Response } from 'express';
+import { SessionMiddleware } from '../src/auth/session.middleware';
+import type { WithPrincipal } from '../src/common/principal';
+import { VALKEY } from '../src/common/tokens';
+
+const ADMIN = {
+  id: '00000000-0000-4000-8000-000000000001',
+  displayName: 'Administrator',
+  email: 'admin@landbright.test',
+  admin: true,
+  sessionId: 's',
+};
+/** Stands in for the session cookie: `lb_session=admin` signs in as an administrator. */
+const fakeSessions = {
+  use(req: Request & WithPrincipal, _res: Response, next: NextFunction) {
+    if (/(^|; )lb_session=admin(;|$)/.test(req.headers.cookie ?? '')) req.principal = ADMIN;
+    next();
+  },
+};
+const asAdmin = { headers: { cookie: 'lb_session=admin' } };
 
 /**
- * The health route end to end, with the infrastructure faked: Postgres and Valkey as in-memory stand-ins, the
- * identity plane, OpenBao and Mailpit as one local HTTP server. health.integration.test.ts runs against the real
+ * The health route end to end, with the infrastructure faked: Postgres, Valkey and the session as in-memory
+ * stand-ins, the identity plane, OpenBao and Mailpit as one local HTTP server. health.integration.test.ts runs against the real
  * compose stack.
  */
 describe('control: GET /api/health', () => {
@@ -48,8 +68,12 @@ describe('control: GET /api/health', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(CONFIG)
       .useValue(config)
-      .overrideProvider(PG_POOL)
-      .useValue({ query: async () => ({ rows: [{ server_version: '16.10 (Debian)' }] }), end: async () => undefined })
+      .overrideProvider(PRISMA)
+      .useValue({ $queryRaw: async () => [{ server_version: '16.10 (Debian)' }], $disconnect: async () => undefined })
+      .overrideProvider(TENANT)
+      .useValue({ id: '00000000-0000-4000-8000-0000000000aa', slug: 'local', name: 'Local' })
+      .overrideProvider(SessionMiddleware)
+      .useValue(fakeSessions)
       .overrideProvider(VALKEY)
       .useValue({
         status: 'ready',
@@ -70,7 +94,7 @@ describe('control: GET /api/health', () => {
   });
 
   it('reports every dependency up, with versions', async () => {
-    const response = await fetch(`${base}/api/health`);
+    const response = await fetch(`${base}/api/health`, asAdmin);
     expect(response.status).toBe(200);
     const report = HealthReport.parse(await response.json());
     expect(report.status).toBe('ok');
@@ -86,7 +110,7 @@ describe('control: GET /api/health', () => {
   it('is degraded when one dependency is down, and says why', async () => {
     openbaoSealed = true;
     try {
-      const report = HealthReport.parse(await (await fetch(`${base}/api/health`)).json());
+      const report = HealthReport.parse(await (await fetch(`${base}/api/health`, asAdmin)).json());
       expect(report.status).toBe('degraded');
       expect(report.components.find((c) => c.id === 'openbao')).toMatchObject({ status: 'down', detail: 'sealed' });
     } finally {
@@ -95,8 +119,29 @@ describe('control: GET /api/health', () => {
   });
 
   it('never puts credentials in a target', async () => {
-    const report = HealthReport.parse(await (await fetch(`${base}/api/health`)).json());
+    const report = HealthReport.parse(await (await fetch(`${base}/api/health`, asAdmin)).json());
     expect(JSON.stringify(report)).not.toContain('landbright-dev-only');
+  });
+
+  it('is for administrators only', async () => {
+    expect((await fetch(`${base}/api/health`)).status).toBe(401);
+  });
+
+  it('refuses writes from another origin', async () => {
+    const response = await fetch(`${base}/api/auth/logout`, {
+      method: 'POST',
+      headers: { ...asAdmin.headers, origin: 'http://127.0.0.1:3000' },
+    });
+    expect(response.status).toBe(403);
+  });
+
+  it('says who is signed in', async () => {
+    expect(await (await fetch(`${base}/api/auth/me`, asAdmin)).json()).toMatchObject({
+      email: 'admin@landbright.test',
+      admin: true,
+      tenant: { slug: 'local' },
+    });
+    expect((await fetch(`${base}/api/auth/me`)).status).toBe(401);
   });
 
   it('keeps liveness at /healthz, outside the /api prefix', async () => {
@@ -109,6 +154,14 @@ describe('control: GET /api/health', () => {
       paths: Record<string, unknown>;
     };
     expect(document.openapi).toBe('3.1.0');
-    expect(Object.keys(document.paths)).toContain('/api/health');
+    expect(Object.keys(document.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/health',
+        '/api/people',
+        '/api/groups/{id}/members',
+        '/api/applications',
+        '/api/audit',
+      ]),
+    );
   });
 });

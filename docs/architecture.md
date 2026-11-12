@@ -3,47 +3,59 @@
 Three processes and four pieces of infrastructure, all on this machine.
 
 ```
- browser ──▶ console (Vite, :4400) ── /api ──▶ control (NestJS, :4401) ──▶ Postgres · Valkey · OpenBao · Mailpit
-                                                     │
-                                                     └── /healthz ──▶ idp (NestJS, :4402)
- relying parties (Landflow, Landfall; wave 1) ───────────────────────▶ idp: OIDC, sign-in pages, JWKS
+ browser ──▶ console (Vite, :4400) ── /api ──▶ control (NestJS, :4401) ──▶ Postgres · Valkey · Mailpit
+    │                                              │  OIDC client of the idp (console sign-in)
+    │                                              ▼
+    └──── sign-in pages, invite links ──────▶ idp (NestJS + oidc-provider, :4402) ──▶ Postgres · Valkey
+ relying parties (Landflow, Landfall) ───────▶ idp: /oidc (discovery, auth, token, JWKS, userinfo, logout)
 ```
 
-| Process | Owns | Now (wave 0) | Next |
+| Process | Owns | Now (wave 1, first slice) | Next |
 |---|---|---|---|
-| **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, token exchange. Small and hardened, separately deployable, no console code. | `/healthz` | Wave 1: `oidc-provider` mounted, passkeys, password + TOTP |
-| **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | `/healthz`, `/api/health`, OpenAPI | Wave 1: tenants, people, agents, groups, applications, audit |
-| **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Home, Health, a page for each later section | Wave 1: Directory and Applications pages, sign-in |
+| **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter; password sign-in with lockout; invite pages; sealed signing keys | Passkeys, TOTP, key rotation |
+| **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health | SCIM out (wave 2) |
+| **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health | Settings |
+
+## Data (`libs/persistence`)
+
+Prisma 6 over Postgres. Tenant tables carry `tenant_id` under forced row-level security; the services connect as
+`landbright_app` and run every query in `withTenant` (a transaction with `app.tenant_id` set). `oidc_payload` and
+`signing_key` are deployment-wide. The audit log is append-only and hash-chained per tenant. `ensureBootstrap`
+(`pnpm db:setup`) creates the tenant, *Landbright Admins*, the first administrator and the console's client.
+[directory.md](directory.md) and [sign-in.md](sign-in.md) describe the behaviour.
 
 ## What every service shares (`libs/platform`)
 
-- `startService`: Helmet security headers, the global `DefaultDenyGuard`, graceful shutdown, a listener on 127.0.0.1.
-- `DefaultDenyGuard` + `@Public()`: a route is closed unless marked public or a principal is on the request (wave 1
-  sets it from a session or bearer token).
-- `loadConfig` / `loadWorkspaceEnv`: zod-validated settings with development defaults; the workspace `.env` if any.
-- Health probes (`probe`, `probePostgres`, `probeValkey`, `probeHttp`), each bounded by a 2 s timeout, and
-  `livenessController`.
-- `startTelemetry` (`@landbright/platform/telemetry`): OpenTelemetry, imported first in each `main.ts`.
+- `startService` / `applyServiceDefaults`: Helmet (the idp sets a strict CSP for its pages), the global
+  `DefaultDenyGuard`, graceful shutdown, a listener on 127.0.0.1.
+- `DefaultDenyGuard` + `@Public()`: a route is closed unless marked public or a principal is on the request (control's
+  session middleware sets it from `lb_session`).
+- `loadConfig` / `loadWorkspaceEnv`, `issuerOf`: zod-validated settings with development defaults.
+- `crypto.ts`: HKDF-derived keys, AES-256-GCM sealing, derived client secrets, link tokens.
+- `createValkey`; health probes (each bounded by 2 s) and `livenessController`; `startTelemetry`.
 
 ## Contracts (`libs/contracts`)
 
-zod schemas are the source of truth for every wire shape. Control validates requests and serializes responses against
-them (`nestjs-zod`) and generates `/api/openapi.json` from them; the console parses responses with the same schemas.
-Built as ESM (console) and CommonJS (services).
+zod schemas are the source of truth for every wire shape: health, directory (people, agents, groups), applications,
+audit, session. Control validates requests and serializes responses against them (`nestjs-zod`) and generates
+`/api/openapi.json`; the console parses responses with the same schemas.
 
 ## Design tokens (`libs/tokens`, `@land/tokens`)
 
-Landflow's token blocks, verbatim, plus a Tailwind 4 `@theme` and base layer. A test fails when they drift from
-Landflow's `globals.css`.
+Landflow's token blocks, verbatim, plus a Tailwind 4 `@theme` and base layer. The idp's sign-in pages use them too. A
+test fails when they drift from Landflow's `globals.css`.
 
 ## Code map
 
 ```
-apps/idp/src/            main.ts · instrument.ts · app.module.ts
-apps/control/src/        main.ts · configure.ts (prefix, OpenAPI) · app.module.ts · infra/ · health/
-apps/console/src/        main.tsx · router.tsx · nav.ts · waves.ts · routes/ · components/{shell,ui}/ · lib/
-libs/platform/src/       config.ts · bootstrap.ts · auth/ · health/ · telemetry/
-libs/contracts/src/      health.ts
-libs/tokens/src/         tokens.css · theme.css
+apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,adapter,account,keys} ·
+                         interactions/ (sign-in, lockout) · invite/ · pages/ (server-rendered HTML)
+apps/control/src/        main.ts · configure.ts (prefix, origin check, session, OpenAPI) · auth/ (console sign-in) ·
+                         directory/ (people, agents, groups) · applications/ · audit/ · mail/ · health/ · common/
+apps/console/src/        router.tsx · nav.ts · routes/ · components/{shell,ui,directory}/ · lib/api.ts
+libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap}.ts
+libs/platform/src/       config.ts · crypto.ts · valkey.ts · bootstrap.ts · auth/ · health/ · telemetry/
+libs/contracts/src/      health · directory · applications · audit · session
+e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · signin.test.ts
 deploy/                  compose.infra.yml · infra/postgres/init.sql
 ```

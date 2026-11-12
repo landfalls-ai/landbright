@@ -7,10 +7,14 @@ Node 22.12 or later, pnpm 10, and OrbStack (Docker).
 ```bash
 pnpm install
 pnpm dev:up        # Postgres, Valkey, Mailpit, OpenBao (compose project landbright-infra), waits until healthy
+pnpm db:setup      # migrations, then the tenant, Landbright Admins, the first administrator, the console's client
 pnpm serve         # idp, control and the console, rebuilding on change
 ```
 
-Open <http://127.0.0.1:4400>. No `.env` is needed: every setting defaults to its development value. To change one,
+Open <http://127.0.0.1:4400> (use `127.0.0.1`, not `localhost`: sign-in returns to the console URL and the session
+cookie belongs to that host). Sign in as `admin@landbright.test` with the bootstrap password from `.env.example`. Mail
+(invites) lands in Mailpit at <http://127.0.0.1:57825>. No `.env` is needed: every setting defaults to its development
+value. To change one,
 copy `.env.example` to `.env` (app settings) or `deploy/.env.example` to `deploy/.env` (container ports).
 
 `pnpm dev:down` stops the infrastructure and keeps its volumes. OpenBao runs in dev mode and forgets everything when it
@@ -24,9 +28,9 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 | Port | What |
 |---|---|
 | 4400 | Console (Vite); `/api` is proxied to control |
-| 4401 | Control API; `/healthz`, `/api/health`, `/api/docs`, `/api/openapi.json` |
-| 4402 | Identity plane (idp); `/healthz` |
-| 57432 | Postgres 16: `landbright` (app), `landbright_test` (integration tests); user `landbright`, password `landbright-dev-only` |
+| 4401 | Control API; `/healthz`, `/api/*`, `/api/docs`, `/api/openapi.json` |
+| 4402 | Identity plane (idp); `/healthz`, the issuer at `/oidc`, sign-in and invite pages |
+| 57432 | Postgres 16: `landbright` (app), `landbright_test` (integration tests); owner `landbright` / `landbright-dev-only`, app role `landbright_app` / `landbright-app-dev-only` |
 | 57379 | Valkey 8 |
 | 57025 / 57825 | Mailpit SMTP / web UI |
 | 57200 | OpenBao (dev mode), root token `landbright-dev-only` |
@@ -37,8 +41,10 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 |---|---|
 | `pnpm verify` | Type check, lint, test and build every project. A change is done when this is green. |
 | `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` | Each step on its own (Nx; cached). |
-| `pnpm test:integration` | Tests against the compose stack (`pnpm dev:up` first). |
-| `pnpm --filter <project> test` | One project: `@landbright/control`, `@landbright/idp`, `@landbright/platform`, `@landbright/contracts`, `@landbright/console`, `@land/tokens`. |
+| `pnpm test:integration` | Tests against the compose stack (`pnpm dev:up` first): row-level security and the audit chain (`db`), control's health (`infra`), and end to end (`e2e`). |
+| `pnpm db:migrate` / `pnpm db:seed` / `pnpm db:setup` | Apply migrations (and the app role's development password); run the bootstrap; both. Idempotent. |
+| `pnpm --filter @landbright/persistence migrate:dev` | Create a migration after changing `prisma/schema.prisma`. Never reset the database; add a migration. |
+| `pnpm --filter <project> test` | One project: `@landbright/control`, `@landbright/idp`, `@landbright/persistence`, `@landbright/platform`, `@landbright/contracts`, `@landbright/console`, `@land/tokens`. |
 | `pnpm format` | Prettier. |
 
 ## Tests
@@ -46,9 +52,14 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 - Tests live in each project's `test/` folder and run with Vitest.
 - Nest projects compile tests with SWC (`vitest.config.mts`) because Nest needs decorator metadata. Workspace libraries
   resolve to their source, so a test never needs a build first.
-- Control's route tests fake Postgres and Valkey in memory and serve the identity plane, OpenBao and Mailpit from one
+- Control's route tests fake Postgres, Valkey and the session in memory and serve the identity plane, OpenBao and Mailpit from one
   local HTTP server. `health.integration.test.ts` runs the same code against the real stack.
-- Tests against real services skip unless `LANDBRIGHT_INTEGRATION` names them: `infra`, or `all`.
+- Tests against real services skip unless `LANDBRIGHT_INTEGRATION` names them: `infra`, `db`, `e2e`, or `all`.
+- Database tests use `landbright_test`, migrated on first use. Each end-to-end run creates its own tenant there
+  (`e2e-<time>`), so runs never see each other.
+- `e2e/` starts the **built** idp and control as processes on free ports against `landbright_test`, Valkey and
+  Mailpit, then drives them like a browser (`browser.ts`, a cookie jar per host) and like Landflow (`landflow-rp.ts`).
+  `pnpm test:integration` builds first; run alone, `pnpm build` then `pnpm --filter @landbright/e2e test:integration`.
 - The console's tests render the real router in jsdom with `fetch` stubbed (`apps/console/test/render.tsx`).
 - `@land/tokens` checks its copy against Landflow's `globals.css` when the Landflow checkout sits next to this repo
   (`LANDFLOW_DIR` points elsewhere).

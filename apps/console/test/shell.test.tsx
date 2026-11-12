@@ -5,10 +5,11 @@ import { renderAt, report } from './render';
 describe('Console shell', () => {
   it('groups the navigation as plan §6.2 does, and marks pages of later waves', async () => {
     renderAt('/', report());
-    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
     for (const group of ['Directory', 'Access', 'Connect', 'Govern'])
       expect(within(nav).getByText(group)).toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: /People/ })).toHaveTextContent('w1');
+    expect(within(nav).getByRole('link', { name: /Requests/ })).toHaveTextContent('w4');
+    expect(within(nav).getByRole('link', { name: /People/ })).not.toHaveTextContent(/w\d/);
     expect(within(nav).getByRole('link', { name: /Home/ })).not.toHaveTextContent(/w\d/);
   });
 

@@ -23,10 +23,12 @@ export interface NavItem {
   /** The wave that builds the page (docs/roadmap.md). Pages of later waves show what they will do. */
   wave: number;
   summary: string;
+  /** Comes later in its wave: still a placeholder while the wave is current. */
+  later?: boolean;
 }
 
 /** The current wave: pages with a higher wave are placeholders. */
-export const CURRENT_WAVE = 0;
+export const CURRENT_WAVE = 1;
 
 /** The sidebar, after Landflow's grouped shell (plan §6.2). */
 export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
@@ -154,7 +156,11 @@ export const SETTINGS: NavItem = {
   label: 'Settings',
   icon: Settings,
   wave: 1,
+  later: true,
   summary: 'The tenant, sign-in methods, signing keys and API credentials.',
 };
 
 export const ALL_PAGES: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), SETTINGS];
+
+/** Whether the page is still a placeholder. */
+export const isUpcoming = (item: NavItem): boolean => item.wave > CURRENT_WAVE || Boolean(item.later);

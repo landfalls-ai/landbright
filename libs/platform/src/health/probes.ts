@@ -1,6 +1,5 @@
 import type { ComponentHealth, ComponentKind } from '@landbright/contracts';
 import type { Redis } from 'ioredis';
-import type { Pool } from 'pg';
 
 /** How long one probe may take before it counts as down. The health page polls every 5 s, so stay well under. */
 export const PROBE_TIMEOUT_MS = 2000;
@@ -37,11 +36,10 @@ export async function probe(
   }
 }
 
-/** Postgres: a round trip on the pool, reporting the server version. */
-export function probePostgres(pool: Pool, target: string): Promise<ComponentHealth> {
+/** Postgres: a round trip that returns `SHOW server_version` (through whatever client the service uses). */
+export function probePostgres(serverVersion: () => Promise<string>, target: string): Promise<ComponentHealth> {
   return probe({ id: 'postgres', name: 'Postgres', kind: 'database', target }, async () => {
-    const result = await pool.query<{ server_version: string }>('SHOW server_version');
-    return `PostgreSQL ${result.rows[0]?.server_version.split(' ')[0] ?? ''}`.trim();
+    return `PostgreSQL ${(await serverVersion()).split(' ')[0] ?? ''}`.trim();
   });
 }
 

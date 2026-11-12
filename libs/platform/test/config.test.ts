@@ -6,7 +6,8 @@ describe('loadConfig', () => {
     const config = loadConfig({});
     expect(config.LANDBRIGHT_CONTROL_PORT).toBe(4401);
     expect(config.LANDBRIGHT_IDP_PORT).toBe(4402);
-    expect(config.LANDBRIGHT_DATABASE_URL).toContain('127.0.0.1:57432');
+    expect(config.LANDBRIGHT_DATABASE_URL).toContain('landbright_app:');
+    expect(config.LANDBRIGHT_DATABASE_ADMIN_URL).toContain('landbright:landbright-dev-only@');
   });
 
   it('coerces ports from strings', () => {

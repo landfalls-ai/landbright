@@ -1,0 +1,283 @@
+// Landbright's database. Tenant-owned tables carry tenant_id and are isolated by row-level security (forced, so even
+// the table owner obeys it); the app connects as landbright_app, which is not a superuser. Policies, grants and the
+// role live in the migrations' SQL. docs/directory.md describes how the data is kept.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Migrations run as the owner; the services connect as landbright_app (LANDBRIGHT_DATABASE_URL).
+  url      = env("LANDBRIGHT_DATABASE_ADMIN_URL")
+}
+
+/// A customer organization. Read before a tenant is known (by slug), so it has no row-level security; the app may
+/// only read it.
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("tenant")
+}
+
+enum IdentityKind {
+  person
+  agent
+  service
+
+  @@map("identity_kind")
+}
+
+enum IdentityStatus {
+  pre_hire
+  active
+  suspended
+  deactivated
+
+  @@map("identity_status")
+}
+
+/// Anyone or anything that can hold access: a person, an AI agent, a service.
+model Identity {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  kind        IdentityKind
+  status      IdentityStatus @default(active)
+  displayName String         @map("display_name")
+  /// Lowercased. Required for people; optional for agents and services.
+  email       String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  person      PersonProfile?
+  agent       AgentProfile?  @relation("AgentIdentity")
+  sponsoring  AgentProfile[] @relation("AgentSponsor")
+  memberships Membership[]
+  credentials Credential[]
+  invites     InviteToken[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, kind])
+  @@map("identity")
+}
+
+model PersonProfile {
+  identityId String    @id @map("identity_id") @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  givenName  String    @map("given_name")
+  familyName String    @map("family_name")
+  department String?
+  title      String?
+  site       String?
+  managerId  String?   @map("manager_id") @db.Uuid
+  startDate  DateTime? @map("start_date") @db.Date
+  endDate    DateTime? @map("end_date") @db.Date
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@map("person_profile")
+}
+
+enum RiskTier {
+  low
+  elevated
+  privileged
+
+  @@map("risk_tier")
+}
+
+enum AgentRuntime {
+  landflow
+  kagent
+  claude_code
+  external
+
+  @@map("agent_runtime")
+}
+
+enum ActFor {
+  anyone
+  sponsor
+  nobody
+
+  @@map("act_for")
+}
+
+/// An agent identity. Every agent has a sponsor: the person accountable for it (constitution principle III).
+model AgentProfile {
+  identityId         String       @id @map("identity_id") @db.Uuid
+  tenantId           String       @map("tenant_id") @db.Uuid
+  sponsorId          String       @map("sponsor_id") @db.Uuid
+  purpose            String
+  riskTier           RiskTier     @default(low) @map("risk_tier")
+  runtime            AgentRuntime @default(landflow)
+  homeProject        String?      @map("home_project")
+  maxTokenTtlSeconds Int          @default(900) @map("max_token_ttl_seconds")
+  actFor             ActFor       @default(sponsor) @map("act_for")
+
+  identity Identity @relation("AgentIdentity", fields: [identityId], references: [id], onDelete: Cascade)
+  sponsor  Identity @relation("AgentSponsor", fields: [sponsorId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, sponsorId])
+  @@map("agent_profile")
+}
+
+enum GroupKind {
+  static
+  birthright
+  jit
+
+  @@map("group_kind")
+}
+
+model Group {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  kind        GroupKind @default(static)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  members Membership[]
+
+  @@unique([tenantId, name])
+  @@map("group")
+}
+
+enum MembershipSource {
+  manual
+  hr
+  grant
+
+  @@map("membership_source")
+}
+
+model Membership {
+  tenantId   String           @map("tenant_id") @db.Uuid
+  groupId    String           @map("group_id") @db.Uuid
+  identityId String           @map("identity_id") @db.Uuid
+  source     MembershipSource @default(manual)
+  /// Set for just-in-time memberships (wave 4); the sweeper removes them.
+  expiresAt  DateTime?        @map("expires_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, identityId])
+  @@index([tenantId, identityId])
+  @@map("membership")
+}
+
+enum CredentialKind {
+  password
+  totp
+  passkey
+
+  @@map("credential_kind")
+}
+
+/// A way to sign in. Passwords are argon2id hashes; TOTP seeds and passkeys come later in wave 1.
+model Credential {
+  id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @map("tenant_id") @db.Uuid
+  identityId String         @map("identity_id") @db.Uuid
+  kind       CredentialKind
+  secret     String
+  createdAt  DateTime       @default(now()) @map("created_at")
+  lastUsedAt DateTime?      @map("last_used_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, identityId])
+  @@map("credential")
+}
+
+/// A one-time link to set a password, sent by email. Only the SHA-256 of the token is stored.
+model InviteToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  identityId String    @map("identity_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@map("invite_token")
+}
+
+/// An application that signs in with Landbright (an OIDC client). Its secret is never stored: it is derived from
+/// LANDBRIGHT_SECRET_KEY, the client id and secretVersion, shown once, and rotated by bumping the version.
+model OidcClient {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @map("tenant_id") @db.Uuid
+  clientId                String   @unique @map("client_id")
+  name                    String
+  redirectUris            String[] @map("redirect_uris")
+  postLogoutRedirectUris  String[] @map("post_logout_redirect_uris")
+  grantTypes              String[] @map("grant_types")
+  tokenEndpointAuthMethod String   @default("client_secret_basic") @map("token_endpoint_auth_method")
+  secretVersion           Int      @default(1) @map("secret_version")
+  /// Landbright's own console: managed by the bootstrap, not editable in the console.
+  system                  Boolean  @default(false)
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("oidc_client")
+}
+
+/// The audit log: append-only, hash-chained per tenant (each row's hash covers the previous row's hash).
+model AuditEvent {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   String   @map("tenant_id") @db.Uuid
+  at         DateTime @default(now())
+  actorId    String?  @map("actor_id") @db.Uuid
+  actorLabel String   @map("actor_label")
+  action     String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id")
+  data       Json     @default("{}")
+  prevHash   String   @map("prev_hash")
+  hash       String
+
+  @@index([tenantId, id])
+  @@map("audit_event")
+}
+
+/// Token-signing keys for the issuer. The private JWK is sealed (AES-256-GCM under LANDBRIGHT_SECRET_KEY).
+/// Deployment-wide: no tenant.
+model SigningKey {
+  kid              String    @id
+  alg              String
+  publicJwk        Json      @map("public_jwk")
+  sealedPrivateJwk String    @map("sealed_private_jwk")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  retiredAt        DateTime? @map("retired_at")
+
+  @@map("signing_key")
+}
+
+/// oidc-provider's storage: sessions, interactions, authorization codes, refresh tokens, grants. Deployment-wide.
+model OidcPayload {
+  id         String
+  type       String
+  payload    Json
+  grantId    String?   @map("grant_id")
+  userCode   String?   @map("user_code")
+  uid        String?
+  expiresAt  DateTime? @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+
+  @@id([id, type])
+  @@index([grantId])
+  @@index([uid])
+  @@index([userCode])
+  @@index([expiresAt])
+  @@map("oidc_payload")
+}

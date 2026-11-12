@@ -12,13 +12,22 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_CONSOLE_PORT` | `4400` | console (Vite) |
 | `LANDBRIGHT_CONTROL_PORT` | `4401` | control; the console's `/api` proxy |
 | `LANDBRIGHT_IDP_PORT` | `4402` | idp |
-| `LANDBRIGHT_IDP_URL` | `http://127.0.0.1:4402` | control (health probe). Wave 1: the issuer URL. |
-| `LANDBRIGHT_DATABASE_URL` | `postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright` | control |
-| `LANDBRIGHT_VALKEY_URL` | `redis://127.0.0.1:57379` | control |
-| `LANDBRIGHT_OPENBAO_ADDR` | `http://127.0.0.1:57200` | control (health probe). Wave 1: signing keys. |
-| `LANDBRIGHT_OPENBAO_TOKEN` | `landbright-dev-only` | Wave 1: signing keys |
-| `LANDBRIGHT_MAILPIT_URL` | `http://127.0.0.1:57825` | control (health probe) |
-| `LANDBRIGHT_INTEGRATION` | unset | Tests: comma-separated suites against real services (`infra`, `all`) |
+| `LANDBRIGHT_IDP_URL` | `http://127.0.0.1:4402` | The identity plane's public URL. The issuer is `<this>/oidc`; invite links point here. |
+| `LANDBRIGHT_CONSOLE_URL` | `http://127.0.0.1:4400` | Where console sign-in returns (`/api/auth/callback`), the only origin allowed to write to control, and the console client's redirect (set when `pnpm db:setup` creates it). |
+| `LANDBRIGHT_DATABASE_URL` | `postgres://landbright_app:landbright-app-dev-only@127.0.0.1:57432/landbright` | idp, control. The app role, under row-level security. |
+| `LANDBRIGHT_DATABASE_ADMIN_URL` | `postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright` | Migrations and the bootstrap only (a superuser bypasses row-level security). |
+| `LANDBRIGHT_TENANT_SLUG` / `_NAME` | `local` / `Local` | The tenant this deployment serves. The services refuse to start until it exists (`pnpm db:setup`). |
+| `LANDBRIGHT_SECRET_KEY` | a development value | Seals signing keys; derives client secrets and the identity plane's cookie keys. 32+ characters. Changing it ends every session, changes every client secret, and replaces the signing key. |
+| `LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL` | `admin@landbright.test` | The first administrator, created by `pnpm db:setup` if missing. |
+| `LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD` | `landbright-dev-only` | Their password (12+ characters). Used only when creating them. |
+| `LANDBRIGHT_SMTP_URL` | `smtp://127.0.0.1:57025` | control: invite mail (Mailpit). |
+| `LANDBRIGHT_MAIL_FROM` | `Landbright <no-reply@landbright.test>` | control: the From of invite mail. |
+| `LANDBRIGHT_VALKEY_URL` | `redis://127.0.0.1:57379` | idp (sign-in lockout), control (console sessions) |
+| `LANDBRIGHT_OPENBAO_ADDR` | `http://127.0.0.1:57200` | control (health probe) |
+| `LANDBRIGHT_OPENBAO_TOKEN` | `landbright-dev-only` | Not used yet (signing keys are in Postgres; docs/limitations.md) |
+| `LANDBRIGHT_MAILPIT_URL` | `http://127.0.0.1:57825` | control (health probe); the e2e test reads invites from it |
+| `LANDBRIGHT_INTEGRATION` | unset | Tests: comma-separated suites against real services (`infra`, `db`, `e2e`, or `all`) |
+| `LANDBRIGHT_TEST_DB_HOST` | `127.0.0.1:57432` | Tests: where `landbright_test` is |
 
 ## OpenTelemetry
 

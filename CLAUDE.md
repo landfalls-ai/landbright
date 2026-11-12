@@ -2,9 +2,11 @@
 
 The identity provider of the land-\* family, for people and AI agents. A pnpm + Nx monorepo: `apps/idp` (NestJS, the
 protocol plane: OIDC/OAuth, sign-in, JWKS), `apps/control` (NestJS, the console API, directory, access ledger),
-`apps/console` (React 19 + Vite, Landflow's look), `libs/contracts` (zod wire contracts), `libs/platform` (what every
+`apps/console` (React 19 + Vite, Landflow's look), `libs/contracts` (zod wire contracts), `libs/persistence` (Prisma, row-level security, the audit chain, the
+bootstrap), `libs/platform` (what every
 service shares: config, bootstrap, default-deny guard, health probes, telemetry), `libs/tokens` (`@land/tokens`, the
-design tokens shared with Landflow), and `deploy/` (compose infrastructure).
+design tokens shared with Landflow), `e2e/` (the built services driven like a browser and like Landflow), and `deploy/` (compose
+infrastructure).
 
 ## Read first
 
@@ -34,13 +36,15 @@ design tokens shared with Landflow), and `deploy/` (compose infrastructure).
   `nestjs-zod`, which also generates `/api/openapi.json`.
 - Nest code keeps value imports for injected classes (type-only imports erase decorator metadata).
 - Tests sit next to their package (`test/`). Tests against real services skip unless `LANDBRIGHT_INTEGRATION` names
-  them (`infra`, or `all`).
+  them (`infra`, `db`, `e2e`, or `all`).
+- Tenant data is read and written only inside `withTenant` (row-level security is forced). Every write appends an
+  audit event in the same transaction (`appendAudit`). Schema changes are new migrations; never reset the database.
 
 ## Checking a change
 
 ```bash
 pnpm verify                     # typecheck, lint, test, build: every project
-pnpm test:integration           # against the compose stack (pnpm dev:up first)
+pnpm test:integration           # against the compose stack (pnpm dev:up && pnpm db:setup first)
 ```
 
 ## Local only

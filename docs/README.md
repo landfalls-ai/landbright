@@ -13,6 +13,11 @@ access engine; Landfall signs in with it.
   [history.md](history.md) (every change in order).
 - [concept/index.html](concept/index.html): the concept page with suggestions and mockups.
 
+## Features
+
+- [sign-in.md](sign-in.md): the OIDC provider, sign-in, passwords, the console's sign-in, connecting Landflow.
+- [directory.md](directory.md): people, agents, groups, applications, the audit log.
+
 ## Reference
 
 - [reference/api.md](reference/api.md): every HTTP route.
@@ -23,7 +28,7 @@ access engine; Landfall signs in with it.
 | Feature | Page | Spec | Wave |
 |---|---|---|---|
 | Services, console shell, local stack, health, tracing | [development.md](development.md), [architecture.md](architecture.md) | [001-foundations](../specs/001-foundations/spec.md) | 0 ✓ |
-| People, agents, groups, OIDC sign-in | | | 1 |
+| People, agents, groups, applications, audit, OIDC sign-in | [sign-in.md](sign-in.md), [directory.md](directory.md) | [002-identity-core](../specs/002-identity-core/spec.md) | 1 (first slice ✓) |
 | SCIM provisioning to Landflow and Landfall | | | 2 |
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | | | 3 |
 | Just-in-time access: catalog, policies, requests, grants | | | 4 |
