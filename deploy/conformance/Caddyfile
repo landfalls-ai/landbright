@@ -1,0 +1,15 @@
+{
+	local_certs
+	skip_install_trust
+	auto_https disable_redirects
+	# A client that sends no SNI still gets this name's certificate.
+	default_sni idp.landbright.test
+	admin off
+}
+
+# The identity plane on the host, as https. Caddy keeps the Host header and sets X-Forwarded-Proto: https, which the
+# identity plane trusts only with LANDBRIGHT_TRUST_PROXY=true.
+https://idp.landbright.test:8443 {
+	tls internal
+	reverse_proxy {$LANDBRIGHT_IDP_UPSTREAM}
+}

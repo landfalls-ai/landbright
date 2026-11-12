@@ -9,3 +9,7 @@ deploy/.env
 *.log
 playwright-report/
 test-results/
+
+# The conformance run: the suite checkout and each run's config, logs and results.
+e2e/conformance/.suite/
+e2e/conformance/.run/

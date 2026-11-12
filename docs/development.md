@@ -44,6 +44,7 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 | `pnpm test:integration` | Tests against the compose stack (`pnpm dev:up` first): row-level security and the audit chain (`db`), control's health (`infra`), and end to end (`e2e`). |
 | `pnpm test:browser` | Real Chromium (Playwright) against the built idp, control and console: the console's pages and the sign-in pages, passkeys through Chrome's virtual authenticator. Needs the compose stack too. |
 | `pnpm screenshots` | The same story, writing every screen to `docs/screenshots/` ([screens.md](screens.md)). |
+| `pnpm conformance` | The OpenID Foundation conformance suite (OIDC basic plan) against a dedicated identity plane behind a TLS proxy, in Docker (compose project `landbright-conformance`); about two minutes. `--keep` leaves the suite running. Needs the compose stack and `pnpm build`. Results: [spec 002 plan](../specs/002-identity-core/plan.md#conformance-suite-t012b). |
 | `pnpm db:migrate` / `pnpm db:seed` / `pnpm db:setup` | Apply migrations (and the app role's development password); run the bootstrap; both. Idempotent. |
 | `pnpm --filter @landbright/persistence migrate:dev` | Create a migration after changing `prisma/schema.prisma`. Never reset the database; add a migration. |
 | `pnpm --filter <project> test` | One project: `@landbright/control`, `@landbright/idp`, `@landbright/persistence`, `@landbright/platform`, `@landbright/contracts`, `@landbright/console`, `@land/tokens`. |

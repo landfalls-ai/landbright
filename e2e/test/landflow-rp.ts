@@ -39,7 +39,8 @@ export class LandflowLikeRp {
     >;
   }
 
-  async authorizationUrl(): Promise<string> {
+  /** `extra` adds parameters Landflow doesn't send (prompt, other scopes), for cases beyond its own flow. */
+  async authorizationUrl(extra: Record<string, string> = {}): Promise<string> {
     const d = await this.discovery();
     const verifier = b64url(randomBytes(32));
     this.pending = { state: b64url(randomBytes(16)), nonce: b64url(randomBytes(16)), verifier };
@@ -52,13 +53,18 @@ export class LandflowLikeRp {
     url.searchParams.set('nonce', this.pending.nonce);
     url.searchParams.set('code_challenge', b64url(createHash('sha256').update(verifier).digest()));
     url.searchParams.set('code_challenge_method', 'S256');
+    for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
     return url.href;
   }
 
   /** Landflow's completeLogin: exchange, verify, then the role it would assign. */
-  async complete(
-    callback: string,
-  ): Promise<{ claims: Claims; role: 'admin' | 'member' | undefined; accessToken: string; idToken: string }> {
+  async complete(callback: string): Promise<{
+    claims: Claims;
+    role: 'admin' | 'member' | undefined;
+    accessToken: string;
+    idToken: string;
+    refreshToken?: string;
+  }> {
     const url = new URL(callback);
     const pending = this.pending!;
     if (url.searchParams.get('state') !== pending.state) throw new Error(`state mismatch: ${callback}`);
@@ -83,13 +89,20 @@ export class LandflowLikeRp {
     const tokens = (await response.json()) as {
       id_token?: string;
       access_token?: string;
+      refresh_token?: string;
       error?: string;
       error_description?: string;
     };
     if (!response.ok || !tokens.id_token)
       throw new Error(`token request failed: ${response.status} ${JSON.stringify(tokens)}`);
     const claims = await this.verifyIdToken(tokens.id_token, d.jwks_uri, pending.nonce);
-    return { claims, role: this.mappedRole(claims), accessToken: tokens.access_token!, idToken: tokens.id_token };
+    return {
+      claims,
+      role: this.mappedRole(claims),
+      accessToken: tokens.access_token!,
+      idToken: tokens.id_token,
+      refreshToken: tokens.refresh_token,
+    };
   }
 
   /** Landflow's mappedRole: the highest role any `roles` value maps to. */

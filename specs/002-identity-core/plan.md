@@ -114,22 +114,36 @@ Decisions:
 - **Keys stay deployment-wide** while one deployment serves one tenant; the rotation is audited in the
   administrator's tenant.
 
-## Conformance suite (T012b): what running it takes
+## Conformance suite (T012b)
 
-Investigated against the suite's current source (gitlab.com/openid/conformance-suite, `master`, November 2026); not
-run yet, because two of the steps are decisions.
+`pnpm conformance` runs the OpenID Foundation's suite on this machine (`e2e/conformance/run.ts`,
+`deploy/conformance/compose.yml`, compose project `landbright-conformance`). The two decisions the investigation
+raised were taken this way:
 
-- **The suite**: prebuilt images (`docker-compose-prebuilt.yml`: `registry.gitlab.com/openid/conformance-suite`,
-  its nginx, MongoDB) serve it at `https://localhost.emobix.co.uk:8443`, and `scripts/run-test-plan.py` runs a plan
-  headless with a JSON config whose `browser` section fills Landbright's sign-in form. The plan would be
-  `oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]`.
-- **Decision 1, PKCE.** The OIDC Core plans send no `code_challenge`; Landbright requires PKCE for every client (OAuth
-  2.1), so nearly every test would stop at the authorization request. Running the suite needs PKCE to be optional for
-  one marked conformance client (oidc-provider's `pkce.required` can decide per client). That relaxes a security rule,
-  even if only for a test client.
-- **Decision 2, TLS.** The suite fails discovery whose endpoints aren't `https` (`CheckDiscEndpointAllEndpointsAreHttps`
-  and its kin). The local identity plane is plain HTTP, so a TLS proxy (Caddy or the suite's nginx pattern) would front
-  it, and the issuer would be that proxy's URL.
-- **Networking.** The suite runs in Docker and must reach the issuer at the same URL as the discovery document says, so
-  a conformance run uses its own identity plane with `LANDBRIGHT_IDP_URL` set to a name both sides resolve (for
-  example `host.docker.internal` behind the proxy), on its own port, against `landbright_test`.
+- **PKCE stays required**, except for client ids named in `LANDBRIGHT_PKCE_OPTIONAL_CLIENTS`, which only the
+  conformance run sets, for its own three clients (the OIDC Core plans send no `code_challenge`). Empty by default.
+- **TLS from a proxy**: Caddy (`tls internal`) answers as `https://idp.landbright.test:8443` and forwards to a dedicated
+  identity plane on the host, which trusts `X-Forwarded-Proto` only with `LANDBRIGHT_TRUST_PROXY=true` (oidc-provider's
+  `proxy` and Express's `trust proxy`). The name has a dot because Java sends no SNI for a bare host name.
+
+The run: a fresh tenant in `landbright_test`, the identity plane issuing as the proxy's URL, three clients registered
+and audited (two `client_secret_basic`, one `client_secret_post`), the suite at release v5.3.4 (images and its runner
+script pinned), its browser scripted through Landbright's sign-in page and *Not now*. Nothing is published on a host
+port and nothing changes `/etc/hosts`. Log and exported results land in `e2e/conformance/.run/` (git-ignored).
+
+Result of `oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]`,
+12 November 2026: of 35 modules, **21 passed**, 5 warnings, 4 skipped, 4 for review, 1 failed.
+
+| Module | Result | Why |
+|---|---|---|
+| `oidcc-ensure-post-request-succeeds` | failed | POST to the authorization endpoint is off: oidc-provider allows it only with a `SameSite=None` session cookie. Left off (limitations.md). |
+| `oidcc-scope-profile` | warning | The userinfo response lacks profile claims Landbright doesn't hold (picture, locale, …). |
+| `oidcc-scope-email`, `oidcc-alternate-happy-flow` | warning | The ID token carries the email: Landbright puts the scopes' claims in the ID token because Landflow reads them there. |
+| `oidcc-ensure-request-with-acr-values-succeeds` | warning | No `acr` claim. |
+| `oidcc-claims-essential` | warning | The `claims` request parameter isn't supported. |
+| `oidcc-scope-address`, `-phone`, `-all`; `oidcc-unsigned-request-object-…` | skipped | Those scopes and request objects aren't supported (the suite accepts that). |
+| `oidcc-prompt-login`, `oidcc-max-age-1`, `oidcc-ensure-registered-redirect-uri`, `oidcc-ensure-request-object-with-redirect-uri` | review | The suite captured Landbright's sign-in or error page for a person to look at; it does that for every OP. |
+
+**Bug it found, fixed:** an application asking for `prompt=consent` (as `offline_access` needs) looped on
+`/interaction`: Landbright shows no consent screen, but the interaction must still answer the consent prompt
+(`{ consent: {} }`). The end-to-end tests now cover `prompt=consent` with `offline_access` and a refresh token.

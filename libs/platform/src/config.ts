@@ -39,6 +39,27 @@ export const ConfigSchema = z.object({
    * it signed still verify; the end-to-end tests shorten it to rotate twice in one run.
    */
   LANDBRIGHT_ID_TOKEN_TTL_SECONDS: z.coerce.number().int().min(5).max(86_400).default(3600),
+  /**
+   * Behind a TLS-terminating proxy: trust its X-Forwarded-Proto and X-Forwarded-For, so the identity plane knows it is
+   * served over https (secure cookies, correct URLs). Off by default; never on without a proxy in front.
+   */
+  LANDBRIGHT_TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /**
+   * Client ids that may skip PKCE, comma-separated. Empty by default: every client needs PKCE (OAuth 2.1). Only the
+   * OpenID conformance run sets it, for its own two clients, because the OIDC Core test plans send no code_challenge.
+   */
+  LANDBRIGHT_PKCE_OPTIONAL_CLIENTS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
   LANDBRIGHT_SMTP_URL: z.string().default('smtp://127.0.0.1:57025'),
   LANDBRIGHT_MAIL_FROM: z.string().default('Landbright <no-reply@landbright.test>'),
   /** The first administrator, created by the bootstrap (pnpm db:seed) if missing. */

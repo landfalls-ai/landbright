@@ -32,8 +32,9 @@ export class InteractionController {
     if (!details) return;
     if (details.uid !== uid) return this.page(res, 400, errorPage('This sign-in link doesn’t match your session.'));
     if (details.prompt.name !== 'login') {
-      // Consent is never needed (loadExistingGrant grants registered apps); finish with what was asked.
-      await this.oidc.current.interactionFinished(req, res, {}, { mergeWithLastSubmission: true });
+      // Consent is never shown (loadExistingGrant grants registered apps), but the prompt must be answered: an app that
+      // asks for prompt=consent (offline_access does) would otherwise come back here forever.
+      await this.oidc.current.interactionFinished(req, res, { consent: {} }, { mergeWithLastSubmission: true });
       return;
     }
     await this.renderLogin(res, uid, details, {

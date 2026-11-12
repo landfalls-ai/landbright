@@ -12,6 +12,7 @@ import { postgresAdapter } from './adapter';
  */
 export function createProvider(config: Config, prisma: PrismaClient, tenant: TenantRef, keys: SigningJwk[]): Provider {
   const secret = config.LANDBRIGHT_SECRET_KEY;
+  const pkceOptional = new Set(config.LANDBRIGHT_PKCE_OPTIONAL_CLIENTS);
   const configuration: Configuration = {
     adapter: postgresAdapter(prisma, tenant, secret),
     findAccount: (_ctx, sub) => loadAccount(prisma, tenant, sub),
@@ -21,7 +22,8 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
     scopes: ['openid', 'offline_access', 'email', 'profile', 'roles'],
     // Put the scope's claims in the ID token too: relying parties such as Landflow read email and roles from it.
     conformIdTokenClaims: false,
-    pkce: { required: () => true },
+    // PKCE for every client (OAuth 2.1), except client ids the conformance run names (LANDBRIGHT_PKCE_OPTIONAL_CLIENTS).
+    pkce: { required: (_ctx, client) => !pkceOptional.has(client.clientId) },
     responseTypes: ['code'],
     features: {
       devInteractions: { enabled: false },
@@ -74,5 +76,7 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
     },
   };
   const provider = new Provider(issuerOf(config), configuration);
+  // Behind a TLS proxy, trust X-Forwarded-Proto so cookies are secure and URLs say https.
+  provider.proxy = config.LANDBRIGHT_TRUST_PROXY;
   return provider;
 }

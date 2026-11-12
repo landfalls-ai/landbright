@@ -18,6 +18,7 @@
     "test:integration": "nx run-many -t test:integration --outputStyle=static",
     "test:browser": "nx run @landbright/e2e:test:browser --outputStyle=static",
     "screenshots": "nx run @landbright/e2e:screenshots --outputStyle=static",
+    "conformance": "nx run @landbright/e2e:conformance --outputStyle=static",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

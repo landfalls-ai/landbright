@@ -1,0 +1,75 @@
+# The OpenID Foundation conformance suite, run against a dedicated Landbright identity plane on this machine.
+#
+#   pnpm conformance     # e2e/conformance/run.ts starts the identity plane, then this stack, then the test plan
+#
+# Nothing here is published on a host port: the suite, its browser and the runner talk inside this network. Landbright's
+# identity plane runs on the host (127.0.0.1); Caddy terminates TLS in front of it as https://idp.landbright.test:8443,
+# because the suite checks that every endpoint is https. The suite itself answers as https://localhost.emobix.co.uk:8443
+# (its default name; the nginx alias makes it resolve inside this network, so no /etc/hosts change).
+# Images pinned to the suite release whose runner script we use (CONFORMANCE_SUITE_VERSION in run.ts).
+
+name: landbright-conformance
+
+services:
+  mongodb:
+    image: mongo:6.0.13
+    tmpfs:
+      - /data/db
+  server:
+    image: registry.gitlab.com/openid/conformance-suite:release-v5.3.4
+    environment:
+      BASE_URL: https://localhost.emobix.co.uk:8443
+      BASE_MTLS_URL: https://localhost.emobix.co.uk:8444
+      MONGODB_HOST: mongodb
+      # Development mode: the API needs no token. Never exposed outside this network.
+      SPRING_PROFILES_ACTIVE: dev
+      # The suite's own sign-in providers need values to start; unused here (development mode needs no sign-in).
+      OIDC_GOOGLE_CLIENTID: google-client
+      OIDC_GOOGLE_SECRET: google-secret
+      OIDC_GITLAB_CLIENTID: gitlab-client
+      OIDC_GITLAB_SECRET: gitlab-secret
+    depends_on:
+      - mongodb
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:release-v5.3.4
+    networks:
+      default:
+        aliases:
+          - localhost.emobix.co.uk
+    depends_on:
+      - server
+  # TLS in front of the identity plane on the host. Caddy's own local CA; the suite does not check certificates.
+  idp-tls:
+    image: caddy:2.10-alpine
+    environment:
+      LANDBRIGHT_IDP_UPSTREAM: ${LANDBRIGHT_IDP_UPSTREAM:-host.docker.internal:4402}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      default:
+        aliases:
+          - idp.landbright.test
+  # The suite's own runner script (scripts/run-test-plan.py at the pinned release), started by run.ts.
+  runner:
+    image: python:3.13-slim
+    profiles: [run]
+    environment:
+      CONFORMANCE_SERVER: https://localhost.emobix.co.uk:8443/
+      CONFORMANCE_DEV_MODE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    volumes:
+      - ${CONFORMANCE_SCRIPTS:-./unset}:/suite:ro
+      - ${CONFORMANCE_RUN:-./unset}:/run-dir
+    working_dir: /run-dir
+    entrypoint:
+      [
+        '/bin/sh',
+        '-c',
+        'pip install -q --root-user-action=ignore httpx==0.28.1 pyparsing==3.2.3 && exec python /suite/run-test-plan.py "$@"',
+        '--',
+      ]
+    depends_on:
+      - nginx
+      - idp-tls

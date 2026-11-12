@@ -28,3 +28,37 @@ Landbright decides and remembers; Landflow acts.
 ![Inside Landbright: the administrator uses the console, which calls the control API; people sign in to apps on the identity plane's pages; both services use Postgres and Valkey; control sends invites through Mailpit.](diagrams/inside.svg)
 
 [architecture.md](architecture.md) has the code map behind each box, and [development.md](development.md) the ports.
+
+## Try it: Landflow signs in through Landbright
+
+The real Landflow, unchanged, as a relying party of the development Landbright (`pnpm serve`). It runs from Landflow's
+own image as a throwaway instance with its own data, so the Landflow you use day to day isn't touched. Screens:
+[screens.md](screens.md#in-the-real-landflow).
+
+1. Build Landflow's image in the Landflow repository (`landflow/host:dev`, its `docs/deployment.md`).
+2. In Landbright's console, **Applications → Register**: name *Landflow*, client id `landflow-local`, redirect URL
+   `http://localhost:57300/api/auth/oidc/callback`. Copy the secret.
+3. **Groups**: *Landflow Admins* and *Landflow Editors*, with people in them. Group names are the `roles` claim.
+4. An env file (mode 600, outside the repository):
+
+   ```bash
+   LANDFLOW_OIDC_ISSUER=http://localhost:4402/oidc
+   LANDFLOW_OIDC_CLIENT_ID=landflow-local
+   LANDFLOW_OIDC_CLIENT_SECRET=<the secret>
+   LANDFLOW_OIDC_SCOPES=openid email profile roles
+   LANDFLOW_OIDC_ROLE_MAP=Landflow Admins=admin,Landflow Editors=member
+   LANDFLOW_OIDC_DEFAULT_ROLE=none
+   LANDFLOW_OIDC_LABEL=Sign in with Landbright
+   ```
+
+5. `LANDFLOW_OIDC_ENV_FILE=<that file> docker compose -f deploy/landflow/compose.yml up -d --wait`, then open
+   http://localhost:57300 and choose *Sign in with Landbright*. `docker compose -f deploy/landflow/compose.yml down -v`
+   removes it.
+
+The container uses host networking so `http://localhost:4402` is the same issuer for the browser and for Landflow's
+back channel. `LANDFLOW_OIDC_DEFAULT_ROLE=none` makes Landflow refuse anyone in neither group.
+
+What the live check showed (wave 1): the administrator arrives as a Landflow admin and Tal as a member, both marked as
+single sign-on users; once Tal is deactivated in Landbright, Landbright refuses the password. A Landflow session that
+already exists stays open until it ends: Landflow hears about deactivation only when SCIM or the webhooks arrive
+(waves 2 and 3).

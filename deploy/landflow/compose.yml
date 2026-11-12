@@ -1,0 +1,43 @@
+# Landflow signing in through Landbright, on this machine: Landflow's own image (landflow/host:dev, built in the Landflow
+# repository), a throwaway instance with its own data volume, so the Landflow you run day to day is untouched.
+#
+#   LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env docker compose -f deploy/landflow/compose.yml up -d --wait
+#   open http://localhost:57300 → "Sign in with Landbright"
+#   docker compose -f deploy/landflow/compose.yml down -v
+#
+# The env file holds LANDFLOW_OIDC_* (docs/suite.md, "Try it: Landflow signs in through Landbright"): the client id and
+# secret from registering Landflow in the console, and the role map from Landbright's group names.
+# Host networking (OrbStack): Landbright's issuer is http://localhost:4402, the same URL for the browser and for
+# Landflow's back channel, which a bridged container could not reach. Landflow listens on 127.0.0.1:57300 only.
+
+name: landbright-landflow
+
+services:
+  landflow:
+    image: landflow/host:dev
+    network_mode: host
+    init: true
+    env_file:
+      - ${LANDFLOW_OIDC_ENV_FILE:?the LANDFLOW_OIDC_* file}
+    environment:
+      HOSTNAME: 127.0.0.1
+      PORT: '57300'
+      LANDFLOW_DATA_DIR: /data
+      LANDFLOW_PUBLIC_URL: http://localhost:57300
+      LANDFLOW_INTERNAL_URL: http://127.0.0.1:57300
+      LANDFLOW_SCAN_ON_START: 'false'
+      LANDFLOW_LOG_LEVEL: info
+      # A local owner too, so password sign-in still works next to single sign-on (Landflow's development values).
+      LANDFLOW_OWNER_EMAIL: owner@landflow.test
+      LANDFLOW_OWNER_PASSWORD: landflow-dev-only
+      LANDFLOW_OWNER_NAME: Owner
+    volumes:
+      - landflow-data:/data
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:57300/api/health']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+volumes:
+  landflow-data:

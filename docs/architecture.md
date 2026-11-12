@@ -58,5 +58,7 @@ libs/platform/src/       config.ts · crypto.ts · valkey.ts · bootstrap.ts · 
 libs/contracts/src/      health · directory · applications · audit · session
 e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · authenticator.ts · signin.test.ts
 e2e/browser/             console.spec.ts (Playwright: the console and sign-in pages in Chromium; the screenshots)
-deploy/                  compose.infra.yml · infra/postgres/init.sql
+e2e/conformance/         run.ts (pnpm conformance: the OpenID conformance suite against a dedicated identity plane)
+deploy/                  compose.infra.yml · infra/postgres/init.sql · conformance/ (suite, TLS proxy) ·
+                         landflow/ (a throwaway Landflow signing in through Landbright)
 ```

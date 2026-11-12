@@ -18,6 +18,8 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_DATABASE_ADMIN_URL` | `postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright` | Migrations and the bootstrap only (a superuser bypasses row-level security). |
 | `LANDBRIGHT_TENANT_SLUG` / `_NAME` | `local` / `Local` | The tenant this deployment serves. The services refuse to start until it exists (`pnpm db:setup`). |
 | `LANDBRIGHT_ID_TOKEN_TTL_SECONDS` | `3600` | How long an ID token lives. A signing-key rotation keeps the replaced key published at least this long after it stops signing. The end-to-end tests use 15 to rotate twice in one run. |
+| `LANDBRIGHT_TRUST_PROXY` | `false` | Behind a TLS-terminating proxy: trust its `X-Forwarded-*` headers (secure cookies, `https` URLs, the client address for lockout and audit). Only with a proxy in front; the conformance run sets it. |
+| `LANDBRIGHT_PKCE_OPTIONAL_CLIENTS` | empty | Client ids that may skip PKCE, comma-separated. Every other client needs PKCE. Only the conformance run sets it, for its own clients. |
 | `LANDBRIGHT_SECRET_KEY` | a development value | Seals signing keys; derives client secrets and the identity plane's cookie keys. 32+ characters. Changing it ends every session, changes every client secret, and replaces the signing key. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL` | `admin@landbright.test` | The first administrator, created by `pnpm db:setup` if missing. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD` | `landbright-dev-only` | Their password (12+ characters). Used only when creating them. |

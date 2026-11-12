@@ -30,6 +30,9 @@ First slice done on 2026-11-12.
 - [x] T012a Playwright for the console and sign-in pages (`e2e/browser/`): the administrator builds the directory
       in the console, people set passwords from the invite, add a passkey (Chrome's virtual authenticator) or an
       authenticator app and sign in to a Landflow-shaped app; every screen captured to `docs/screenshots/`.
-- [ ] T012b The OpenID conformance suite in Docker. Investigated, not run: it needs two decisions first (plan.md,
-      *Conformance suite*).
-- [ ] T013 A live sign-in to a running Landflow (needs Landflow's `.env`; ask first).
+- [x] T012b The OpenID conformance suite in Docker (`pnpm conformance`): the OIDC basic plan, 35 modules, 21 passed,
+      5 warnings, 4 skipped, 4 for review, 1 failed (POST to the authorization endpoint, left off). It found the
+      `prompt=consent` loop, fixed (plan.md, *Conformance suite*).
+- [x] T013 A live sign-in to the real Landflow: its own image as a throwaway instance (`deploy/landflow/compose.yml`,
+      so the Landflow in use isn't touched), registered in the development Landbright; an admin and a member by group,
+      and a deactivated person refused ([suite.md](../../docs/suite.md#try-it-landflow-signs-in-through-landbright)).

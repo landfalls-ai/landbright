@@ -26,8 +26,9 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **Revocation stops at Landbright.** Deactivating a person revokes their sessions and tokens at the identity plane at
   once, but an application that checked the ID token only at sign-in keeps its own session until it ends. Pushing the
   change (SCIM, back-channel logout) is wave 2.
-- **Landflow in a container can't use `localhost:4402`.** Landflow takes every endpoint from the discovery document,
-  so the issuer must be reachable from both the browser and the container. Run Landflow on the host for now.
+- **Landflow in a bridged container can't use `localhost:4402`.** Landflow takes every endpoint from the discovery
+  document, so the issuer must be reachable from both the browser and the container. Run Landflow on the host, or in a
+  container with host networking as `deploy/landflow/compose.yml` does ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
 - **Landflow must ask for the `roles` scope** (`LANDFLOW_OIDC_SCOPES="openid email profile roles"`); its default
   doesn't, and then everyone lands with Landflow's default role.
 - **Agents are directory entries only.** No credentials, tokens or Landflow sync until wave 5.
@@ -36,9 +37,13 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **Sign-in lockout fails open.** When Valkey is down, failed sign-ins aren't counted, so there is no lockout until it
   is back.
 - **The console's Applications page can't edit redirect URIs** (the API can: `PATCH /api/applications/:id`).
-- **No conformance suite yet.** The end-to-end tests drive the services over HTTP and in Chromium (Playwright, one
-  browser); the OpenID conformance suite is still to come: it needs PKCE to be optional for a conformance client
-  and TLS in front of the identity plane, both open decisions ([spec 002 plan](../specs/002-identity-core/plan.md#conformance-suite-t012b-what-running-it-takes)). Firefox and Safari aren't covered.
+- **The authorization endpoint takes GET only.** OIDC Core says it must take POST too; oidc-provider turns POST off
+  unless the session cookie is `SameSite=None`, which lets other sites' forms carry it. Left off until there is a
+  client that needs POST; the one OpenID conformance test that checks it fails
+  ([spec 002 plan](../specs/002-identity-core/plan.md#conformance-suite-t012b)).
+- **Other conformance warnings, by choice or not yet.** The ID token carries the scopes' claims (email, name, roles)
+  because Landflow reads them there; no `acr` claim; no `address` or `phone` scopes; no `claims` request parameter; no
+  request objects (refused with `request_not_supported`). Firefox and Safari aren't covered by the browser tests.
 - **No Kubernetes manifests.** The plan's `landbright-dev` namespace on OrbStack comes when there is something worth
   running there; compose and `pnpm serve` cover development.
 - **The console is one bundle.** Route-level splitting waits until it matters.

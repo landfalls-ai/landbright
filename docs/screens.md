@@ -117,3 +117,29 @@ Run `pnpm screenshots` to capture them again (see [development.md](development.m
 **The dark theme.**
 
 ![The dark theme.](screenshots/26-people-dark.png)
+
+## In the real Landflow
+
+Landflow's own image (`landflow/host:dev`), a throwaway instance from [`deploy/landflow/compose.yml`](../deploy/landflow/compose.yml),
+signing in through the development Landbright ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
+Captured by hand in the wave 1 live check, not by `pnpm screenshots`.
+
+**Landflow's sign-in page with single sign-on configured.**
+
+![Landflow's sign-in page with a "Sign in with Landbright" button.](screenshots/30-real-landflow-sign-in.png)
+
+**Landbright's sign-in page, for Landflow.**
+
+![Landbright's sign-in page, "to continue to Landflow".](screenshots/31-real-landflow-landbright-page.png)
+
+**Tal, in the group Landflow Editors, arrives as a member.**
+
+![Landflow's home page, signed in as Tal Levi, Member.](screenshots/32-real-landflow-member.png)
+
+**The administrator, in Landflow Admins, arrives as an admin.**
+
+![Landflow's home page, signed in as Administrator, Admin.](screenshots/33-real-landflow-admin.png)
+
+**After Tal is deactivated in Landbright, the same password stops at Landbright's sign-in page.**
+
+![Landbright's sign-in page with the alert "That email and password don't match."](screenshots/34-real-landflow-deactivated.png)

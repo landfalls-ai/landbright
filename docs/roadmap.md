@@ -46,5 +46,11 @@ captures every screen ([screens.md](screens.md)).
 
 Signing keys rotate from Settings, with the replaced key published until its ID tokens expire.
 
-Still to come in wave 1: the OpenID conformance suite (two decisions first: PKCE for a conformance client, TLS in front), a
-live sign-in to a running Landflow.
+The OpenID conformance suite runs locally (`pnpm conformance`): 21 of 35 modules of the OIDC basic plan pass, the
+rest are warnings, skips and reviews by choice, and one failure (POST to the authorization endpoint) is left off on
+purpose. It found a bug, fixed: `prompt=consent` looped.
+
+The real Landflow signs in through Landbright: its own image, a throwaway instance, groups mapped to its roles, and a
+deactivated person refused ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
+
+Wave 1 is complete.

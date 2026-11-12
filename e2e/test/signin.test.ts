@@ -212,6 +212,17 @@ describe.skipIf(!e2eEnabled)('sign-in end to end', () => {
     accessToken = result.accessToken;
   });
 
+  it('answers prompt=consent without a screen, and offline_access gets a refresh token', async () => {
+    // Found by the OpenID conformance suite: the consent prompt was never answered, so the browser looped on /interaction.
+    const browser = new Browser();
+    const back = (u: URL) => u.href.startsWith('http://127.0.0.1:3000/');
+    const url = await rp.authorizationUrl({ prompt: 'consent', scope: 'openid offline_access' });
+    const landed = await signIn(browser, url, maya.email!, mayaPassword, back);
+    const result = await rp.complete(landed.url);
+    expect(result.claims.sub).toBe(maya.id);
+    expect(result.refreshToken).toBeTruthy();
+  });
+
   it('refuses a wrong password, a wrong secret and a wrong redirect', async () => {
     const browser = new Browser();
     const back = (u: URL) => u.href.startsWith('http://127.0.0.1:3000/');

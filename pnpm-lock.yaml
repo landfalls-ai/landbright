@@ -281,6 +281,9 @@ importers:
       '@landbright/persistence':
         specifier: workspace:*
         version: link:../libs/persistence
+      '@landbright/platform':
+        specifier: workspace:*
+        version: link:../libs/platform
       '@playwright/test':
         specifier: 1.62.0
         version: 1.62.0

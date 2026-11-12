@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type { HelmetOptions } from 'helmet';
-import { urlencoded } from 'express';
+import { urlencoded, type Express } from 'express';
+import { loadConfig } from '@landbright/platform';
 import type { OidcProviderRef } from './oidc/provider-ref';
 import { OIDC_PROVIDER, VALKEY } from './valkey';
 import type { Redis } from 'ioredis';
@@ -27,6 +28,8 @@ export const IDP_HELMET: HelmetOptions = {
 
 /** Form bodies for Landbright's own pages, and oidc-provider under /oidc (it parses its own bodies). */
 export function configureIdp(app: INestApplication): void {
+  // Behind a TLS proxy (LANDBRIGHT_TRUST_PROXY), the client address is the one the proxy saw, for lockout and audit.
+  if (loadConfig().LANDBRIGHT_TRUST_PROXY) (app.getHttpAdapter().getInstance() as Express).set('trust proxy', 1);
   app.use(['/interaction', '/invite'], urlencoded({ extended: false, limit: '16kb' }));
   app.use('/oidc', app.get<OidcProviderRef>(OIDC_PROVIDER).middleware);
   // Close Valkey with the app (the Nest provider has no lifecycle hook of its own).
