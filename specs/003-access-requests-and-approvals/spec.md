@@ -1,6 +1,6 @@
 # Feature 003: Access requests, the Landbright Trigger, and approval flows in Landflow
 
-**Status**: proposed 2026-11-12 (plan reviewed against Landflow's live source; not started) · **Plan**: [plan.md](plan.md)
+**Status**: proposed 2026-11-12; its first slice was built by [spec 004](../004-access-and-events/spec.md) on 2026-11-14, with changes (no Landflow change: JWT deliveries checked against Landbright's JWKS instead of a Landbright Trigger with Standard Webhooks; the audit log as the outbox) · **Plan**: [plan.md](plan.md)
 
 ## Why
 

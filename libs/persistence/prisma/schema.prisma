@@ -51,6 +51,8 @@ model Identity {
   displayName String         @map("display_name")
   /// Lowercased. Required for people; optional for agents and services.
   email       String?
+  /// The last time they signed in to Landbright (any application). Lifecycle flows find inactive people with it.
+  lastSignInAt DateTime?     @map("last_sign_in_at")
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
@@ -162,8 +164,10 @@ model Membership {
   groupId    String           @map("group_id") @db.Uuid
   identityId String           @map("identity_id") @db.Uuid
   source     MembershipSource @default(manual)
-  /// Set for just-in-time memberships (wave 4); the sweeper removes them.
+  /// Set for just-in-time memberships; the sweeper removes them.
   expiresAt  DateTime?        @map("expires_at")
+  /// The grant that added a `grant` membership. A person who was already in the group keeps their standing row.
+  grantId    String?          @map("grant_id") @db.Uuid
   createdAt  DateTime         @default(now()) @map("created_at")
 
   group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
@@ -233,6 +237,8 @@ model OidcClient {
   grantTypes              String[] @map("grant_types")
   tokenEndpointAuthMethod String   @default("client_secret_basic") @map("token_endpoint_auth_method")
   secretVersion           Int      @default(1) @map("secret_version")
+  /// What the application may do as itself on the machine API (client credentials): requests:read, grants:record…
+  apiScopes               String[] @default([]) @map("api_scopes")
   /// Landbright's own console: managed by the bootstrap, not editable in the console.
   system                  Boolean  @default(false)
   createdAt               DateTime @default(now()) @map("created_at")
@@ -290,4 +296,226 @@ model OidcPayload {
   @@index([userCode])
   @@index([expiresAt])
   @@map("oidc_payload")
+}
+
+// ── Just-in-time access (spec 004) ───────────────────────────────────────────────────────────────────────────────
+// A bundle is what people ask for; its policy says who may ask, who decides and for how long. Requests, votes and
+// grants are projections whose every change is a hash-chained audit event (request.created, grant.activated, …): the
+// audit log is the ledger, and those events are what Landflow flows receive.
+
+/// Something people can ask for: Landbright groups (given and taken back by Landbright) and targets a Landflow flow
+/// provisions (a Landflow project role, a GitHub team…).
+model AccessBundle {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  /// Who answers for the bundle: the approver of last resort, and who hears about failures.
+  ownerId     String?  @map("owner_id") @db.Uuid
+  /// Landbright groups the grant adds the subject to.
+  groupIds    String[] @map("group_ids") @db.Uuid
+  /// Targets a flow provisions: [{ key, type, label, config }].
+  targets     Json     @default("[]")
+  /// The policy (libs/contracts `AccessPolicy`): eligibility, steps, durations, reason, ticket, deadlines, agents.
+  policy      Json
+  /// Stops new requests and decisions; live grants run out on their own.
+  disabled    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  requests AccessRequest[]
+  @@unique([tenantId, name])
+  @@map("access_bundle")
+}
+
+enum AccessRequestStatus {
+  pending
+  approved
+  denied
+  expired
+  cancelled
+  superseded
+  @@map("access_request_status")
+}
+
+model AccessRequest {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  /// REQ-128: per tenant, for people.
+  number          Int
+  bundleId        String              @map("bundle_id") @db.Uuid
+  /// Who asked (a person, or an agent's identity).
+  requesterId     String              @map("requester_id") @db.Uuid
+  /// Who gets the access.
+  subjectId       String              @map("subject_id") @db.Uuid
+  /// For an agent's request: the person it acts for (from the token's act chain), who then can't approve it.
+  actingForId     String?             @map("acting_for_id") @db.Uuid
+  /// portal, api, agent, slack, landfall.
+  source          String
+  reason          String?
+  /// { system, id, url }
+  ticket          Json?
+  durationSeconds Int                 @map("duration_seconds")
+  startsAt        DateTime?           @map("starts_at")
+  deadline        DateTime
+  status          AccessRequestStatus @default(pending)
+  /// reviewed, auto, break_glass: how an approved request was approved.
+  method          String?
+  /// The policy as it was when the request was made, and the approvers it named then (per step).
+  policySnapshot  Json                @map("policy_snapshot")
+  approvers       Json
+  currentStep     Int                 @default(0) @map("current_step")
+  /// { rule, evidence, evaluatedAt } when an auto-approve rule passed; { reason, reviewDueAt, reviewedBy? } for
+  /// break-glass.
+  autoApproval    Json?               @map("auto_approval")
+  breakGlass      Json?               @map("break_glass")
+  closingReason   String?             @map("closing_reason")
+  decidedAt       DateTime?           @map("decided_at")
+  supersededById  String?             @map("superseded_by_id") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  bundle    AccessBundle     @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  decisions AccessDecision[]
+  grant     AccessGrant?
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@index([tenantId, subjectId])
+  @@map("access_request")
+}
+
+/// One person's vote on a request. One per person per request.
+model AccessDecision {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  requestId   String   @map("request_id") @db.Uuid
+  stepIndex   Int      @map("step_index")
+  deciderId   String   @map("decider_id") @db.Uuid
+  /// approve or deny
+  outcome     String
+  comment     String?
+  /// landbright (the decision page), later chat:slack, chat:email, landflow-inbox
+  channel     String
+  /// signed-in, chat, attested
+  assurance   String
+  /// The service that carried a relayed vote (phase 4); null for the decision page.
+  submittedBy String?  @map("submitted_by")
+  at          DateTime @default(now())
+  request AccessRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  @@unique([requestId, deciderId])
+  @@map("access_decision")
+}
+
+enum GrantStatus {
+  scheduled
+  active
+  expired
+  revoked
+  @@map("grant_status")
+}
+
+model AccessGrant {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  requestId      String      @unique @map("request_id") @db.Uuid
+  bundleId       String      @map("bundle_id") @db.Uuid
+  subjectId      String      @map("subject_id") @db.Uuid
+  status         GrantStatus
+  startsAt       DateTime    @map("starts_at")
+  activatedAt    DateTime?   @map("activated_at")
+  expiresAt      DateTime    @map("expires_at")
+  closedAt       DateTime?   @map("closed_at")
+  /// expired, revoked_by_requester, revoked_by_admin, leaver, bundle_disabled
+  closingReason  String?     @map("closing_reason")
+  expiringSentAt DateTime?   @map("expiring_sent_at")
+  overdueSentAt  DateTime?   @map("overdue_sent_at")
+  isBreakGlass   Boolean     @default(false) @map("is_break_glass")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  request AccessRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  targets GrantTarget[]
+  @@index([tenantId, status])
+  @@index([tenantId, subjectId])
+  @@map("access_grant")
+}
+
+/// One thing a grant gives, with its own provisioning state, apart from the grant's.
+model GrantTarget {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  grantId     String    @map("grant_id") @db.Uuid
+  /// group:<id> for a Landbright group; the bundle target's key otherwise.
+  key         String
+  type        String
+  label       String
+  /// landbright (a group membership, done in the same transaction) or flow (a Landflow flow reports it).
+  managedBy   String    @map("managed_by")
+  /// pending, provisioned, failed, revoked, revoke_failed, verified, drift
+  status      String
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  externalRef String?   @map("external_ref")
+  updatedBy   String?   @map("updated_by")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  grant AccessGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  @@unique([grantId, key])
+  @@map("grant_target")
+}
+
+/// A note a service keeps on a request or grant (Landflow's run, the Slack messages it posted), with a version for
+/// compare-and-swap. Keys are namespaced by the service that writes them (landflow.*).
+model Annotation {
+  tenantId   String   @map("tenant_id") @db.Uuid
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id") @db.Uuid
+  key        String
+  value      Json
+  version    Int      @default(1)
+  updatedBy  String   @map("updated_by")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  @@id([targetId, key])
+  @@index([tenantId])
+  @@map("annotation")
+}
+
+// ── Events out (spec 004): Keycloak's event listeners, as signed deliveries to Landflow flows ────────────────────
+
+/// Where events go: a Landflow Webhook trigger's URL. Every audit event whose action matches `events` is delivered,
+/// signed as a JWT with Landbright's own key (Landflow's JWT Auth checks it against the issuer's JWKS).
+model EventSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  url         String
+  /// Exact actions (request.created) or prefixes (grant.*, identity.*).
+  events      String[]
+  description String?
+  /// The `aud` claim of each delivery; Landflow's credential can require it.
+  audience    String
+  disabled    Boolean  @default(false)
+  /// The last audit event id this subscription has been matched against.
+  cursor      BigInt   @default(0)
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  deliveries EventDelivery[]
+  @@index([tenantId])
+  @@map("event_subscription")
+}
+
+model EventDelivery {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  subscriptionId String    @map("subscription_id") @db.Uuid
+  auditEventId   BigInt    @map("audit_event_id")
+  action         String
+  /// pending, delivered, failed
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  nextAttemptAt  DateTime  @default(now()) @map("next_attempt_at")
+  lastStatus     Int?      @map("last_status")
+  lastError      String?   @map("last_error")
+  /// Landflow's answer: { executionId, status } from a Webhook trigger set to respond immediately.
+  response       Json?
+  deliveredAt    DateTime? @map("delivered_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  subscription EventSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  @@unique([subscriptionId, auditEventId])
+  @@index([tenantId, status, nextAttemptAt])
+  @@map("event_delivery")
 }

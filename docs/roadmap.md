@@ -10,7 +10,7 @@ and in the browser, and its bugs fixed in the same wave. The console's Home page
 | **1. Identity core and sign-in** | In progress: identity core, the second step and passkeys done 2026-11-12 ([spec 002](../specs/002-identity-core/spec.md)) | A person created in the console signs into Landflow over OIDC and lands with the role their group maps to |
 | **2. Provisioning out** | Planned | Deactivating a person signs them out of Landflow within seconds |
 | **3. Landflow plugins and HR lifecycle** | Planned | A signed HiBob `employee.joined` creates the person and adds birthright groups |
-| **4. Just-in-time access** | Planned | Editor on a Landflow project for 2 hours: requested, approved in Slack, granted, removed at expiry |
+| **4. Just-in-time access** | First slice done 2026-11-14, ahead of waves 2–3 ([spec 004](../specs/004-access-and-events/spec.md)) | Editor on a Landflow project for 2 hours: requested, approved in Slack, granted, removed at expiry |
 | **5. Agentic identity** | Planned | A Landflow agent gets 15 minutes of read access with its sponsor's approval; the token names both |
 | **6. Policy, reviews, signals** | Planned | A sev1 Landfall incident gives the on-call responder the incident bundle until the room closes |
 
@@ -54,3 +54,24 @@ The real Landflow signs in through Landbright: its own image, a throwaway instan
 deactivated person refused ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
 
 Wave 1 is complete.
+
+## Wave 4: what the first slice built (ahead of order)
+
+The user asked for two studies: Keycloak, reverse-engineered with Craft Anything, and the open-source just-in-time
+access projects. They also set one rule: the flows are Landflow flows. Both studies said the same thing: Landbright
+decides, records and emits; Landflow runs the processes ([spec 004](../specs/004-access-and-events/spec.md)).
+
+- **Access**: bundles with policies (steps, approver fallback, durations, reason and ticket, auto-approve with
+  evidence, break-glass, escalation), requests with numbered references, decisions by signed-in people the policy names
+  (standing memberships only, deny wins), grants that add and remove group memberships, and per-target state for what
+  flows provision ([access.md](access.md)).
+- **Events out**: every audit event, delivered at least once as a JWT signed with the issuer's key, with retries and
+  resend; waits that wake a Landflow run ([events.md](events.md)).
+- **Machine API** `/api/v1` under client-credentials tokens with scopes.
+- **Three Landflow flows** and an installer: approve a request by email; provision and revoke a Landflow project role;
+  disable inactive people ([landflow-flows.md](landflow-flows.md)).
+- **The console**: Requests and the decision page for everyone; Grants, Catalog and Events for administrators.
+- Live check: in the real Landflow, the whole loop from asking to revoking.
+
+Next, from the Keycloak study: required actions and *forgot password*, an account page, `acr`, an *Onboard* flow.
+

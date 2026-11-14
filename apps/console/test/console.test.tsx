@@ -57,10 +57,12 @@ describe('Signing in to the console', () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
-  it('keeps people who aren’t administrators out', async () => {
-    renderAt('/', report(), { me: { ...ADMIN, admin: false, email: 'maya@example.test' } });
-    expect(await screen.findByText('The console is for administrators')).toBeInTheDocument();
-    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+  it('shows people who aren’t administrators their requests, and nothing else', async () => {
+    renderAt('/people', report(), { me: { ...ADMIN, admin: false, email: 'maya@example.test' } });
+    expect(await screen.findByText('This page is for administrators')).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: /Requests/ })).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: /People/ })).not.toBeInTheDocument();
   });
 
   it('shows who is signed in', async () => {
@@ -140,6 +142,7 @@ describe('Applications', () => {
             redirectUris: (body as { redirectUris: string[] }).redirectUris,
             postLogoutRedirectUris: [],
             grantTypes: ['authorization_code', 'refresh_token'],
+            apiScopes: [],
             system: false,
             secretVersion: 1,
             createdAt: '2026-11-12T10:00:00.000Z',

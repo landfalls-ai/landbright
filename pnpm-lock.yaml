@@ -156,6 +156,9 @@ importers:
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
+      jose:
+        specifier: ^6.2.17
+        version: 6.2.17
       nestjs-zod:
         specifier: ^5.6.0
         version: 5.6.0(@nestjs/common@11.2.9(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.8(@nestjs/common@11.2.9(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.9)(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.6.7)
@@ -287,6 +290,9 @@ importers:
       '@playwright/test':
         specifier: 1.62.0
         version: 1.62.0
+      jose:
+        specifier: ^6.2.17
+        version: 6.2.17
       otpauth:
         specifier: ^9.6.0
         version: 9.6.0

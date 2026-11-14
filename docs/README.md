@@ -19,6 +19,10 @@ access engine; Landfall signs in with it.
 
 - [sign-in.md](sign-in.md): the OIDC provider, sign-in, passwords, the console's sign-in, connecting Landflow.
 - [directory.md](directory.md): people, agents, groups, applications, the audit log.
+- [access.md](access.md): just-in-time access: bundles, policies, requests, decisions, grants and their targets.
+- [events.md](events.md): every audit event out to Landflow, signed with Landbright's key; waking a waiting flow.
+- [landflow-flows.md](landflow-flows.md): the Landflow flows that run the approval conversation, provisioning and the
+  inactive-people lifecycle, and how to install them.
 
 ## Reference
 
@@ -33,7 +37,7 @@ access engine; Landfall signs in with it.
 | People, agents, groups, applications, audit, OIDC sign-in | [sign-in.md](sign-in.md), [directory.md](directory.md) | [002-identity-core](../specs/002-identity-core/spec.md) | 1 (first slice ✓) |
 | SCIM provisioning to Landflow and Landfall | | | 2 |
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | | | 3 |
-| Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (proposed) | 3–4 |
-| Just-in-time access: catalog, policies, requests, grants | | | 4 |
+| Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (design; first slice built by 004) | 3–4 |
+| Just-in-time access, events out, the machine API, Landflow flows (from the Keycloak and open-source JIT studies) | [access.md](access.md), [events.md](events.md), [landflow-flows.md](landflow-flows.md) | [004-access-and-events](../specs/004-access-and-events/spec.md) | 4 (first slice ✓) |
 | Agentic identity: sync, sponsors, token exchange, ID-JAG | | | 5 |
 | OpenFGA, AuthZEN, access reviews, Landfall break-glass | | | 6 |

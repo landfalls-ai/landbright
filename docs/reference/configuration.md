@@ -29,6 +29,7 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_OPENBAO_ADDR` | `http://127.0.0.1:57200` | control (health probe) |
 | `LANDBRIGHT_OPENBAO_TOKEN` | `landbright-dev-only` | Not used yet (signing keys are in Postgres; docs/limitations.md) |
 | `LANDBRIGHT_MAILPIT_URL` | `http://127.0.0.1:57825` | control (health probe); the e2e test reads invites from it |
+| `LANDBRIGHT_WORKER` | on | control: `off` stops the background worker (access sweeper, event deliveries, wake-ups). One replica runs it at a time anyway, under a Valkey lock. |
 | `LANDBRIGHT_INTEGRATION` | unset | Tests: comma-separated suites against real services (`infra`, `db`, `e2e`, or `all`) |
 | `LANDBRIGHT_TEST_DB_HOST` | `127.0.0.1:57432` | Tests: where `landbright_test` is |
 

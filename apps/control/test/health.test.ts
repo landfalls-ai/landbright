@@ -16,6 +16,7 @@ import type { WithPrincipal } from '../src/common/principal';
 import { VALKEY } from '../src/common/tokens';
 
 const ADMIN = {
+  kind: 'person' as const,
   id: '00000000-0000-4000-8000-000000000001',
   displayName: 'Administrator',
   email: 'admin@landbright.test',

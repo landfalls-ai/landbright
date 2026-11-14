@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
-import { Outlet, useSearchParams } from 'react-router';
+import { Navigate, Outlet, useNavigate, useSearchParams } from 'react-router';
 import { Loader2, LogIn, ShieldX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ApiError, signIn, signOut, useMe } from '@/lib/api';
 import { Sidebar } from './sidebar';
 
 /**
- * The console is for Landbright's administrators. Without a session it sends the browser to sign in at the identity
- * plane (control's /api/auth/login), and comes back to the same page.
+ * The console. Administrators see all of it; everyone else sees what is theirs: asking for access and deciding the
+ * requests they are named on (spec 004). Without a session it sends the browser to sign in at the identity plane
+ * (control's /api/auth/login), and comes back to the same page.
  */
 export function AppShell() {
   const me = useMe();
@@ -19,7 +20,7 @@ export function AppShell() {
     if (unauthenticated && !failed) signIn();
   }, [unauthenticated, failed]);
 
-  if (me.data?.admin) {
+  if (me.data) {
     return (
       <div className="flex min-h-screen flex-col md:flex-row">
         <Sidebar me={me.data} />
@@ -27,16 +28,6 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-    );
-  }
-  if (me.data) {
-    return (
-      <Gate
-        icon={<ShieldX className="size-5" strokeWidth={1.7} />}
-        title="The console is for administrators"
-        hint={`You’re signed in as ${me.data.email}, who isn’t in Landbright Admins. Ask an administrator to add you.`}
-        action={<Button onClick={() => void signOut()}>Sign out</Button>}
-      />
     );
   }
   if (unauthenticated && failed) {
@@ -69,6 +60,33 @@ export function AppShell() {
     );
   }
   return <Gate icon={<Loader2 className="size-5 animate-spin" />} title="Signing you in…" />;
+}
+
+/** A page for administrators. Anyone else is sent to their requests (home) or told why not (any other page). */
+export function AdminOnly({ children, home }: { children: React.ReactNode; home?: boolean }) {
+  const me = useMe();
+  const navigate = useNavigate();
+  if (!me.data) return null;
+  if (me.data.admin) return <>{children}</>;
+  if (home) return <Navigate to="/requests" replace />;
+  return (
+    <div className="grid min-h-[70vh] place-items-center p-6" data-testid="admin-only">
+      <div className="flex max-w-[420px] flex-col items-center gap-2 text-center">
+        <ShieldX className="size-5 text-t3" strokeWidth={1.7} />
+        <h1 className="text-[17px] font-semibold text-t1">This page is for administrators</h1>
+        <p className="text-[13px] leading-snug text-t2">
+          You’re signed in as {me.data.email}, who isn’t in Landbright Admins. You can ask for access and decide the
+          requests you’re named on.
+        </p>
+        <div className="mt-3 flex gap-2">
+          <Button variant="primary" onClick={() => navigate('/requests')}>
+            Your requests
+          </Button>
+          <Button onClick={() => void signOut()}>Sign out</Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Gate({

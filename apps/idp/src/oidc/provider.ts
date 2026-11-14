@@ -1,6 +1,6 @@
-import { deriveKey, issuerOf, type Config } from '@landbright/platform';
+import { deriveKey, issuerOf, MACHINE_API_RESOURCE, type Config } from '@landbright/platform';
 import type { PrismaClient, SigningJwk, TenantRef } from '@landbright/persistence';
-import Provider, { type Configuration, type KoaContextWithOIDC } from 'oidc-provider';
+import Provider, { errors, type Configuration, type KoaContextWithOIDC } from 'oidc-provider';
 import { errorPage, logoutPage, signedOutPage } from '../pages/pages';
 import { CLAIMS, loadAccount } from './account';
 import { postgresAdapter } from './adapter';
@@ -25,9 +25,34 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
     // PKCE for every client (OAuth 2.1), except client ids the conformance run names (LANDBRIGHT_PKCE_OPTIONAL_CLIENTS).
     pkce: { required: (_ctx, client) => !pkceOptional.has(client.clientId) },
     responseTypes: ['code'],
+    // What an application may do as itself on the machine API (client credentials), from its `apiScopes`.
+    extraClientMetadata: { properties: ['api_scopes'] },
     features: {
       devInteractions: { enabled: false },
       clientCredentials: { enabled: true },
+      // Client credentials for the machine API (/api/v1 on the control plane): a JWT access token whose audience is
+      // MACHINE_API_RESOURCE and whose scopes are what the application was granted. Sign-in flows are unaffected (no
+      // resource: opaque tokens for userinfo, as before).
+      resourceIndicators: {
+        enabled: true,
+        defaultResource: (ctx) =>
+          ctx.oidc.params?.grant_type === 'client_credentials'
+            ? MACHINE_API_RESOURCE
+            : (undefined as unknown as string),
+        useGrantedResource: () => false,
+        getResourceServerInfo: (_ctx, resource, client) => {
+          if (resource !== MACHINE_API_RESOURCE) throw new errors.InvalidTarget('unknown resource');
+          const scopes = (client.api_scopes as string[] | undefined) ?? [];
+          if (scopes.length === 0) throw new errors.InvalidTarget('this application has no machine API access');
+          return {
+            scope: scopes.join(' '),
+            audience: MACHINE_API_RESOURCE,
+            accessTokenTTL: 600,
+            accessTokenFormat: 'jwt',
+            jwt: { sign: { alg: 'RS256' } },
+          };
+        },
+      },
       introspection: { enabled: true },
       revocation: { enabled: true },
       rpInitiatedLogout: {

@@ -95,7 +95,7 @@ export class LoginService {
     );
   }
 
-  /** Sign-in finished: clears the failure count and records how the person proved who they are. */
+  /** Sign-in finished: clears the failure count, records how the person proved who they are, and when. */
   async signedIn(
     identityId: string,
     displayName: string,
@@ -104,16 +104,17 @@ export class LoginService {
     from: string,
   ): Promise<void> {
     await this.valkey.del(this.failureKey(email)).catch(() => undefined);
-    await withTenant(this.prisma, this.tenant.id, (tx) =>
-      appendAudit(tx, this.tenant.id, {
+    await withTenant(this.prisma, this.tenant.id, async (tx) => {
+      await tx.identity.update({ where: { id: identityId }, data: { lastSignInAt: new Date() } });
+      await appendAudit(tx, this.tenant.id, {
         actorId: identityId,
         actorLabel: displayName,
         action: 'session.signed_in',
         targetType: 'identity',
         targetId: identityId,
         data: { method: methods.filter((m) => m !== 'mfa').join('+'), from },
-      }),
-    );
+      });
+    });
   }
 
   private failureKey(email: string): string {

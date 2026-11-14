@@ -112,11 +112,53 @@ Run `pnpm screenshots` to capture them again (see [development.md](development.m
 
 **A page of a later wave.**
 
-![A page of a later wave.](screenshots/24-upcoming-requests.png)
+![A page of a later wave.](screenshots/24-upcoming-sources.png)
 
 **The dark theme.**
 
 ![The dark theme.](screenshots/26-people-dark.png)
+
+## Just-in-time access
+
+Ido, who isn't an administrator, asks; the administrator approves and later revokes (`pnpm screenshots`).
+
+**Ido asks: the dialog shows who would decide.**
+
+![Request access, with the preview "Decided by Administrator".](screenshots/40-request-access.png)
+
+**Ido's request, waiting.**
+
+![The request page, waiting.](screenshots/41-request-waiting.png)
+
+**To decide.**
+
+![Requests, To decide, with Ido's request.](screenshots/42-to-decide.png)
+
+**Approving.**
+
+![The approve dialog with a comment.](screenshots/43-approve.png)
+
+**Approved: Landbright gave the group; the Landflow role waits for its flow.**
+
+![The request page after approval, with the grant's two targets.](screenshots/44-request-approved.png)
+
+**Grants.**
+
+![Grants: Ido holds Landflow Editors (JIT).](screenshots/45-grants.png)
+
+**A bundle and its policy.**
+
+![The bundle dialog.](screenshots/46-bundle.png)
+
+**The catalog.**
+
+![The catalog.](screenshots/47-catalog.png)
+
+**Events: a subscription and its deliveries, each answered with the run it started.**
+
+![Events with four delivered events.](screenshots/48-events.png)
+
+The same loop in the real Landflow is in [landflow-flows.md](landflow-flows.md#live-check-2026-11-14) (screens 50–57).
 
 ## In the real Landflow
 

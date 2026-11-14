@@ -51,7 +51,33 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   adopts the package.
 - **The Landflow changes L1–L5** (plan §3.5) are not filed as Landflow specs yet. Wave 1 needed none of them.
 
+## Access and events (spec 004, first slice)
+
+- **Approvals happen in the console only.** Flows tell approvers by email (Mailpit in development). Slack buttons and a
+  native Landbright node in Landflow (spec 003 phases 3–4) come later. A Slack message can carry the decision link
+  meanwhile.
+- **No extensions.** Ask again after the grant ends; a live grant refuses a new request for the same bundle.
+- **The bundle form edits one approval step.** More steps, auto-approve rules and escalation are API-only
+  (`PATCH /api/bundles/:id`); the form keeps them.
+- **Auto-approve rules know standing memberships only** (and a maximum duration). No on-call schedule, ticket status
+  or time-of-day facts yet.
+- **Agents' requests need the sponsor to file them.** `requests:create` for agent tools is reserved, not built.
+- **Tokens outlive a grant by their own lifetime.** Removing a group at the grant's end changes the next token, not one
+  already issued (an access token lives an hour). Capping token lifetimes at the grant's end comes with wave 5.
+- **A missed wake-up isn't retried.** The flow's Wait also ends at the decision deadline and re-reads, so it costs
+  time, not correctness.
+- **Event deliveries are sequential per tick** (25 every 2 seconds) and stop after 24 hours of failures; a failed one
+  is resent by hand.
+- **Subscriptions are administrator-managed.** A Landflow flow can't register its own yet (`events:manage` is
+  reserved).
+- **The flows' email** goes through Mailpit's HTTP API, because the throwaway Landflow has only core nodes; with
+  Landflow's messaging plugin, use its Send Email or Slack nodes.
+- **Required actions, an account page, `acr`** (the Keycloak study's next items) aren't built yet.
+
 ## Lifted
+
+- Spec 004: "Agents are directory entries only" still holds, but people can now get access for a while (wave 4 brought
+  forward), and the console is open to every person for their requests.
 
 - Wave 1: `GET /api/health` is for administrators now (it was public in wave 0). There are identities, sign-in and a
   tenant.

@@ -1,7 +1,12 @@
 import {
+  AccessRequestList,
+  AccessRequestView,
   AgentList,
   ApplicationList,
   AuditPage,
+  BundleList,
+  DeliveryList,
+  GrantList,
   GroupDetail,
   GroupList,
   HealthReport,
@@ -10,6 +15,7 @@ import {
   PeopleList,
   Person,
   Settings,
+  SubscriptionList,
 } from '@landbright/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -129,13 +135,75 @@ export function useAudit() {
   });
 }
 
+// ---------------------------------------------------------------- access (spec 004)
+
+export type RequestScope = 'to-decide' | 'mine' | 'all';
+/** Requests refresh every 5 seconds: a Landflow flow or another approver may change them at any time. */
+export const useRequests = (scope: RequestScope) =>
+  useQuery({
+    queryKey: ['requests', scope],
+    queryFn: () => getJson(`/api/access/requests?scope=${scope}`, AccessRequestList),
+    refetchInterval: 5000,
+    retry: quiet,
+  });
+export const useRequest = (ref: string) =>
+  useQuery({
+    queryKey: ['requests', 'one', ref],
+    queryFn: () => getJson(`/api/access/requests/${encodeURIComponent(ref)}`, AccessRequestView),
+    refetchInterval: 3000,
+    retry: quiet,
+  });
+/** The bundles the signed-in person may ask for. */
+export const useRequestable = () =>
+  useQuery({
+    queryKey: ['bundles', 'requestable'],
+    queryFn: () => getJson('/api/access/bundles', BundleList),
+    retry: quiet,
+  });
+export const useBundles = () =>
+  useQuery({ queryKey: ['bundles'], queryFn: () => getJson('/api/bundles', BundleList), retry: quiet });
+export const useGrants = (status?: string) =>
+  useQuery({
+    queryKey: ['grants', status ?? 'all'],
+    queryFn: () => getJson(`/api/access/grants${status ? `?status=${status}` : ''}`, GrantList),
+    refetchInterval: 5000,
+    retry: quiet,
+  });
+export const useSubscriptions = () =>
+  useQuery({
+    queryKey: ['subscriptions'],
+    queryFn: () => getJson('/api/events/subscriptions', SubscriptionList),
+    refetchInterval: 5000,
+    retry: quiet,
+  });
+export const useDeliveries = (subscriptionId: string | undefined) =>
+  useQuery({
+    queryKey: ['deliveries', subscriptionId],
+    queryFn: () => getJson(`/api/events/subscriptions/${subscriptionId}/deliveries`, DeliveryList),
+    enabled: Boolean(subscriptionId),
+    refetchInterval: 3000,
+    retry: quiet,
+  });
+
 /** A write that refreshes what it touched: the directory is small, so every write refreshes every list. */
 export function useWrite<A, R>(fn: (args: A) => Promise<R>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      for (const key of ['people', 'agents', 'groups', 'applications', 'audit', 'settings'])
+      for (const key of [
+        'people',
+        'agents',
+        'groups',
+        'applications',
+        'audit',
+        'settings',
+        'requests',
+        'bundles',
+        'grants',
+        'subscriptions',
+        'deliveries',
+      ])
         void client.invalidateQueries({ queryKey: [key] });
     },
   });

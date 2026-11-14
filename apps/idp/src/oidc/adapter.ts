@@ -85,5 +85,6 @@ export async function findClient(
     grant_types: client.grantTypes,
     response_types: client.grantTypes.includes('authorization_code') ? ['code'] : [],
     token_endpoint_auth_method: client.tokenEndpointAuthMethod as ClientMetadata['token_endpoint_auth_method'],
+    api_scopes: client.apiScopes,
   };
 }

@@ -3,6 +3,9 @@ import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { livenessController } from '@landbright/platform';
 import { PersistenceModule } from '@landbright/persistence';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
+import { AccessController, BundlesController } from './access/access.controller';
+import { AccessService } from './access/access.service';
+import { AccessSweeper } from './access/access.sweeper';
 import { ApplicationsController } from './applications/applications.controller';
 import { ApplicationsService } from './applications/applications.service';
 import { AuditController } from './audit/audit.controller';
@@ -11,6 +14,7 @@ import { ConsoleOidc } from './auth/console-oidc';
 import { SessionMiddleware } from './auth/session.middleware';
 import { SessionStore } from './auth/session.store';
 import { InfraModule } from './common/infra.module';
+import { KeyRing } from './common/key-ring';
 import { TenantDb } from './common/tenant-db';
 import { AgentsController } from './directory/agents.controller';
 import { AgentsService } from './directory/agents.service';
@@ -18,9 +22,14 @@ import { GroupsController } from './directory/groups.controller';
 import { GroupsService } from './directory/groups.service';
 import { PeopleController } from './directory/people.controller';
 import { PeopleService } from './directory/people.service';
+import { EventWorker } from './events/event-worker';
+import { EventsController } from './events/events.controller';
+import { EventsService } from './events/events.service';
 import { HealthController } from './health/health.controller';
 import { HealthService } from './health/health.service';
 import { Mailer } from './mail/mailer';
+import { MachineController } from './machine/machine.controller';
+import { ServiceTokenMiddleware } from './machine/service-token.middleware';
 import { SettingsController } from './settings/settings.controller';
 
 /**
@@ -39,6 +48,10 @@ import { SettingsController } from './settings/settings.controller';
     ApplicationsController,
     AuditController,
     SettingsController,
+    BundlesController,
+    AccessController,
+    EventsController,
+    MachineController,
   ],
   providers: [
     HealthService,
@@ -51,6 +64,12 @@ import { SettingsController } from './settings/settings.controller';
     AgentsService,
     GroupsService,
     ApplicationsService,
+    KeyRing,
+    ServiceTokenMiddleware,
+    AccessService,
+    AccessSweeper,
+    EventsService,
+    EventWorker,
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
   ],

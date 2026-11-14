@@ -104,7 +104,7 @@ export class AuthController {
   @ZodResponse({ type: MeDto })
   me(@Req() req: Request & WithPrincipal): Me {
     const p = req.principal;
-    if (!p) throw new UnauthorizedException();
+    if (p?.kind !== 'person') throw new UnauthorizedException();
     return {
       id: p.id,
       displayName: p.displayName,
@@ -118,7 +118,7 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request & WithPrincipal, @Res({ passthrough: true }) res: Response): Promise<Logout> {
     const p = req.principal;
-    if (!p) throw new UnauthorizedException();
+    if (p?.kind !== 'person') throw new UnauthorizedException();
     const session = await this.sessions.get(p.sessionId);
     await this.sessions.destroy(p.sessionId);
     res.clearCookie(SESSION_COOKIE, { path: '/' });

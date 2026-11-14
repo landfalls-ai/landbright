@@ -60,7 +60,7 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | Route | What |
 |---|---|
 | `GET /api/applications` | `{ items: Application[], issuer }`. |
-| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
+| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
 | `GET /api/applications/:id` · `PATCH` · `DELETE` | One application; delete revokes its tokens. The console's client answers 403 to changes. |
 | `POST /api/applications/:id/rotate-secret` | → `ApplicationWithSecret` with the new secret. |
 
@@ -71,6 +71,51 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | `GET /api/settings` | `Settings`: `{ tenant: { slug, name }, issuer, signIn: { mfaRequired, methods }, signingKeys[] (kid, alg, status signing/verifying/retired, dates), idTokenTtlSeconds, rotateAfter }`. `methods` has `passkey` when the issuer is a domain. |
 | `PATCH /api/settings/sign-in` | `UpdateSignIn` (`{ mfaRequired }`) → `Settings`. |
 | `POST /api/settings/signing-keys/rotate` | → `RotationResult` (`{ kid, retired[], settings }`): a new key signs, the replaced key keeps verifying, older keys are retired; audited as `signing_key.rotated`. 409 while the replaced key's ID tokens could still be alive (`Settings.rotateAfter` says until when). |
+
+### Access (spec 004, [access.md](../access.md))
+
+| Route | Access | What |
+|---|---|---|
+| `GET /api/bundles` · `POST` · `GET /api/bundles/:id` · `PATCH` | Administrators | `Bundle`: name, description, owner, `groupIds`, `targets[]`, `policy`, `disabled`. Audited as `bundle.created` / `bundle.updated`. |
+| `GET /api/access/bundles` | Any person | The bundles the signed-in person may ask for. |
+| `POST /api/access/requests/preview` | Any person | `{ bundleId, subjectId?, durationMinutes? }` → `RequestPreview`: eligible or why not, who would decide, an auto-approve rule, break-glass, a waiting request it would replace. |
+| `POST /api/access/requests` | Any person | `CreateRequest` (`bundleId`, `subjectId` for a sponsored agent, `durationMinutes`, `reason`, `ticket`, `startsAt`, `breakGlass`) → 201 `AccessRequestView`. 403 with the reason when the policy refuses. |
+| `GET /api/access/requests?scope=mine\|to-decide\|all&status=` | Any person (`all`: administrators) | `{ items: AccessRequestView[] }`. |
+| `GET /api/access/requests/:ref` | Who asked, who it's for, who decides, administrators | By id or by number (`REQ-12`). `actions` says what the caller may do. |
+| `POST /api/access/requests/:id/decision` | People the policy names | `{ outcome: approve\|deny, comment? }` → `AccessRequestView`. 403 with the reason otherwise (`request.decision_refused` is audited). |
+| `POST /api/access/requests/:id/cancel` | Who asked | A waiting request. |
+| `GET /api/access/grants?status=` | Administrators | `{ items: GrantSummary[] }`, newest first. |
+| `POST /api/access/grants/:id/revoke` | Administrators, and the holder | `{ comment? }`: ends it now. |
+
+### Events (administrators, [events.md](../events.md))
+
+| Route | What |
+|---|---|
+| `GET /api/events/subscriptions` | `{ items: Subscription[] (with delivery counts), eventTypes[] }`. |
+| `POST /api/events/subscriptions` | `{ url, events[], description?, audience?, replay? }` → 201. Events are types or prefixes (`grant.*`, `*`). |
+| `PATCH /api/events/subscriptions/:id` · `DELETE` | `{ events?, description?, disabled? }`. |
+| `GET /api/events/subscriptions/:id/deliveries?status=` | The last 100: status, attempts, last HTTP status and error, the receiver's answer. |
+| `POST /api/events/deliveries/:id/resend` | Sends it again. |
+
+### Machine API (`/api/v1`)
+
+For flows and services: `Authorization: Bearer <access token>` from the identity plane's token endpoint with
+`grant_type=client_credentials` and `resource=urn:landbright:api` (a JWT, 10 minutes). The token carries the scopes the
+application asked for and holds (`apiScopes`). A session cookie doesn't work here, and a token doesn't work elsewhere.
+
+| Route | Scope | What |
+|---|---|---|
+| `GET /api/v1/requests/:id` | `requests:read` | `AccessRequestView` (by id or `REQ-n`); `actions.decide` is always false. |
+| `POST /api/v1/requests/:id/waits` | `requests:read` | `{ resumeUrl }`: POSTed when a vote is recorded, the request is decided or escalates. The URL's origin must be an enabled subscription's. Kept as the annotation `wait.<client id>`. |
+| `PUT /api/v1/requests/:id/annotations/:key` | `annotations:write` | `{ value }`, `If-Match: <version>` to compare and set (409 on a mismatch). Keys are lowercase (`landflow.run`). |
+| `GET /api/v1/grants?status=&type=` | `requests:read` | Grants, optionally only those with a target of `type`. |
+| `GET /api/v1/grants/:id` | `requests:read` | One grant with its targets and their config. |
+| `PUT /api/v1/grants/:id/annotations/:key` | `annotations:write` | As for requests. |
+| `POST /api/v1/grants/:id/targets/:key` | `grants:record` | `{ status: provisioned\|failed\|revoked\|revoke_failed\|verified\|drift, detail?, externalRef? }`. Only for targets a flow manages; 409 for a move the target's state doesn't allow (a late `provisioned` after the end). |
+| `GET /api/v1/people?inactiveSince=<ISO date>` | `directory:read` | Active people with no sign-in since then (or never, and created before then). |
+| `POST /api/v1/people/:id/deactivate` | `directory:write` | `{ reason? }`: what the console's deactivation does (sessions, tokens, grants, sponsored agents), audited with the application as actor. |
+
+`requests:create` and `events:manage` are reserved for the next slices.
 
 ### Audit and health (administrators)
 

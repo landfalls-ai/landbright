@@ -367,8 +367,9 @@ test('the console shows what happened', async () => {
   await page.waitForLoadState('networkidle');
   await shot(page, '23-health');
 
-  await page.getByRole('link', { name: /^Requests/ }).click();
-  await shot(page, '24-upcoming-requests');
+  await page.getByRole('link', { name: /^Sources/ }).click();
+  await expect(page.getByText('Sources arrives in wave 3')).toBeVisible();
+  await shot(page, '24-upcoming-sources');
 
   await page.getByRole('radio', { name: 'Dark' }).click();
   await page.getByRole('link', { name: 'People', exact: true }).click();
@@ -377,6 +378,137 @@ test('the console shows what happened', async () => {
   await page.evaluate('for (const el of document.querySelectorAll("*")) el.scrollTop = 0');
   await shot(page, '26-people-dark');
   await page.getByRole('radio', { name: 'System' }).click();
+});
+
+test('Ido asks for access in the console; the administrator approves it and revokes it', async ({ browser }) => {
+  // A Landflow flow would deliver the events and provision the target; here a local endpoint stands in and answers
+  // as Landflow's Webhook trigger does, so the Events page has deliveries to show.
+  const hook = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ executionId: `ex_${Math.random().toString(36).slice(2, 10)}` }));
+    });
+  });
+  await new Promise<void>((done) => hook.listen(0, '127.0.0.1', done));
+  const hookUrl = `http://127.0.0.1:${(hook.address() as AddressInfo).port}/api/webhook/landbright-access`;
+
+  const me = await api<{ id: string }>('/api/auth/me');
+  const groups = (await api<{ items: Array<{ id: string; name: string; system: boolean }> }>('/api/groups')).items;
+  const editors = groups.find((g) => g.name === 'Landflow Editors')!;
+  const admins = groups.find((g) => g.system)!;
+  await api('/api/events/subscriptions', 'POST', {
+    url: hookUrl,
+    events: ['request.*', 'grant.*'],
+    description: 'Landflow: Approve a request, and provision its Landflow role',
+  });
+  const bundle = await api<{ id: string }>('/api/bundles', 'POST', {
+    name: 'Landflow Editors (JIT)',
+    description: 'Edit Landflow workflows, and the Payments project, for a while.',
+    ownerId: me.id,
+    groupIds: [editors.id],
+    targets: [
+      {
+        key: 'landflow:payments-editor',
+        type: 'landflow-project-role',
+        label: 'Landflow project Payments, editor',
+        config: { project: 'prj_payments', role: 'editor' },
+      },
+    ],
+    policy: {
+      steps: [{ name: admins.name, approvers: { groupIds: [admins.id] }, approvalsRequired: 1 }],
+      defaultDurationMinutes: 60,
+      maxDurationMinutes: 240,
+      decisionDeadlineMinutes: 60,
+    },
+  });
+
+  // Ido: a person, not an administrator. The console shows him his requests, and nothing else.
+  const ido = { email: `ido@${stack.slug}.test`, password: 'ido-velvet-compass-harbor' };
+  await api('/api/people', 'POST', {
+    email: ido.email,
+    givenName: 'Ido',
+    familyName: 'Shapira',
+    department: 'Payments',
+    title: 'Engineer',
+  });
+  const context = await browser.newContext();
+  const tab = await personBrowser(context);
+  await tab.goto((await invite(ido.email)).link);
+  await tab.getByLabel('Password', { exact: true }).fill(ido.password);
+  await tab.getByLabel('Repeat it').fill(ido.password);
+  await tab.getByRole('button', { name: 'Set password' }).click();
+  await expect(tab.getByRole('heading')).toBeVisible();
+  await tab.goto(stack.console);
+  await tab.waitForURL((u) => u.href.startsWith(stack.idp) || u.href === `${stack.console}/requests`);
+  if (tab.url().startsWith(stack.idp)) {
+    await tab.getByLabel('Email').fill(ido.email);
+    await tab.getByLabel('Password').fill(ido.password);
+    await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await tab.getByRole('button', { name: 'Not now' }).click();
+  }
+  await expect(tab).toHaveURL(`${stack.console}/requests`);
+  await expect(tab.getByRole('link', { name: 'People', exact: true })).toHaveCount(0);
+
+  await tab.getByTestId('ask-access').first().click();
+  await tab
+    .getByRole('textbox', { name: /^Why do you need it/ })
+    .fill('Fix the Payments retry flow before the release');
+  await expect(tab.getByTestId('preview')).toContainText('Decided by');
+  await shot(tab, '40-request-access');
+  await tab.getByTestId('submit-request').click();
+  await expect(tab.getByText('Waiting', { exact: true })).toBeVisible();
+  await expect(tab.getByRole('heading', { level: 1 })).toContainText('Landflow Editors (JIT)');
+  await shot(tab, '41-request-waiting');
+  const ref = /REQ-\d+/.exec(tab.url())![0];
+
+  // A page for administrators says so.
+  await tab.goto(`${stack.console}/people`);
+  await expect(tab.getByTestId('admin-only')).toBeVisible();
+
+  // The administrator: To decide, then the request (the page every Landflow flow links to).
+  await page.goto(`${stack.console}/requests?tab=to-decide`);
+  await expect(page.getByTestId(`request-${ref}`)).toBeVisible();
+  await shot(page, '42-to-decide');
+  await page.getByTestId(`request-${ref}`).click();
+  await page.getByTestId('approve').click();
+  await page.getByRole('textbox', { name: /^Comment/ }).fill('OK for the hour');
+  await shot(page, '43-approve');
+  await page.getByTestId('confirm-decision').click();
+  await expect(page.getByText('Approved', { exact: true }).first()).toBeVisible();
+  // Landbright gave the group; the Landflow role waits for its flow.
+  await expect(page.getByTestId(`target-group:${editors.id}`)).toContainText('Provisioned');
+  await expect(page.getByTestId('target-landflow:payments-editor')).toContainText('Waiting for its flow');
+  await shot(page, '44-request-approved', { fullPage: true });
+
+  await page.getByRole('link', { name: 'Grants', exact: true }).click();
+  await expect(page.getByTestId(`grant-${ref}`)).toBeVisible();
+  await shot(page, '45-grants');
+
+  await page.getByRole('link', { name: 'Catalog', exact: true }).click();
+  await page.getByTestId('bundle-Landflow Editors (JIT)').click();
+  await expect(page.getByRole('heading', { name: 'Landflow Editors (JIT)' })).toBeVisible();
+  await shot(page, '46-bundle');
+  await page.keyboard.press('Escape');
+  await shot(page, '47-catalog');
+
+  await page.getByRole('link', { name: 'Events', exact: true }).click();
+  await page.getByTestId(`subscription-${hookUrl}`).click();
+  await expect(page.getByText('request.decided').first()).toBeVisible();
+  await expect(page.getByText('grant.activated').first()).toBeVisible();
+  await shot(page, '48-events', { fullPage: true });
+
+  // Revoked: the group goes at once, and the flow's target can't be provisioned any more.
+  await page.goto(`${stack.console}/access/requests/${ref}`);
+  await page.getByTestId('revoke').click();
+  await page.getByTestId('confirm-revoke').click();
+  await expect(page.getByText('Revoked', { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId(`target-group:${editors.id}`)).toContainText('Removed');
+  const detail = await api<{ members: Array<{ email: string | null }> }>(`/api/groups/${editors.id}`);
+  expect(detail.members.map((m) => m.email)).not.toContain(ido.email);
+  expect(bundle.id).toBeTruthy();
+  await context.close();
+  hook.close();
 });
 
 test('signs out at the identity plane', async () => {

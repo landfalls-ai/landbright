@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, Inject, Injectable, Logger, Not
 import type { CreatePerson, InviteResult, Person, UpdatePerson } from '@landbright/contracts';
 import { type Config, newToken } from '@landbright/platform';
 import { ADMINS_GROUP, appendAudit, CONFIG, type Prisma } from '@landbright/persistence';
-import { audited, type Principal } from '../common/principal';
+import { audited, type Principal, type ServicePrincipal } from '../common/principal';
+import { closeGrantsOf } from '../access/grants';
 import { TenantDb, toDate, uniquely } from '../common/tenant-db';
 import { Mailer } from '../mail/mailer';
 import { displayNameOf, personInclude, type PersonRow, toPerson } from './mapping';
@@ -136,8 +137,8 @@ export class PeopleService {
    * Deactivated people can't sign in, and lose every session and token at once: their oidc-provider sessions,
    * grants and refresh tokens are deleted. Agents they sponsor are suspended, since nobody is accountable for them.
    */
-  async deactivate(id: string, actor: Principal): Promise<Person> {
-    if (id === actor.id) throw new BadRequestException('You can’t deactivate yourself.');
+  async deactivate(id: string, actor: Principal | ServicePrincipal, reason?: string): Promise<Person> {
+    if (actor.kind === 'person' && id === actor.id) throw new BadRequestException('You can’t deactivate yourself.');
     await this.db.tx(async (tx) => {
       const row = await this.find(tx, id);
       if (row.status === 'deactivated') return;
@@ -154,12 +155,24 @@ export class PeopleService {
           data: { status: 'suspended' },
         });
       const revoked = await tx.$executeRaw`DELETE FROM oidc_payload WHERE payload->>'accountId' = ${id}`;
+      // Just-in-time access ends with them: their grants and their agents' grants, and their pending requests.
+      const grantsRevoked = await closeGrantsOf(
+        tx,
+        this.db.tenantId,
+        [id, ...agents.map((a) => a.identityId)],
+        audited(actor),
+      );
       await appendAudit(tx, this.db.tenantId, {
         ...audited(actor),
         action: 'identity.deactivated',
         targetType: 'identity',
         targetId: id,
-        data: { agentsSuspended: agents.map((a) => a.identityId), sessionsAndTokensRevoked: revoked },
+        data: {
+          agentsSuspended: agents.map((a) => a.identityId),
+          sessionsAndTokensRevoked: revoked,
+          grantsRevoked,
+          ...(reason && { reason }),
+        },
       });
     });
     return this.get(id);
@@ -248,6 +261,42 @@ export class PeopleService {
   }
 
   /** The console must always have someone who can open it. */
+  /**
+   * Active people who haven't signed in since `since` (or, never having signed in, were created before it), for a
+   * scheduled lifecycle flow. Each with their manager, whom such a flow usually tells first.
+   */
+  async inactiveSince(since: Date) {
+    return this.db.tx(async (tx) => {
+      const rows = await tx.identity.findMany({
+        where: {
+          kind: 'person',
+          status: 'active',
+          OR: [{ lastSignInAt: { lt: since } }, { lastSignInAt: null, createdAt: { lt: since } }],
+        },
+        include: { person: true, memberships: { include: { group: { select: { name: true } } } } },
+        orderBy: { lastSignInAt: { sort: 'asc', nulls: 'first' } },
+        take: 500,
+      });
+      const managerIds = rows.map((r) => r.person?.managerId).filter((id): id is string => !!id);
+      const managers = new Map(
+        (await tx.identity.findMany({ where: { id: { in: managerIds } } })).map((m) => [m.id, m] as const),
+      );
+      return rows.map((r) => {
+        const m = r.person?.managerId ? managers.get(r.person.managerId) : undefined;
+        return {
+          id: r.id,
+          displayName: r.displayName,
+          email: r.email,
+          status: r.status,
+          lastSignInAt: r.lastSignInAt?.toISOString() ?? null,
+          createdAt: r.createdAt.toISOString(),
+          manager: m ? { id: m.id, displayName: m.displayName, email: m.email } : null,
+          admin: r.memberships.some((x) => x.group.name === ADMINS_GROUP),
+        };
+      });
+    });
+  }
+
   async assertNotLastAdmin(tx: Prisma.TransactionClient, id: string): Promise<void> {
     const admins = await tx.membership.findMany({
       where: { group: { name: ADMINS_GROUP }, identity: { status: 'active', kind: 'person' } },

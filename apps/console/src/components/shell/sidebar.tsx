@@ -85,7 +85,7 @@ function NavRow({ item }: { item: NavItem }) {
 }
 
 function Rail({ me, open, onClose }: { me: Me; open: boolean; onClose: () => void }) {
-  const health = useHealth();
+  const health = useHealth(me.admin);
   const summary = healthSummary(health.data, health.isError);
   const environment = health.data?.environment;
   return (
@@ -118,19 +118,21 @@ function Rail({ me, open, onClose }: { me: Me; open: boolean; onClose: () => voi
       )}
 
       <nav className="flex flex-col" aria-label="Main">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="flex flex-col gap-0.5">
-            <div className="px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-t3">
-              {group.label}
+        {NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((i) => me.admin || i.everyone) }))
+          .filter((group) => group.items.length)
+          .map((group) => (
+            <div key={group.label} className="flex flex-col gap-0.5">
+              <div className="px-2.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-t3">
+                {group.label}
+              </div>
+              {group.items.map((item) => (
+                <NavRow key={item.href} item={item} />
+              ))}
             </div>
-            {group.items.map((item) => (
-              <NavRow key={item.href} item={item} />
-            ))}
-          </div>
-        ))}
+          ))}
       </nav>
 
-      <div className="mt-auto flex flex-col gap-0.5 pt-3">
+      <div className={cn('mt-auto flex-col gap-0.5 pt-3', me.admin ? 'flex' : 'hidden')}>
         <NavLink
           to="/health"
           className={({ isActive }) =>
@@ -147,7 +149,10 @@ function Rail({ me, open, onClose }: { me: Me; open: boolean; onClose: () => voi
         <NavRow item={SETTINGS} />
       </div>
       <div className="flex flex-col gap-2.5 px-2.5 pb-1 pt-2">
-        <div className="flex items-center gap-2 text-[12px] text-t3" data-testid="health-line">
+        <div
+          className={cn('items-center gap-2 text-[12px] text-t3', me.admin ? 'flex' : 'hidden')}
+          data-testid="health-line"
+        >
           <StatusDot status={summary.status} pulse={summary.status === 'unknown'} />
           {summary.label}
         </div>

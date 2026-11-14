@@ -14,6 +14,7 @@ const toApplication = (c: ClientRow): Application => ({
   redirectUris: c.redirectUris,
   postLogoutRedirectUris: c.postLogoutRedirectUris,
   grantTypes: c.grantTypes,
+  apiScopes: c.apiScopes,
   system: c.system,
   secretVersion: c.secretVersion,
   createdAt: c.createdAt.toISOString(),
@@ -68,6 +69,7 @@ export class ApplicationsService {
             redirectUris: input.redirectUris,
             postLogoutRedirectUris: input.postLogoutRedirectUris,
             grantTypes: input.grantTypes,
+            apiScopes: input.apiScopes,
           },
         });
         await appendAudit(tx, this.db.tenantId, {
@@ -75,7 +77,12 @@ export class ApplicationsService {
           action: 'client.created',
           targetType: 'client',
           targetId: clientId,
-          data: { name: input.name, redirectUris: input.redirectUris, grantTypes: input.grantTypes },
+          data: {
+            name: input.name,
+            redirectUris: input.redirectUris,
+            grantTypes: input.grantTypes,
+            apiScopes: input.apiScopes,
+          },
         });
         return created;
       }),
@@ -94,6 +101,7 @@ export class ApplicationsService {
           redirectUris: input.redirectUris,
           postLogoutRedirectUris: input.postLogoutRedirectUris,
           grantTypes: input.grantTypes,
+          apiScopes: input.apiScopes,
         },
       });
       await appendAudit(tx, this.db.tenantId, {
@@ -101,7 +109,7 @@ export class ApplicationsService {
         action: 'client.updated',
         targetType: 'client',
         targetId: row.clientId,
-        data: { fields: Object.keys(input) },
+        data: { fields: Object.keys(input), ...(input.apiScopes && { apiScopes: input.apiScopes }) },
       });
       return toApplication(updated);
     });

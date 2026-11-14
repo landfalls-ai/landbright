@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MACHINE_API_SCOPE_NAMES } from './machine-api';
 
 /** Applications: the OIDC clients that sign in with Landbright. */
 
@@ -11,6 +12,8 @@ export const Application = z.object({
   redirectUris: z.array(z.string()),
   postLogoutRedirectUris: z.array(z.string()),
   grantTypes: z.array(z.string()),
+  /** What it may do as itself on the machine API (client credentials). */
+  apiScopes: z.array(z.string()),
   /** Landbright's own console client: shown, not editable. */
   system: z.boolean(),
   secretVersion: z.number().int(),
@@ -34,6 +37,8 @@ export const CreateApplication = z.object({
   grantTypes: z
     .array(z.enum(['authorization_code', 'refresh_token', 'client_credentials']))
     .default(['authorization_code', 'refresh_token']),
+  /** Machine API scopes (needs client_credentials): requests:read, grants:record, … */
+  apiScopes: z.array(z.enum(MACHINE_API_SCOPE_NAMES as [string, ...string[]])).default([]),
 });
 export type CreateApplication = z.input<typeof CreateApplication>;
 

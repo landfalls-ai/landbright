@@ -19,6 +19,7 @@
     "@landbright/persistence": "workspace:*",
     "@landbright/platform": "workspace:*",
     "@playwright/test": "1.62.0",
+    "jose": "^6.2.17",
     "otpauth": "^9.6.0",
     "vitest": "^5.0.5"
   }

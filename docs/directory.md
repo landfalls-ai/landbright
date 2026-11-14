@@ -12,7 +12,9 @@ dates. Wave 3 fills these from HiBob and Shapes; until then administrators add p
   ([sign-in.md](sign-in.md#passwords)). The list shows *Invited* until they do.
 - **Send the invite again** issues a new link and cancels the old one; for someone with a password it is a reset.
 - **Deactivate** blocks sign-in, revokes every session and token at once, cancels open invites and suspends the agents
-  they sponsor. **Reactivate** undoes the first; agents stay suspended until resumed. You can't deactivate yourself or
+  they sponsor. It also ends their grants and cancels their waiting requests, and their agents' ([access.md](access.md)).
+  A lifecycle flow can do the same through `POST /api/v1/people/:id/deactivate`. Each sign-in records
+  `lastSignInAt`, which the *Disable inactive people* flow reads. **Reactivate** undoes the first; agents stay suspended until resumed. You can't deactivate yourself or
   the last active administrator.
 - **Sign-in** shows how they sign in: password, authenticator app, passkeys. **Reset** (when they have an app or a
   passkey) deletes both, for a lost phone or laptop; they set up a new second step at their next sign-in

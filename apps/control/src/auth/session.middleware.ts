@@ -33,6 +33,7 @@ export class SessionMiddleware implements NestMiddleware {
         return next();
       }
       req.principal = {
+        kind: 'person',
         id: identity.id,
         displayName: identity.displayName,
         email: identity.email ?? '',

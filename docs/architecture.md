@@ -8,13 +8,15 @@ Three processes and four pieces of infrastructure, all on this machine.
     │                                              ▼
     └──── sign-in pages, invite links ──────▶ idp (NestJS + oidc-provider, :4402) ──▶ Postgres · Valkey
  relying parties (Landflow, Landfall) ───────▶ idp: /oidc (discovery, auth, token, JWKS, userinfo, logout)
+ Landflow flows ──── client credentials ────▶ control /api/v1 (machine API)
+ control ── signed events (JWT, JWKS) ──────▶ Landflow Webhook triggers
 ```
 
 | Process | Owns | Now (wave 1) | Next |
 |---|---|---|---|
 | **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter, rebuilt when the signing keys change; password, authenticator-app and passkey sign-in with lockout; invite pages; sealed signing keys with rotation | Token exchange (wave 5) |
-| **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health | SCIM out (wave 2) |
-| **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health, Settings | Requests and grants (wave 4) |
+| **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health; access (bundles, requests, decisions, grants), events out, the machine API `/api/v1`, and a worker (sweeper, deliveries, wake-ups) under a Valkey lock | SCIM out (wave 2) |
+| **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health, Settings; Requests and the request page (everyone), Grants, Catalog, Events | Sources (wave 3) |
 
 ## Data (`libs/persistence`)
 
@@ -37,7 +39,7 @@ Prisma 6 over Postgres. Tenant tables carry `tenant_id` under forced row-level s
 ## Contracts (`libs/contracts`)
 
 zod schemas are the source of truth for every wire shape: health, directory (people, agents, groups), applications,
-audit, session. Control validates requests and serializes responses against them (`nestjs-zod`) and generates
+audit, session, access, events, and the machine API's scopes. Control validates requests and serializes responses against them (`nestjs-zod`) and generates
 `/api/openapi.json`; the console parses responses with the same schemas.
 
 ## Design tokens (`libs/tokens`, `@land/tokens`)
@@ -50,15 +52,22 @@ test fails when they drift from Landflow's `globals.css`.
 ```
 apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,provider-ref,adapter,account} ·
                          interactions/ (sign-in, lockout) · invite/ · pages/ (server-rendered HTML)
-apps/control/src/        main.ts · configure.ts (prefix, origin check, session, OpenAPI) · auth/ (console sign-in) ·
-                         directory/ (people, agents, groups) · applications/ · audit/ · mail/ · health/ · common/
-apps/console/src/        router.tsx · nav.ts · routes/ · components/{shell,ui,directory}/ · lib/api.ts
+apps/control/src/        main.ts · configure.ts (prefix, origin check, session, service tokens on /api/v1, OpenAPI) ·
+                         auth/ (console sign-in) · directory/ (people, agents, groups) · applications/ · audit/ ·
+                         access/ (bundles, requests, decisions, grants, sweeper) · events/ (subscriptions, the
+                         worker: deliveries and wake-ups) · machine/ (/api/v1) · mail/ · health/ ·
+                         common/ (principal, key-ring)
+apps/console/src/        router.tsx · nav.ts · routes/ · components/{shell,ui,directory,access}/ · lib/api.ts
 libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap,signing-keys}.ts
 libs/platform/src/       config.ts · crypto.ts · valkey.ts · bootstrap.ts · auth/ · health/ · telemetry/
-libs/contracts/src/      health · directory · applications · audit · session
-e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · authenticator.ts · signin.test.ts
+libs/contracts/src/      health · directory · applications · audit · session · access · events · machine-api
+e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · authenticator.ts · signin.test.ts ·
+                         access.test.ts (access, events and the machine API, with a hook server)
 e2e/browser/             console.spec.ts (Playwright: the console and sign-in pages in Chromium; the screenshots)
+e2e/landflow/            install.ts (installs the Landflow flows and wires both sides)
+integrations/landflow/   flows/*.json (the Landflow flows: approval, provisioning, inactive people)
 e2e/conformance/         run.ts (pnpm conformance: the OpenID conformance suite against a dedicated identity plane)
 deploy/                  compose.infra.yml · infra/postgres/init.sql · conformance/ (suite, TLS proxy) ·
-                         landflow/ (a throwaway Landflow signing in through Landbright)
+                         landflow/ (a throwaway Landflow signing in through Landbright) ·
+                         keycloak/ (a local Keycloak to study, spec 004)
 ```
