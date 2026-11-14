@@ -35,6 +35,9 @@ Everything binds to 127.0.0.1; idp and control also to [::1], since the issuer i
 | 57379 | Valkey 8 |
 | 57025 / 57825 | Mailpit SMTP / web UI |
 | 57200 | OpenBao (dev mode), root token `landbright-dev-only` |
+| 7141 / 7241 | The hris Landflow plugin, HTTP / gRPC (`pnpm plugins:start`) |
+| 7142 / 7242 | The landbright Landflow plugin, HTTP / gRPC |
+| 57994 | The fake Bob (`pnpm fake-hibob`): HiBob's API with fictitious people, and signed deliveries |
 
 ## Commands
 
@@ -52,6 +55,8 @@ Everything binds to 127.0.0.1; idp and control also to [::1], since the issuer i
 | `pnpm --filter @landbright/persistence migrate:dev` | Create a migration after changing `prisma/schema.prisma`. Never reset the database; add a migration. |
 | `pnpm --filter <project> test` | One project: `@landbright/control`, `@landbright/idp`, `@landbright/persistence`, `@landbright/platform`, `@landbright/contracts`, `@landbright/console`, `@land/tokens`. |
 | `pnpm format` | Prettier. |
+| `pnpm plugins:start` | The two Landflow plugins (`integrations/landflow/plugins/`), announcing to `LANDFLOW_REGISTRY_URL` (default the throwaway Landflow, `http://localhost:57300`) ([hr.md](hr.md)). Their `typecheck` and `test` run in `pnpm verify`; they need the Landflow checkout next to this one (`@landflow/sdk` is linked from it). |
+| `pnpm fake-hibob` | A fake HiBob on :57994 for the HR flows; `POST /_fake/deliver` sends a signed event ([hr.md](hr.md#run-it-locally)). |
 
 ## Tests
 

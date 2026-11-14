@@ -107,7 +107,25 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   (and removals the day after it ended); pushes recorded before slice 2 name removed members by the application's ids
   and don't show.
 
+## People from HR (spec 007)
+
+- **HiBob only, and checked against its documentation, not a tenant.** There is no HiBob account here: the fake Bob
+  answers as the docs say (the machine format, `humanReadable: "APPEND"`, `Bob-Signature`). Shapes waits for its schema
+  (plan §11); Workday and others aren't planned.
+- **Joiners only.** A changed department, title, manager or site updates the person when an event reaches the upsert,
+  but the flow listens only to `employee.created` and `employee.joined`; birthright groups aren't moved for a mover, and
+  leavers aren't deactivated from HR (slice 2). Nothing is written back to HiBob.
+- **Start dates in UTC.** Someone starting in Tel Aviv becomes active at 02:00 local time (Bob's own `employee.joined`
+  comes at local midnight and activates them then). The site's time zone is slice 2.
+- **No HR for agents**, and no pre-hire state for anyone created in the console (administrators create active people).
+- **The plugins need the Landflow checkout next to this one** (`@landflow/sdk` is private and linked from it), and run
+  as separate processes (`pnpm plugins:start`); the Landbright Trigger (a plugin trigger that subscribes itself) is slice
+  2, so the Onboard flow still uses a Webhook trigger with a JWT credential.
+
 ## Lifted
+
+- Spec 007, slice 1: no way in from HR; `pre_hire` and start dates existed but nothing used them; the machine API couldn't
+  create a person.
 
 - Spec 006, slice 2: an application that wasn't provisioned kept a deactivated person's session until it ended; a
   grant didn't show what reached the applications.

@@ -245,6 +245,13 @@ terminal with a device code (`pnpm screenshots`, [agents.md](agents.md)).
 | ![A grant's pushes](screenshots/89-grant-pushes.png) | **89** A grant's page: added to *Data Team* in Landflow, then removed when it was revoked. |
 | ![Back-channel logout URI](screenshots/12a-application-logout.png) | **12a** An application's back-channel logout URI: where Landbright says a session ended. |
 
+## People from HR
+
+| | |
+|---|---|
+| ![A pre-hire from HiBob](screenshots/90-person-from-hr.png) | **90** Noa, created by the Joiner flow from HiBob: a pre-hire who can sign in from her start date, *From HiBob · employee 3332…*, her invite still to come. |
+| ![People with a pre-hire](screenshots/91-people-pre-hire.png) | **91** The People list: Noa's status is *Pre-hire* and her sign-in *Not yet*. |
+
 ## In the real Landflow
 
 Landflow's own image (`landflow/host:dev`), a throwaway instance from [`deploy/landflow/compose.yml`](../deploy/landflow/compose.yml),

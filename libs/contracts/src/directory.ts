@@ -57,6 +57,8 @@ export const Person = IdentityRef.extend({
   /** What they must do at their next sign-in. */
   requiredActions: z.array(RequiredAction),
   termsAcceptedAt: z.iso.datetime().nullable(),
+  /** Where they come from outside Landbright: an HR record (spec 007). */
+  sources: z.array(z.object({ source: z.string(), sourceId: z.string(), lastSeenAt: z.iso.datetime() })),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -76,6 +78,43 @@ export const CreatePerson = z.object({
   sendInvite: z.boolean().default(true),
 });
 export type CreatePerson = z.input<typeof CreatePerson>;
+
+/** The HR systems a person can come from. */
+export const HR_SOURCES = ['hibob', 'shapes'] as const;
+
+/**
+ * A person as an HR system has them (the hris plugin's worker record), for `POST /api/v1/people`: created, linked to
+ * the person with that email, or updated, keyed by `source` and `sourceId` (spec 007).
+ */
+export const UpsertWorker = z.object({
+  source: z.enum(HR_SOURCES),
+  sourceId: z.string().trim().min(1).max(200),
+  email: Email,
+  givenName: Name,
+  familyName: z.string().trim().max(200).default(''),
+  department: z.string().trim().max(200).nullable().optional(),
+  title: z.string().trim().max(200).nullable().optional(),
+  site: z.string().trim().max(200).nullable().optional(),
+  /** Their manager, found by email among active people; null clears it, an unknown one is left out. */
+  managerEmail: Email.nullable().optional(),
+  /** After today (UTC): a pre-hire, who can't sign in until then. */
+  startDate: IsoDate.nullable().optional(),
+  endDate: IsoDate.nullable().optional(),
+  /** Email the invite when they become active (now, or on their start date). */
+  sendInvite: z.boolean().default(true),
+});
+export type UpsertWorker = z.input<typeof UpsertWorker>;
+
+export const UpsertWorkerResult = z.object({
+  person: Person,
+  /** Made now. */
+  created: z.boolean(),
+  /** An existing person with that email, linked to the record now. */
+  linked: z.boolean(),
+  /** The fields that changed (empty when nothing did). */
+  changed: z.array(z.string()),
+});
+export type UpsertWorkerResult = z.infer<typeof UpsertWorkerResult>;
 
 export const UpdatePerson = z.object({
   givenName: Name.optional(),

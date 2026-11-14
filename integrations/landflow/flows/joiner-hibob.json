@@ -1,0 +1,47 @@
+{
+  "name": "Landbright · Joiner from HiBob",
+  "description": "On HiBob's employee.created and employee.joined: read the employee from HiBob and create or update them in Landbright, keyed by their HiBob id. Before their start date they are a pre-hire (no sign-in, no invite); on it they become active and get their invite. Birthright groups follow from the Onboard flow (identity.created). Needs the hris and landbright plugins.",
+  "tags": ["landbright", "lifecycle", "joiner", "hibob"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "HiBob employee event",
+      "type": "hris.hibobTrigger",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "events": ["employee.created", "employee.joined"],
+        "fetchEmployee": true
+      },
+      "credentials": {
+        "hibobApi": { "id": "__CRED_HIBOB__", "name": "HiBob" }
+      }
+    },
+    {
+      "id": "upsert",
+      "name": "Create or update the person",
+      "type": "landbright.landbright",
+      "typeVersion": 1,
+      "position": [320, 200],
+      "parameters": {
+        "resource": "person",
+        "operation": "upsert",
+        "useInput": true,
+        "sendInvite": true
+      },
+      "credentials": {
+        "landbrightApi": { "id": "__CRED_LANDBRIGHT_PLUGIN__", "name": "Landbright (plugin)" }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_upsert_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "upsert",
+      "targetIndex": 0
+    }
+  ]
+}

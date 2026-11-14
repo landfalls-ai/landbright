@@ -14,6 +14,8 @@ export const EVENT_TYPES = [
   'identity.invited',
   'identity.deactivated',
   'identity.reactivated',
+  'identity.activated',
+  'identity.linked_to_source',
   'identity.required_actions_set',
   'session.signed_in',
   'session.sign_in_failed',

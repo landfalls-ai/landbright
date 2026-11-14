@@ -9,6 +9,7 @@ export const personInclude = {
     select: { id: true, kind: true },
   },
   memberships: { include: { group: { select: { id: true, name: true } } } },
+  sources: { select: { source: true, sourceId: true, lastSeenAt: true }, orderBy: { source: 'asc' } },
 } satisfies Prisma.IdentityInclude;
 export type PersonRow = Prisma.IdentityGetPayload<{ include: typeof personInclude }>;
 
@@ -58,6 +59,11 @@ export function toPerson(row: PersonRow, managers: Map<string, IdentityBase>): P
     passkeys: row.credentials.filter((c) => c.kind === 'passkey').length,
     recoveryCodes: row.credentials.filter((c) => c.kind === 'recovery_code').length,
     requiredActions: row.requiredActions.filter((a): a is RequiredAction => RequiredAction.safeParse(a).success),
+    sources: row.sources.map((s) => ({
+      source: s.source,
+      sourceId: s.sourceId,
+      lastSeenAt: s.lastSeenAt.toISOString(),
+    })),
     termsAcceptedAt: row.termsAcceptedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

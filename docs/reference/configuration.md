@@ -51,3 +51,14 @@ Traces, metrics and logs are off unless one of these is set. The standard `OTEL_
 `_PASSWORD` / `_DB` (`landbright` / `landbright-dev-only` / `landbright`), `LANDBRIGHT_VALKEY_PORT` (`57379`),
 `LANDBRIGHT_SMTP_PORT` (`57025`), `LANDBRIGHT_MAIL_UI_PORT` (`57825`), `LANDBRIGHT_OPENBAO_PORT` (`57200`),
 `LANDBRIGHT_OPENBAO_TOKEN` (`landbright-dev-only`). Changing a port here means changing the matching URL in `.env`.
+
+## The Landflow plugins and the installer
+
+| Variable | Default | Used by |
+|---|---|---|
+| `LANDFLOW_REGISTRY_URL` | `http://localhost:57300` with `pnpm plugins:start` (the SDK's own default is `http://127.0.0.1:3000`) | Both plugins: the Landflow host they announce to. `LANDFLOW_REGISTRY_SECRET` when the host asks for one (the throwaway Landflow doesn't). |
+| `HRIS_HTTP_PORT` / `HRIS_GRPC_PORT` | `7141` / `7241` | The hris plugin. |
+| `LANDBRIGHT_PLUGIN_HTTP_PORT` / `LANDBRIGHT_PLUGIN_GRPC_PORT` | `7142` / `7242` | The landbright plugin. |
+| `LANDFLOW_HOST` | `127.0.0.1` | Both plugins: the interface they listen on. |
+| `FAKE_HIBOB_PORT` | `57994` | The fake Bob. |
+| `HIBOB_BASE_URL`, `HIBOB_SERVICE_USER_ID`, `HIBOB_TOKEN`, `HIBOB_WEBHOOK_SECRET` | The fake Bob's (`http://127.0.0.1:57994/v1`, fake values) | The installer: the *HiBob* credential in Landflow. |

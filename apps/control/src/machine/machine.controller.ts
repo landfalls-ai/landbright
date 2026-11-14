@@ -10,7 +10,9 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import {
@@ -38,6 +40,8 @@ import {
   PersonDto,
   ServiceAddMemberDto,
   SetRequiredActionsDto,
+  UpsertWorkerDto,
+  UpsertWorkerResultDto,
 } from '../directory/directory.dto';
 import { EVENT_TYPES, EventsService } from '../events/events.service';
 import { InactivePeopleDto } from './machine.dto';
@@ -166,6 +170,26 @@ export class MachineController {
     @Query('inactiveSince') inactiveSince?: string,
   ) {
     return { items: await this.people.inactiveSince(inactiveSince ? new Date(inactiveSince) : new Date()) };
+  }
+
+  /**
+   * A joiner (or mover) from HR (spec 007): created, linked by email, or updated, keyed by the record's source and id;
+   * a pre-hire until their start date. 201 when created.
+   */
+  @Post('people')
+  @HttpCode(200)
+  @ZodResponse({ type: UpsertWorkerResultDto })
+  async upsertPerson(
+    @Body() body: UpsertWorkerDto,
+    @Service('directory:write') service: ServicePrincipal,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.people.upsertFromSource(
+      body as Parameters<PeopleService['upsertFromSource']>[0],
+      service,
+    );
+    if (result.created) res.status(201);
+    return result;
   }
 
   /** A lifecycle flow's leaver step: everything a console deactivation does (sessions, tokens, grants, agents). */

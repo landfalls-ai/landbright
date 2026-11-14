@@ -16,6 +16,8 @@ import {
   Person,
   UpdateAgent,
   UpdatePerson,
+  UpsertWorker,
+  UpsertWorkerResult,
 } from '@landbright/contracts';
 import { createZodDto } from 'nestjs-zod';
 
@@ -36,4 +38,6 @@ export class AddMemberDto extends createZodDto(AddMember) {}
 export class SetRequiredActionsDto extends createZodDto(SetRequiredActions) {}
 export class ServiceAddMemberDto extends createZodDto(ServiceAddMember) {}
 export class CreateAgentApplicationDto extends createZodDto(CreateAgentApplication) {}
+export class UpsertWorkerDto extends createZodDto(UpsertWorker) {}
+export class UpsertWorkerResultDto extends createZodDto(UpsertWorkerResult) {}
 export class ReplaceAgentKeysDto extends createZodDto(ReplaceAgentKeys) {}

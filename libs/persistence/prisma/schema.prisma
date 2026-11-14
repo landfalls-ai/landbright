@@ -67,6 +67,7 @@ model Identity {
   memberships Membership[]
   credentials Credential[]
   invites     InviteToken[]
+  sources     SourceLink[]
 
   @@unique([tenantId, email])
   @@index([tenantId, kind])
@@ -649,4 +650,24 @@ model LogoutDelivery {
   @@index([tenantId, deliveredAt, failedAt, nextAttemptAt])
   @@index([tenantId, subject])
   @@map("logout_delivery")
+}
+
+/// Where a person comes from outside Landbright: an HR record (spec 007). A record updates its person, never makes a
+/// second one; `last_values` is the worker as last received.
+model SourceLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  identityId String   @map("identity_id") @db.Uuid
+  /// hibob (shapes later).
+  source     String
+  sourceId   String   @map("source_id")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  lastValues Json     @default("{}") @map("last_values")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  identity Identity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, source, sourceId])
+  @@unique([identityId, source])
+  @@map("source_link")
 }

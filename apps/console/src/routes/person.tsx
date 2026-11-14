@@ -20,6 +20,9 @@ const ACTIONS: Array<{ value: RequiredAction; label: string }> = [
 ];
 const actionLabel = (a: RequiredAction) => ACTIONS.find((x) => x.value === a)?.label ?? a;
 
+/** HR systems, as people know them. */
+const SOURCE_NAMES: Record<string, string> = { hibob: 'HiBob', shapes: 'Shapes' };
+
 export function PersonPage() {
   const { id = '' } = useParams();
   const person = usePerson(id);
@@ -133,10 +136,36 @@ export function PersonPage() {
                 '—'
               )}
             </Fact>
-            <Fact label="Start date">{formatDate(p.startDate)}</Fact>
+            <Fact label="Start date">
+              {formatDate(p.startDate)}
+              {p.status === 'pre_hire' && (
+                <span className="text-t3" data-testid="pre-hire">
+                  {' '}
+                  · can sign in from then
+                </span>
+              )}
+            </Fact>
+            {p.sources.length > 0 && (
+              <Fact label="From">
+                <span className="flex flex-col" data-testid="sources">
+                  {p.sources.map((s) => (
+                    <span key={s.source}>
+                      {SOURCE_NAMES[s.source] ?? s.source}{' '}
+                      <span className="font-mono text-[12px] text-t3">· employee {s.sourceId}</span>
+                    </span>
+                  ))}
+                </span>
+              </Fact>
+            )}
             <Fact label="Sign-in">
               <span className="flex flex-wrap items-center gap-1.5">
-                {p.hasPassword ? <Badge>Password set</Badge> : <Badge tone="warning">Invite not accepted</Badge>}
+                {p.hasPassword ? (
+                  <Badge>Password set</Badge>
+                ) : p.status === 'pre_hire' ? (
+                  <Badge tone="neutral">Invite on their start date</Badge>
+                ) : (
+                  <Badge tone="warning">Invite not accepted</Badge>
+                )}
                 {p.hasTotp && (
                   <Badge tone="success">
                     <Smartphone className="size-3" /> Authenticator app

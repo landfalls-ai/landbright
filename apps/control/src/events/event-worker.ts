@@ -10,6 +10,7 @@ import { TenantDb } from '../common/tenant-db';
 import { VALKEY } from '../common/tokens';
 import { ScimSync } from '../provisioning/scim-sync';
 import { LogoutSender } from '../logout/logout-sender';
+import { PeopleService } from '../directory/people.service';
 import { matches } from './events.service';
 
 const TICK_MS = 2_000;
@@ -48,6 +49,7 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly sweeper: AccessSweeper,
     private readonly scim: ScimSync,
     private readonly logouts: LogoutSender,
+    private readonly people: PeopleService,
     @Inject(VALKEY) private readonly valkey: Redis,
     @Inject(TENANT) private readonly tenant: TenantRef,
   ) {}
@@ -76,6 +78,10 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
       if (!mine) return;
       await this.valkey.pexpire(this.lockKey, LOCK_MS);
       await this.sweeper.sweep();
+      // Start dates: pre-hires become active (spec 007), before provisioning pushes them.
+      await this.people
+        .activateStarters()
+        .catch((e) => this.logger.warn(`start dates: ${e instanceof Error ? e.message : String(e)}`));
       // Provisioning first: a deactivation reaches the applications before anything else is sent.
       await this.scim
         .tick()
