@@ -48,7 +48,13 @@ export function PeoplePage() {
                   </div>
                 </Cell>
                 <Cell>
-                  {p.hasPassword ? <Badge tone="neutral">Password</Badge> : <Badge tone="warning">Invited</Badge>}
+                  {p.hasPassword ? (
+                    <Badge tone="neutral">Password</Badge>
+                  ) : p.status === 'pre_hire' ? (
+                    <Badge tone="neutral">Not yet</Badge>
+                  ) : (
+                    <Badge tone="warning">Invited</Badge>
+                  )}
                 </Cell>
                 <Cell>
                   <StatusBadge status={p.status} />

@@ -69,10 +69,13 @@ libs/contracts/src/      health · directory · applications · agent-apps · au
 e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · authenticator.ts · signin.test.ts ·
                          access.test.ts (access, events and the machine API, with a hook server) ·
                          agents.test.ts (agent applications, token exchange, CIBA, device grant, PAR, DPoP) ·
-                         provisioning.test.ts and fake-scim.ts (SCIM out, against Landflow- and Landfall-shaped servers)
+                         provisioning.test.ts and fake-scim.ts (SCIM out, against Landflow- and Landfall-shaped servers) ·
+                         hr-joiner.test.ts (the two plugins' nodes against the stack: pre-hire, start date, invite)
 e2e/browser/             console.spec.ts (Playwright: the console and sign-in pages in Chromium; the screenshots)
 e2e/landflow/            install.ts (installs the Landflow flows and wires both sides)
-integrations/landflow/   flows/*.json (the Landflow flows: approval, provisioning, onboarding, inactive people, CIBA)
+integrations/landflow/   flows/*.json (the Landflow flows: approval, provisioning, onboarding, inactive people, CIBA,
+                         the HiBob joiner) · plugins/hris (HiBob Trigger, HiBob node, the worker, a fake Bob) ·
+                         plugins/landbright (the Landbright node: people and groups over the machine API)
 e2e/conformance/         run.ts (pnpm conformance: the OpenID conformance suite against a dedicated identity plane)
 deploy/                  compose.infra.yml · infra/postgres/init.sql · conformance/ (suite, TLS proxy) ·
                          landflow/ (a throwaway Landflow signing in through Landbright) ·

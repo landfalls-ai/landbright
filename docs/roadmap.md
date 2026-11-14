@@ -9,7 +9,7 @@ and in the browser, and its bugs fixed in the same wave. The console's Home page
 | **0. Foundations** | ✓ Done 2026-11-12 ([spec 001](../specs/001-foundations/spec.md)) | `pnpm dev:up && pnpm serve` brings up a console in Landflow's shell with a health page |
 | **1. Identity core and sign-in** | In progress: identity core, the second step and passkeys done 2026-11-12 ([spec 002](../specs/002-identity-core/spec.md)) | A person created in the console signs into Landflow over OIDC and lands with the role their group maps to |
 | **2. Provisioning out** | Spec 006 done 2026-11-14: SCIM out, back-channel logout ([spec 006](../specs/006-provisioning-out/spec.md)) | Deactivating a person signs them out of Landflow within seconds |
-| **3. Landflow plugins and HR lifecycle** | Planned | A signed HiBob `employee.joined` creates the person and adds birthright groups |
+| **3. Landflow plugins and HR lifecycle** | First slice done 2026-11-14: a joiner from HiBob ([spec 007](../specs/007-hr-lifecycle/spec.md)) | A signed HiBob `employee.joined` creates the person and adds birthright groups |
 | **4. Just-in-time access** | First slice done 2026-11-14, ahead of waves 2–3 ([spec 004](../specs/004-access-and-events/spec.md)) | Editor on a Landflow project for 2 hours: requested, approved in Slack, granted, removed at expiry |
 | **5. Agentic identity** | Planned | A Landflow agent gets 15 minutes of read access with its sponsor's approval; the token names both |
 | **6. Policy, reviews, signals** | Planned | A sev1 Landfall incident gives the on-call responder the incident bundle until the room closes |
@@ -67,6 +67,20 @@ Clickland and Landfall within a second.
 The second slice: OpenID Back-Channel Logout 1.0 for any application with a URI (signing out, *Sign out everywhere
 else*, a password reset and deactivation each queue a logout token, sent and retried by the worker), and a grant's
 page showing what reached the applications. Live: a logout token 369 ms after signing out.
+
+## Wave 3: what the first slice built
+
+Two Landflow plugins in this repository ([hr.md](hr.md)): **hris** (the HiBob Trigger, checking Bob's signature and
+reading the employee; the HiBob node; one worker record) and **landbright** (people and groups as nodes, over the machine
+API with client credentials). Landbright creates, links or updates a person from a worker (`POST /api/v1/people`), keyed
+by the record's source and id; someone starting later is a pre-hire who can't sign in, isn't pushed and gets no invite
+until their start date, when the event worker (or Bob's `employee.joined`) makes them active. The *Joiner from HiBob*
+flow, the person's source on their page. Live: a signed delivery from a fake Bob made Noa a pre-hire in the throwaway
+Landflow's flow; on her start date she was active, invited and in Landflow a second later, and signed in there through
+Landbright.
+
+Next (slice 2): movers and leavers (department, title, manager and site changes; deactivation at the end of the last day
+or at once), the Landbright Trigger, start dates in the site's time zone.
 
 ## Wave 4: what the first slice built (ahead of order)
 

@@ -1,0 +1,21 @@
+{
+  "name": "@landbright/plugin-hris",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "fake-hibob": "tsx test/fake-hibob.ts"
+  },
+  "dependencies": {
+    "@landflow/sdk": "link:../../../../../landflow/packages/sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
+  },
+  "description": "HiBob for Landflow: employee events and reads as worker records for Landbright."
+}

@@ -213,7 +213,7 @@
       "parameters": {
         "language": "javascript",
         "mode": "each",
-        "codeEach": "const p = $json;\nconst groups = (p.groups ?? []).map((g) => g.name);\nreturn {\n  to: p.email,\n  toName: p.displayName,\n  subject: `Welcome${p.department ? ` to ${p.department}` : ''}, ${p.givenName}`,\n  text: [\n    `Hi ${p.givenName},`,\n    '',\n    `You're set up in Landbright${groups.length ? `, in ${groups.join(', ')}` : ''}.`,\n    'Your invite email has the link to choose a password. At your first sign-in you will also set up a second step',\n    '(an authenticator app or a passkey) and accept the terms.',\n    '',\n    'Need more access for a while? Ask in Landbright: Access → Ask for access.',\n  ].join('\\n'),\n};"
+        "codeEach": "const p = $json;\nconst groups = (p.groups ?? []).map((g) => g.name);\nreturn {\n  to: p.email,\n  toName: p.displayName,\n  subject: `Welcome${p.department ? ` to ${p.department}` : ''}, ${p.givenName}`,\n  text: [\n    `Hi ${p.givenName},`,\n    '',\n    `You're set up in Landbright${groups.length ? `, in ${groups.join(', ')}` : ''}.`,\n    p.status === 'pre_hire' ? `Your invite email, with the link to choose a password, comes on your start date (${p.startDate}). At your first sign-in you will also set up a second step` : 'Your invite email has the link to choose a password. At your first sign-in you will also set up a second step',\n    '(an authenticator app or a passkey) and accept the terms.',\n    '',\n    'Need more access for a while? Ask in Landbright: Access → Ask for access.',\n  ].join('\\n'),\n};"
       }
     },
     {

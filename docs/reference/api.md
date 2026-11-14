@@ -155,8 +155,9 @@ token as `Bearer`. A suspended agent's tokens stop working at once.
 | `PUT /api/v1/grants/:id/annotations/:key` | `annotations:write` | As for requests. |
 | `POST /api/v1/grants/:id/targets/:key` | `grants:record` | `{ status: provisioned\|failed\|revoked\|revoke_failed\|verified\|drift, detail?, externalRef? }`. Only for targets a flow manages; 409 for a move the target's state doesn't allow (a late `provisioned` after the end). |
 | `GET /api/v1/people?inactiveSince=<ISO date>` | `directory:read` | Active people with no sign-in since then (or never, and created before then). |
-| `GET /api/v1/people/:id` | `directory:read` | One `Person`. |
-| `POST /api/v1/people/:id/required-actions` | `directory:write` | As the console's, with the application as actor. |
+| `POST /api/v1/people` | `directory:write` | `UpsertWorker` `{ source: hibob\|shapes, sourceId, email, givenName, familyName?, department?, title?, site?, managerEmail?, startDate?, endDate?, sendInvite? (true) }` → `{ person, created, linked, changed }`, 201 when created. Found by the source link, else linked by email, else created: a pre-hire when `startDate` is after today (UTC), else active with the invite. `null` clears an optional field. 409: someone else has the email, an agent or service has it, or the person is deactivated ([hr.md](../hr.md)). |
+| `GET /api/v1/people/:id` | `directory:read` | One `Person` (with `sources`). |
+| `POST /api/v1/people/:id/required-actions` | `directory:write` | As the console's, with the application as actor. Also for a pre-hire, but not with `notify` (409). |
 | `GET /api/v1/groups?name=` | `directory:read` | `{ items: Group[] }`, optionally the one with that exact name. |
 | `POST /api/v1/groups/:id/members` | `directory:write` | `{ identityId, expiresAt? }` → 200 `GroupDetail`. Recorded with source `hr`; already a member is not an error. 403 for *Landbright Admins*, 409 for a deactivated identity. |
 | `DELETE /api/v1/groups/:id/members/:identityId` | `directory:write` | → `GroupDetail`. Not a membership a grant gave (409; the grant ends it) and not *Landbright Admins* (403). |

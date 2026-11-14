@@ -1,0 +1,20 @@
+{
+  "name": "@landbright/plugin-landbright",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Landbright for Landflow: people and groups of the identity provider as nodes.",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@landflow/sdk": "link:../../../../../landflow/packages/sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
+  }
+}

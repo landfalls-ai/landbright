@@ -829,6 +829,52 @@ test('connects a SCIM server and keeps it in step', async () => {
   }
 });
 
+test('a joiner from HR: a pre-hire with their start date and where they came from', async () => {
+  // What the Joiner flow's Landbright node does (spec 007): POST /api/v1/people with a worker from HiBob.
+  const app = await api<{ application: { clientId: string }; clientSecret: string }>('/api/applications', 'POST', {
+    name: 'HR flows',
+    clientId: `hr-${stack.slug}`,
+    redirectUris: ['http://127.0.0.1:9/callback'],
+    grantTypes: ['client_credentials'],
+    apiScopes: ['directory:read', 'directory:write'],
+  });
+  const issued = await fetch(`${stack.issuer}/token`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      authorization: `Basic ${Buffer.from(`${app.application.clientId}:${app.clientSecret}`).toString('base64')}`,
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'directory:write' }),
+  });
+  const { access_token } = (await issued.json()) as { access_token: string };
+  const start = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const created = await fetch(`${stack.control}/api/v1/people`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      source: 'hibob',
+      sourceId: '3332883884017713238',
+      email: `noa.barak@${stack.slug}.test`,
+      givenName: 'Noa',
+      familyName: 'Barak',
+      department: 'Engineering',
+      title: 'Platform Engineer',
+      site: 'Tel Aviv',
+      managerEmail: stack.admin.email,
+      startDate: start,
+    }),
+  });
+  expect(created.status).toBe(201);
+  const { person } = (await created.json()) as { person: { id: string } };
+  await page.goto(`${stack.console}/people/${person.id}`);
+  await expect(page.getByTestId('pre-hire')).toBeVisible();
+  await expect(page.getByTestId('sources')).toContainText('HiBob');
+  await shot(page, '90-person-from-hr');
+  await page.goto(`${stack.console}/people`);
+  await expect(page.getByText('Noa Barak')).toBeVisible();
+  await shot(page, '91-people-pre-hire');
+});
+
 test('signs out at the identity plane', async () => {
   const { redirect } = await api<{ redirect: string }>('/api/auth/logout', 'POST');
   await page.goto(redirect);

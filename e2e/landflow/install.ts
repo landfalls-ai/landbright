@@ -44,6 +44,17 @@ const SCOPES = [
  */
 const SLACK_TOKEN = env.SLACK_BOT_TOKEN;
 const SLACK_API = env.SLACK_API_URL ?? 'https://slack.com/api';
+/**
+ * The HR flows (spec 007) need the hris and landbright plugins announced to Landflow; without them they are skipped.
+ * HiBob's values default to the fake Bob (integrations/landflow/plugins/hris, `pnpm fake-hibob`): there is no HiBob
+ * tenant here.
+ */
+const HIBOB = {
+  baseUrl: env.HIBOB_BASE_URL ?? 'http://127.0.0.1:57994/v1',
+  serviceUserId: env.HIBOB_SERVICE_USER_ID ?? 'SERVICE-FAKE-1',
+  token: env.HIBOB_TOKEN ?? 'fake-hibob-token-0123456789',
+  webhookSecret: env.HIBOB_WEBHOOK_SECRET ?? 'fake-hibob-webhook-secret-0123456789',
+};
 const here = dirname(fileURLToPath(import.meta.url));
 const flowsDir = resolve(here, '../../integrations/landflow/flows');
 
@@ -236,6 +247,19 @@ const slackCred = SLACK_TOKEN
 console.log(
   `Landflow: credentials Landbright events (JWT, JWKS), Landbright API (client credentials), Landflow API${SLACK_TOKEN ? ', Slack bot token' : ''}`,
 );
+const plugins = new Set(((await lf('/api/plugins')).plugins as Array<{ id: string }>).map((p) => p.id));
+const hrPlugins = plugins.has('hris') && plugins.has('landbright');
+const hibobCred = hrPlugins ? await credential('HiBob', 'hris.hibobApi', HIBOB) : '';
+const lbPluginCred = hrPlugins
+  ? await credential('Landbright (plugin)', 'landbright.landbrightApi', {
+      controlUrl: CONTROL,
+      issuer: ISSUER,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      scopes: 'directory:read directory:write',
+    })
+  : '';
+if (hrPlugins) console.log(`Landflow: credentials HiBob (${HIBOB.baseUrl}), Landbright (plugin)`);
 
 const existing = ((await lf('/api/workflows')).workflows ?? []) as Array<{ id: string; name: string }>;
 for (const file of readdirSync(flowsDir)
@@ -246,6 +270,10 @@ for (const file of readdirSync(flowsDir)
     console.log(`Landflow: skipped ${file} (set SLACK_BOT_TOKEN to install the Slack flows)`);
     continue;
   }
+  if (raw.includes('__CRED_HIBOB__') && !hrPlugins) {
+    console.log(`Landflow: skipped ${file} (start the hris and landbright plugins: pnpm plugins:start)`);
+    continue;
+  }
   const text = raw
     .replaceAll('__LANDBRIGHT_API__', CONTROL)
     .replaceAll('__LANDFLOW_API__', LANDFLOW)
@@ -254,6 +282,8 @@ for (const file of readdirSync(flowsDir)
     .replaceAll('__CRED_LANDBRIGHT__', lbCred)
     .replaceAll('__CRED_LANDFLOW__', lfCred)
     .replaceAll('__CRED_SLACK__', slackCred)
+    .replaceAll('__CRED_HIBOB__', hibobCred)
+    .replaceAll('__CRED_LANDBRIGHT_PLUGIN__', lbPluginCred)
     .replaceAll('__SLACK_API__', SLACK_API);
   const flow = JSON.parse(text) as { name: string };
   const old = existing.find((w) => w.name === flow.name);
@@ -274,4 +304,8 @@ for (const file of readdirSync(flowsDir)
     body: JSON.stringify({ note: 'Installed by Landbright' }),
   });
   console.log(`Landflow: published "${flow.name}" (${id})`);
+  if (raw.includes('hris.hibobTrigger'))
+    console.log(
+      `  HiBob's webhook URL (Bob → Settings → Integrations → Webhooks): ${LANDFLOW}/api/webhook/app/${id}/trigger`,
+    );
 }

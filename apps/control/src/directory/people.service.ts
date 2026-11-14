@@ -6,6 +6,8 @@ import type {
   RequiredAction,
   SetRequiredActions,
   UpdatePerson,
+  UpsertWorker,
+  UpsertWorkerResult,
 } from '@landbright/contracts';
 import { type Config, newToken } from '@landbright/platform';
 import {
@@ -23,6 +25,18 @@ import { Mailer } from '../mail/mailer';
 import { displayNameOf, personInclude, type PersonRow, toPerson } from './mapping';
 
 export const INVITE_TTL_HOURS = 72;
+
+/** Who invites: a person in the console, a service on the machine API, or Landbright itself (start dates). */
+type Inviter = Principal | ServicePrincipal | { kind: 'system'; label: string };
+const auditedInviter = (a: Inviter) => (a.kind === 'system' ? { actorId: null, actorLabel: a.label } : audited(a));
+const inviterName = (a: Inviter) => (a.kind === 'person' ? a.displayName : a.kind === 'service' ? a.name : a.label);
+const START_DATES: Inviter = { kind: 'system', label: 'Start dates' };
+
+/** Today in UTC, as a date column holds it (start dates are in UTC until the site's time zone is known). */
+export const todayUtc = (now = new Date()) => now.toISOString().slice(0, 10);
+const dateOf = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
+
+type Worker = Omit<UpsertWorker, 'familyName' | 'sendInvite'> & { familyName: string; sendInvite: boolean };
 
 @Injectable()
 export class PeopleService {
@@ -238,8 +252,209 @@ export class PeopleService {
     return this.get(id);
   }
 
+  /**
+   * A person as an HR system has them (spec 007): found by the record's source link, else by email (and linked), else
+   * created, as a pre-hire when their start date is after today. Fields left out stay as they are; null clears. A
+   * deactivated person isn't brought back: that is a person's decision, in the console. A pre-hire whose start date
+   * has come is activated at once, with the invite.
+   */
+  async upsertFromSource(input: Worker, actor: ServicePrincipal): Promise<UpsertWorkerResult> {
+    const tenantId = this.db.tenantId;
+    const today = todayUtc();
+    const values = JSON.parse(JSON.stringify(input)) as Prisma.InputJsonObject;
+    const done = await uniquely(
+      this.db.tx(async (tx) => {
+        const link = await tx.sourceLink.findUnique({
+          where: { tenantId_source_sourceId: { tenantId, source: input.source, sourceId: input.sourceId } },
+        });
+        const byEmail = link ? null : await tx.identity.findFirst({ where: { email: input.email } });
+        if (byEmail && byEmail.kind !== 'person')
+          throw new ConflictException(`${input.email} belongs to an agent or a service, not a person.`);
+        const manager =
+          input.managerEmail == null
+            ? null
+            : await tx.identity.findFirst({
+                where: { email: input.managerEmail, kind: 'person', status: 'active' },
+                select: { id: true },
+              });
+        const managerId = input.managerEmail === null ? null : (manager?.id ?? undefined);
+        const existingId = link?.identityId ?? byEmail?.id;
+
+        if (!existingId) {
+          const status = input.startDate && input.startDate > today ? 'pre_hire' : 'active';
+          const row = await tx.identity.create({
+            data: {
+              tenantId,
+              kind: 'person',
+              status,
+              displayName: displayNameOf(input.givenName, input.familyName),
+              email: input.email,
+              person: {
+                create: {
+                  tenantId,
+                  givenName: input.givenName,
+                  familyName: input.familyName,
+                  department: input.department ?? null,
+                  title: input.title ?? null,
+                  site: input.site ?? null,
+                  managerId: managerId ?? null,
+                  startDate: toDate(input.startDate) ?? null,
+                  endDate: toDate(input.endDate) ?? null,
+                },
+              },
+              sources: {
+                create: { tenantId, source: input.source, sourceId: input.sourceId, lastValues: values },
+              },
+            },
+          });
+          await appendAudit(tx, tenantId, {
+            ...audited(actor),
+            action: 'identity.created',
+            targetType: 'identity',
+            targetId: row.id,
+            data: {
+              kind: 'person',
+              email: input.email,
+              status,
+              source: input.source,
+              sourceId: input.sourceId,
+              ...(input.startDate && { startDate: input.startDate }),
+            },
+          });
+          return { id: row.id, created: true, linked: false, changed: [], invite: status === 'active' };
+        }
+
+        const row = await this.find(tx, existingId);
+        if (row.status === 'deactivated')
+          throw new ConflictException(
+            `${row.displayName} is deactivated in Landbright; reactivating them is done in the console.`,
+          );
+        if (link) {
+          await tx.sourceLink.update({ where: { id: link.id }, data: { lastSeenAt: new Date(), lastValues: values } });
+        } else {
+          await tx.sourceLink.create({
+            data: { tenantId, identityId: row.id, source: input.source, sourceId: input.sourceId, lastValues: values },
+          });
+          await appendAudit(tx, tenantId, {
+            ...audited(actor),
+            action: 'identity.linked_to_source',
+            targetType: 'identity',
+            targetId: row.id,
+            data: { email: row.email, source: input.source, sourceId: input.sourceId },
+          });
+        }
+        const p = row.person;
+        const next = {
+          email: input.email,
+          givenName: input.givenName,
+          familyName: input.familyName,
+          department: input.department === undefined ? (p?.department ?? null) : input.department,
+          title: input.title === undefined ? (p?.title ?? null) : input.title,
+          site: input.site === undefined ? (p?.site ?? null) : input.site,
+          managerId: managerId === undefined ? (p?.managerId ?? null) : managerId,
+          startDate: input.startDate === undefined ? dateOf(p?.startDate) : input.startDate,
+          endDate: input.endDate === undefined ? dateOf(p?.endDate) : input.endDate,
+        };
+        const before = {
+          email: row.email,
+          givenName: p?.givenName ?? row.displayName,
+          familyName: p?.familyName ?? '',
+          department: p?.department ?? null,
+          title: p?.title ?? null,
+          site: p?.site ?? null,
+          managerId: p?.managerId ?? null,
+          startDate: dateOf(p?.startDate),
+          endDate: dateOf(p?.endDate),
+        };
+        const changed = (Object.keys(next) as Array<keyof typeof next>).filter((k) => next[k] !== before[k]);
+        if (next.managerId === row.id) throw new BadRequestException('A person can’t be their own manager.');
+        const activate = row.status === 'pre_hire' && (!next.startDate || next.startDate <= today);
+        if (changed.length || activate) {
+          const profile = {
+            givenName: next.givenName,
+            familyName: next.familyName,
+            department: next.department,
+            title: next.title,
+            site: next.site,
+            managerId: next.managerId,
+            startDate: toDate(next.startDate) ?? null,
+            endDate: toDate(next.endDate) ?? null,
+          };
+          await tx.identity.update({
+            where: { id: row.id },
+            data: {
+              email: next.email,
+              displayName: displayNameOf(next.givenName, next.familyName),
+              ...(activate && { status: 'active' }),
+              person: { upsert: { create: { tenantId, ...profile }, update: profile } },
+            },
+          });
+        }
+        if (changed.length)
+          await appendAudit(tx, tenantId, {
+            ...audited(actor),
+            action: 'identity.updated',
+            targetType: 'identity',
+            targetId: row.id,
+            data: { fields: changed, source: input.source, sourceId: input.sourceId },
+          });
+        if (activate)
+          await appendAudit(tx, tenantId, {
+            ...audited(actor),
+            action: 'identity.activated',
+            targetType: 'identity',
+            targetId: row.id,
+            data: { startDate: next.startDate, source: input.source },
+          });
+        const hasPassword = row.credentials.some((c) => c.kind === 'password');
+        return { id: row.id, created: false, linked: !link, changed, invite: activate && !hasPassword };
+      }),
+      'Someone else in the directory has that email.',
+    );
+    if (done.invite && input.sendInvite) await this.tryInvite(done.id, actor);
+    return { person: await this.get(done.id), created: done.created, linked: done.linked, changed: done.changed };
+  }
+
+  /**
+   * Pre-hires whose start date has come (UTC) become active, and get their invite unless they have a password or
+   * their HR record asked for none. Run from the event worker's loop. Answers how many.
+   */
+  async activateStarters(now = new Date()): Promise<number> {
+    const due = await this.db.tx(async (tx) => {
+      const rows = await tx.identity.findMany({
+        where: { kind: 'person', status: 'pre_hire', person: { startDate: { lte: new Date(todayUtc(now)) } } },
+        include: { person: true, sources: true, credentials: { where: { kind: 'password' }, select: { id: true } } },
+        take: 100,
+      });
+      for (const r of rows) {
+        await tx.identity.update({ where: { id: r.id }, data: { status: 'active' } });
+        await appendAudit(tx, this.db.tenantId, {
+          ...auditedInviter(START_DATES),
+          action: 'identity.activated',
+          targetType: 'identity',
+          targetId: r.id,
+          data: { startDate: dateOf(r.person?.startDate), ...(r.sources[0] && { source: r.sources[0].source }) },
+        });
+      }
+      return rows
+        .filter((r) => !r.credentials.length)
+        .filter((r) => (r.sources[0]?.lastValues as { sendInvite?: boolean } | null)?.sendInvite !== false)
+        .map((r) => r.id);
+    });
+    for (const id of due) await this.tryInvite(id, START_DATES);
+    return due.length;
+  }
+
+  private async tryInvite(id: string, actor: Inviter): Promise<void> {
+    try {
+      await this.invite(id, actor);
+    } catch (error) {
+      this.logger.warn(`invite for ${id} not sent: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   /** A one-time link to set a password, by email. Sending a new one cancels the old. */
-  async invite(id: string, actor: Principal): Promise<InviteResult> {
+  async invite(id: string, actor: Inviter): Promise<InviteResult> {
     const { token, hash } = newToken();
     const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000);
     const row = await this.db.tx(async (tx) => {
@@ -249,7 +464,7 @@ export class PeopleService {
       await tx.inviteToken.deleteMany({ where: { identityId: id, usedAt: null, purpose: 'invite' } });
       await tx.inviteToken.create({ data: { tenantId: this.db.tenantId, identityId: id, tokenHash: hash, expiresAt } });
       await appendAudit(tx, this.db.tenantId, {
-        ...audited(actor),
+        ...auditedInviter(actor),
         action: 'identity.invited',
         targetType: 'identity',
         targetId: id,
@@ -262,7 +477,7 @@ export class PeopleService {
       name: row.person?.givenName || row.displayName,
       link: new URL(`/invite/${token}`, this.config.LANDBRIGHT_IDP_URL).href,
       expiresAt,
-      invitedBy: actor.displayName,
+      invitedBy: inviterName(actor),
       tenantName: this.db.tenant.name,
     });
     return { sentTo: row.email!, expiresAt: expiresAt.toISOString() };
@@ -282,7 +497,13 @@ export class PeopleService {
     let link: { token: string; expiresAt: Date } | undefined;
     const row = await this.db.tx(async (tx) => {
       const person = await this.find(tx, id);
-      if (person.status !== 'active') throw new ConflictException('Only active people can be asked to do something.');
+      // A pre-hire can be asked too (the actions wait for their first sign-in), but not emailed before their start date.
+      if (person.status === 'pre_hire' && input.notify)
+        throw new ConflictException(
+          'A pre-hire can’t be emailed before their start date; set the actions without notify.',
+        );
+      if (person.status !== 'active' && person.status !== 'pre_hire')
+        throw new ConflictException('Only active people and pre-hires can be asked to do something.');
       if (input.notify && !person.email) throw new ConflictException('This person has no email address.');
       await tx.identity.update({ where: { id }, data: { requiredActions: actions } });
       if (input.notify && actions.includes('update_password')) {
