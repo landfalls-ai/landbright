@@ -152,6 +152,10 @@ own sign-out sends its logout tokens through the same queue, not inline.
 - Live, the same day, Landledger's server (the finance team's cost subledger, built by the Clickland session): in
   sync at once with eight people and its six role groups (*Landledger Auditors* still empty); Eden Tzur deactivated in
   Landbright was inactive there 1.2 seconds later, and active again 1.9 seconds after reactivation.
+- Live, 2026-11-15, Landledger's back-channel logout endpoint (`/api/auth/backchannel-logout`, built by the Clickland
+  session; it ends every session of the token's `sub`): registered on `landledger-local`; Tal signed in to Landledger,
+  then signed out at Landbright alone, and the logout token was taken on the first try (23 ms); her Landledger session
+  was gone 1.2 seconds after she signed out. Landledger is the first of the land applications to take logout tokens.
 - Live, the same day, back-channel logout on the dev Landbright with a stand-in application (none of Landflow, Landfall
   or Clickland takes logout tokens yet): Tal signed in to it and signed out at Landbright, and **its logout token
   arrived 369 ms later** for that session; signed in again, then *Sign out everywhere else* on the account page: the

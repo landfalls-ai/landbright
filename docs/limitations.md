@@ -27,8 +27,8 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   tenant named by `LANDBRIGHT_TENANT_SLUG`, and client ids are global.
 - **Revocation reaches the applications Landbright provisions** ([provisioning.md](provisioning.md)): deactivating a
   person sets them inactive in each SCIM target within seconds, and an application with a back-channel logout URI is
-  posted a logout token. An application that is neither keeps its own session until it ends. None of Landflow,
-  Landfall or Clickland takes logout tokens yet (SCIM covers them).
+  posted a logout token. An application that is neither keeps its own session until it ends. Landledger takes logout
+  tokens; Landflow, Landfall and Clickland don't yet (SCIM covers them).
 - **Landflow in a bridged container can't use `localhost:4402`.** Landflow takes every endpoint from the discovery
   document, so the issuer must be reachable from both the browser and the container. Run Landflow on the host, or in a
   container with host networking as `deploy/landflow/compose.yml` does ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
