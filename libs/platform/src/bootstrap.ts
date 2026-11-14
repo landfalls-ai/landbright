@@ -2,6 +2,7 @@ import { type INestApplication, Logger, type Type } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 import helmet, { type HelmetOptions } from 'helmet';
 import { DefaultDenyGuard } from './auth/default-deny.guard';
+import { TelemetryLogger } from './log-bridge';
 
 export interface ServiceOptions {
   /** `landbright-idp`, `landbright-control`: the logger context and the OpenTelemetry service name. */
@@ -22,7 +23,12 @@ export interface ServiceOptions {
 export async function startService(module: Type<unknown>, options: ServiceOptions): Promise<INestApplication> {
   // forceCloseConnections: a browser's keep-alive connection would otherwise hold shutdown (and the watcher's restart)
   // open until the browser lets go.
-  const app = await NestFactory.create(module, { bodyParser: options.bodyParser ?? true, forceCloseConnections: true });
+  // The logger also sends each line to OpenTelemetry (log-bridge.ts) when telemetry is exporting.
+  const app = await NestFactory.create(module, {
+    bodyParser: options.bodyParser ?? true,
+    forceCloseConnections: true,
+    logger: new TelemetryLogger(options.name),
+  });
   applyServiceDefaults(app, options);
   await options.configure?.(app);
   await app.listen(options.port, '127.0.0.1');

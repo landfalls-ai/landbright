@@ -35,12 +35,13 @@ the environment win. An invalid value stops the process with every bad variable 
 
 ## OpenTelemetry
 
-Tracing is off unless one of the first two is set. The standard `OTEL_*` variables apply.
+Traces, metrics and logs are off unless one of these is set. The standard `OTEL_*` variables apply.
 
 | Variable | Effect |
 |---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Export spans over OTLP/HTTP, e.g. `http://127.0.0.1:4318`. |
-| `OTEL_TRACES_EXPORTER` | `console` prints spans to stdout. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Export traces, metrics and logs over OTLP/HTTP, e.g. Clickland's collector `http://127.0.0.1:24318`. |
+| `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER` | `otlp` (the default with an endpoint), `console` (stdout), or `none` to switch one signal off. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Milliseconds between metric exports (60000). |
 | `OTEL_SERVICE_NAME` | Overrides `landbright-idp` / `landbright-control`. |
 
 ## Infrastructure (`deploy/.env`)

@@ -1,5 +1,6 @@
 export * from './config';
 export * from './bootstrap';
+export * from './log-bridge';
 export * from './auth/public.decorator';
 export * from './auth/default-deny.guard';
 export * from './health/probes';

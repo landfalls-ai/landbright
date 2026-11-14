@@ -76,12 +76,22 @@ Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it n
 - `@land/tokens` checks its copy against Landflow's `globals.css` when the Landflow checkout sits next to this repo
   (`LANDFLOW_DIR` points elsewhere).
 
-## Tracing
+## Telemetry
 
-Tracing is off until an exporter is set. `OTEL_TRACES_EXPORTER=console` prints spans to the service's stdout;
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` sends them over OTLP/HTTP to a local collector. The services are
-`landbright-idp` and `landbright-control`; HTTP, Express, Nest, pg and ioredis are instrumented
-(`libs/platform/src/telemetry`).
+Traces, metrics and logs are off until an exporter is set. `OTEL_EXPORTER_OTLP_ENDPOINT` turns on all three over
+OTLP/HTTP; Clickland, the land family's observability system, takes them on its local collector:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:24318 pnpm serve   # in the cluster: http://host.orb.internal:24318
+```
+
+`OTEL_<TRACES|METRICS|LOGS>_EXPORTER=none` switches one signal off; without an endpoint, `=console` prints that signal
+to stdout. The services are `landbright-idp` and `landbright-control`. Traces: HTTP, Express, Nest, pg and ioredis.
+Metrics: `http.server.request.duration`, `http.client.request.duration` and the Node runtime (event loop, heap, GC).
+Logs: every Nest `Logger` line, still printed, also goes out as a log record with its severity, its Nest context and
+the trace and span of the request it belongs to (`TelemetryLogger`, `libs/platform/src/log-bridge.ts`). Code:
+`libs/platform/src/telemetry`. To look in Clickland: `POST http://127.0.0.1:4710/api/search`
+`{"signal":"logs","query":"service:landbright-idp"}`.
 
 ## Where code goes
 
