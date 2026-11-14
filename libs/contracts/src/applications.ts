@@ -5,6 +5,10 @@ import { Acr } from './acr';
 
 /** Applications: the OIDC clients that sign in with Landbright. */
 
+/** The two ways an application with a secret proves itself (an agent's uses private_key_jwt, set with it). */
+export const SECRET_AUTH_METHODS = ['client_secret_basic', 'client_secret_post'] as const;
+export type SecretAuthMethod = (typeof SECRET_AUTH_METHODS)[number];
+
 const RedirectUri = z.url().refine((u) => !u.includes('#'), 'A redirect URI can’t have a fragment.');
 
 export const Application = z.object({
@@ -20,6 +24,12 @@ export const Application = z.object({
   minimumAcr: Acr.nullable(),
   /** Landbright's own console client: shown, not editable. */
   system: z.boolean(),
+  /** An agent's own application: the agent it acts as (no secret; `private_key_jwt` with the agent's keys). */
+  agentId: z.uuid().nullable(),
+  /** How it proves itself at the token endpoint: client_secret_basic or _post, or private_key_jwt for an agent's. */
+  tokenEndpointAuthMethod: z.string(),
+  /** An agent's application: how many public keys it has. */
+  keys: z.number().int(),
   secretVersion: z.number().int(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -45,6 +55,8 @@ export const CreateApplication = z.object({
   apiScopes: z.array(z.enum(MACHINE_API_SCOPE_NAMES as [string, ...string[]])).default([]),
   /** The weakest sign-in it accepts: people who signed in more weakly are asked for more (step-up). */
   minimumAcr: Acr.nullable().default(null),
+  /** How it sends its secret to the token endpoint: an Authorization header (basic) or form fields (post). */
+  tokenEndpointAuthMethod: z.enum(SECRET_AUTH_METHODS).default('client_secret_basic'),
 });
 export type CreateApplication = z.input<typeof CreateApplication>;
 

@@ -122,6 +122,7 @@ await subscribe('landbright-requests', ['request.created'], 'Landflow: Approve a
 if (SLACK_TOKEN)
   await subscribe('landbright-requests-slack', ['request.created'], 'Landflow: Approve a request (Slack)');
 await subscribe('landbright-people', ['identity.created'], 'Landflow: Onboard a new person');
+await subscribe('landbright-ciba', ['ciba.requested'], 'Landflow: Ask a person for an agent (CIBA)');
 await subscribe(
   'landbright-grants',
   ['grant.activated', 'grant.expired', 'grant.revoked', 'grant.revoke_overdue'],

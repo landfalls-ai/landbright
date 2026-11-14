@@ -12,11 +12,16 @@ import { ACR_VALUES, acrLevel, neededAcr } from '@landbright/contracts';
 import { errorPage, logoutPage, signedOutPage } from '../pages/pages';
 import { capToGrant, CLAIMS, loadAccount } from './account';
 import { postgresAdapter } from './adapter';
+import { actClaim, agentOf, whyAgentMayNotActFor } from './agents';
+import { cibaFeature } from './ciba';
+import { exchangedAct, registerTokenExchange } from './token-exchange';
+import { deviceConfirmPage, deviceDonePage, deviceFormParts, deviceInputPage } from '../pages/agent-pages';
 
 /**
  * The OIDC provider (panva/oidc-provider, OpenID Certified), mounted at /oidc on the identity plane. Authorization
  * code with PKCE (required for every client, as OAuth 2.1 does), refresh tokens, client credentials, introspection,
- * revocation, RP-initiated logout. Sign-in happens on Landbright's own pages (/interaction/:uid).
+ * revocation, RP-initiated logout; for agents, private_key_jwt, token exchange, CIBA and the device grant; PAR and
+ * DPoP. Sign-in happens on Landbright's own pages (/interaction/:uid).
  */
 export function createProvider(config: Config, prisma: PrismaClient, tenant: TenantRef, keys: SigningJwk[]): Provider {
   const secret = config.LANDBRIGHT_SECRET_KEY;
@@ -36,7 +41,28 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
     responseTypes: ['code', 'none'],
     // What an application may do as itself on the machine API (client credentials), from its `apiScopes`; the weakest
     // sign-in it accepts, from its `minimumAcr`.
-    extraClientMetadata: { properties: ['api_scopes', 'minimum_acr'] },
+    // An agent's application (spec 005, slice 3) also carries its agent: who, how long its tokens live, whom it may act
+    // for, and its sponsor (oidc/adapter.ts).
+    extraClientMetadata: {
+      properties: [
+        'api_scopes',
+        'minimum_acr',
+        'agent_id',
+        'agent_name',
+        'agent_ttl',
+        'agent_act_for',
+        'agent_sponsor_id',
+      ],
+    },
+    // A token an agent holds for a person says so: `act` names the agent (RFC 8693 §4.1), and after a token exchange,
+    // whoever acted before it.
+    extraTokenClaims: (_ctx, token) => {
+      const exchanged = exchangedAct.get(token);
+      if (exchanged) return { act: exchanged };
+      const agent = agentOf(token.client);
+      const accountId = (token as { accountId?: string }).accountId;
+      return agent && accountId ? { act: actClaim(agent, token.clientId!) } : undefined;
+    },
     // How strongly someone signed in: urn:landbright:acr:pwd, :mfa, :phr (libs/contracts/src/acr.ts).
     acrValues: [...ACR_VALUES],
     // The account page (/account) signs people in through this client: a session, and no tokens.
@@ -61,12 +87,51 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
           return {
             scope: scopes.join(' '),
             audience: MACHINE_API_RESOURCE,
-            accessTokenTTL: 600,
+            accessTokenTTL: Math.min(600, agentOf(client)?.ttl ?? 600),
             accessTokenFormat: 'jwt',
             jwt: { sign: { alg: 'RS256' } },
           };
         },
       },
+      // OpenID CIBA (poll): an agent asks a person, Landflow tells them, they decide on Landbright's page.
+      ciba: cibaFeature(config, prisma, tenant),
+      // RFC 8628: a command-line agent shows a code; the person enters it at /oidc/device and signs in.
+      deviceFlow: {
+        enabled: true,
+        charset: 'base-20',
+        mask: '****-****',
+        userCodeInputSource: (ctx, form, out, err) => {
+          ctx.type = 'html';
+          ctx.body = deviceInputPage({
+            ...deviceFormParts(form),
+            error: !err
+              ? undefined
+              : err.name === 'NoCodeError' || (err as { userCode?: string }).userCode
+                ? 'That code isn’t right, or it expired. Check the device and try again.'
+                : deniedBecause(err)
+                  ? `Not connected: ${deniedBecause(err)}`
+                  : out?.error === 'access_denied'
+                    ? String(out.error_description ?? 'Access was denied.')
+                    : 'The device sign-in was interrupted. Start again on the device.',
+          });
+        },
+        userCodeConfirmSource: (ctx, form, client, _deviceInfo, userCode) => {
+          ctx.type = 'html';
+          ctx.body = deviceConfirmPage({
+            ...deviceFormParts(form),
+            userCode,
+            clientName: client.clientName ?? client.clientId,
+            agent: agentOf(client)?.name,
+          });
+        },
+        successSource: (ctx) => {
+          ctx.type = 'html';
+          ctx.body = deviceDonePage(ctx.oidc.client?.clientName ?? 'The device');
+        },
+      },
+      // PAR (RFC 9126) and DPoP (RFC 9449) are oidc-provider's defaults (on); listed here so the choice is visible.
+      pushedAuthorizationRequests: { enabled: true, requirePushedAuthorizationRequests: false },
+      dPoP: { enabled: true },
       introspection: { enabled: true },
       revocation: { enabled: true },
       rpInitiatedLogout: {
@@ -88,6 +153,10 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
       const session = ctx.oidc.session;
       const client = ctx.oidc.client;
       if (!session?.accountId || !client) return undefined;
+      // An agent's application signing a person in (the device grant): only someone the agent may act for.
+      const agent = agentOf(client);
+      const whyNot = agent && whyAgentMayNotActFor(agent, session.accountId);
+      if (whyNot) throw new errors.AccessDenied(whyNot);
       const grantId = ctx.oidc.result?.consent?.grantId ?? session.grantIdFor(client.clientId);
       const scope = String(ctx.oidc.params?.scope ?? 'openid');
       const existing = grantId ? await ctx.oidc.provider.Grant.find(grantId) : undefined;
@@ -101,9 +170,12 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
     ttl: {
       // Sign-in tokens end with the soonest just-in-time membership in their claims (capToGrant); machine API tokens
       // keep their resource server's lifetime.
-      AccessToken: (ctx, token) => token.resourceServer?.accessTokenTTL ?? capToGrant(ctx, 3600),
+      AccessToken: (ctx, token, client) =>
+        token.resourceServer?.accessTokenTTL ?? Math.min(capToGrant(ctx, 3600), agentOf(client)?.ttl ?? 3600),
       AuthorizationCode: 60,
-      ClientCredentials: 600,
+      ClientCredentials: (_ctx, _token, client) => Math.min(600, agentOf(client)?.ttl ?? 600),
+      BackchannelAuthenticationRequest: 600,
+      DeviceCode: 600,
       // A key rotation keeps the replaced key published at least this long (rotateAfter in @landbright/persistence).
       IdToken: (ctx) => capToGrant(ctx, config.LANDBRIGHT_ID_TOKEN_TTL_SECONDS),
       Interaction: 3600,
@@ -119,7 +191,14 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
   const provider = new Provider(issuerOf(config), configuration);
   // Behind a TLS proxy, trust X-Forwarded-Proto so cookies are secure and URLs say https.
   provider.proxy = config.LANDBRIGHT_TRUST_PROXY;
+  registerTokenExchange(provider, { prisma, tenant, keys });
   return provider;
+}
+
+/** Why a device sign-in was refused (oidc-provider wraps the AccessDenied in an AbortedError), if it was. */
+function deniedBecause(err: Error): string | undefined {
+  const cause = (err as { cause?: { error?: string; error_description?: string } }).cause;
+  return err.name === 'AbortedError' && cause?.error === 'access_denied' ? cause.error_description : undefined;
 }
 
 /** The account page's client: Landbright's own, static, no secret and no tokens (response type `none`). */

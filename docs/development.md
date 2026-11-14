@@ -22,14 +22,15 @@ restarts.
 
 ## Ports
 
-Everything binds to 127.0.0.1. The infrastructure sits in the 57xxx band so it never collides with Landflow (51xxx,
+Everything binds to 127.0.0.1; idp and control also to [::1], since the issuer is `localhost` and some clients
+(Landfall's server) try `localhost` as IPv6 first. Nothing listens beyond the loopback. The infrastructure sits in the 57xxx band so it never collides with Landflow (51xxx,
 55xxx, 56xxx, 58xxx) on the same Docker engine.
 
 | Port | What |
 |---|---|
 | 4400 | Console (Vite); `/api` is proxied to control |
 | 4401 | Control API; `/healthz`, `/api/*`, `/api/docs`, `/api/openapi.json` |
-| 4402 | Identity plane (idp), at `http://localhost:4402` (passkeys need a domain; it listens on 127.0.0.1); `/healthz`, the issuer at `/oidc`, sign-in and invite pages |
+| 4402 | Identity plane (idp), at `http://localhost:4402` (passkeys need a domain; it listens on 127.0.0.1 and [::1]); `/healthz`, the issuer at `/oidc`, sign-in and invite pages |
 | 57432 | Postgres 16: `landbright` (app), `landbright_test` (integration tests); owner `landbright` / `landbright-dev-only`, app role `landbright_app` / `landbright-app-dev-only` |
 | 57379 | Valkey 8 |
 | 57025 / 57825 | Mailpit SMTP / web UI |

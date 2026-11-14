@@ -22,6 +22,8 @@ export interface ServicePrincipal {
   scopes: string[];
   /** When the application is an agent's: the agent's identity (it may only ask for access for itself). */
   agentId?: string | null;
+  /** A token the agent got by token exchange (or CIBA, or the device grant): the person it acts for (`sub`, with `act`). */
+  actingFor?: { id: string; displayName: string } | null;
 }
 
 export type WithPrincipal = { principal?: Principal | ServicePrincipal };

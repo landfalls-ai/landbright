@@ -1,5 +1,12 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { Application, ApplicationWithSecret, CreateApplication, UpdateApplication } from '@landbright/contracts';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  type Application,
+  type ApplicationWithSecret,
+  type CreateAgentApplication,
+  type CreateApplication,
+  type PublicJwks,
+  type UpdateApplication,
+} from '@landbright/contracts';
 import { type Config, clientSecret, issuerOf } from '@landbright/platform';
 import { appendAudit, CONFIG, type Prisma } from '@landbright/persistence';
 import { audited, type Principal } from '../common/principal';
@@ -17,6 +24,9 @@ const toApplication = (c: ClientRow): Application => ({
   apiScopes: c.apiScopes,
   minimumAcr: (c.minimumAcr as Application['minimumAcr']) ?? null,
   system: c.system,
+  agentId: c.agentId,
+  tokenEndpointAuthMethod: c.tokenEndpointAuthMethod,
+  keys: Array.isArray((c.jwks as { keys?: unknown[] } | null)?.keys) ? (c.jwks as { keys: unknown[] }).keys.length : 0,
   secretVersion: c.secretVersion,
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
@@ -72,6 +82,7 @@ export class ApplicationsService {
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
             minimumAcr: input.minimumAcr ?? null,
+            tokenEndpointAuthMethod: input.tokenEndpointAuthMethod ?? 'client_secret_basic',
           },
         });
         await appendAudit(tx, this.db.tenantId, {
@@ -85,6 +96,7 @@ export class ApplicationsService {
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
             minimumAcr: input.minimumAcr ?? null,
+            tokenEndpointAuthMethod: input.tokenEndpointAuthMethod ?? 'client_secret_basic',
           },
         });
         return created;
@@ -94,9 +106,84 @@ export class ApplicationsService {
     return this.withSecret(row);
   }
 
+  /**
+   * An agent's own application: bound to the agent (it asks and acts as that agent only), no secret, private_key_jwt
+   * with the agent's public keys. One per agent; the agent must be active and have an active sponsor.
+   */
+  async createForAgent(
+    agentId: string,
+    input: Required<CreateAgentApplication>,
+    actor: Principal,
+  ): Promise<Application> {
+    return this.db.tx(async (tx) => {
+      const agent = await tx.identity.findFirst({
+        where: { id: agentId, kind: 'agent' },
+        include: { agent: { include: { sponsor: true } }, application: true },
+      });
+      if (!agent?.agent) throw new NotFoundException('No such agent.');
+      if (agent.status !== 'active' || agent.agent.sponsor.status !== 'active')
+        throw new ConflictException('The agent and its sponsor must be active.');
+      if (agent.application)
+        throw new ConflictException('This agent has an application already. Replace its keys instead.');
+      const clientId = `agent-${clientIdFrom(agent.displayName)}-${agentId.slice(0, 8)}`.slice(0, 63);
+      const created = await tx.oidcClient.create({
+        data: {
+          tenantId: this.db.tenantId,
+          clientId,
+          name: agent.displayName,
+          redirectUris: [],
+          postLogoutRedirectUris: [],
+          grantTypes: input.grantTypes,
+          tokenEndpointAuthMethod: 'private_key_jwt',
+          apiScopes: input.apiScopes,
+          agentId,
+          jwks: input.jwks as object,
+        },
+      });
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(actor),
+        action: 'client.created',
+        targetType: 'client',
+        targetId: clientId,
+        data: {
+          name: agent.displayName,
+          agentId,
+          grantTypes: input.grantTypes,
+          apiScopes: input.apiScopes,
+          keys: input.jwks.keys.map((k) => k.kid ?? k.kty),
+        },
+      });
+      return toApplication(created);
+    });
+  }
+
+  /** New public keys for an agent's application: the old ones stop working at once (assertions signed with them fail). */
+  async replaceAgentKeys(agentId: string, jwks: PublicJwks, actor: Principal): Promise<Application> {
+    return this.db.tx(async (tx) => {
+      const row = await tx.oidcClient.findFirst({ where: { agentId } });
+      if (!row) throw new NotFoundException('This agent has no application.');
+      const updated = await tx.oidcClient.update({ where: { id: row.id }, data: { jwks: jwks as object } });
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(actor),
+        action: 'client.keys_replaced',
+        targetType: 'client',
+        targetId: row.clientId,
+        data: { agentId, keys: jwks.keys.map((k) => k.kid ?? k.kty) },
+      });
+      return toApplication(updated);
+    });
+  }
+
   async update(id: string, input: UpdateApplication, actor: Principal): Promise<Application> {
     return this.db.tx(async (tx) => {
       const row = await this.editable(tx, id);
+      if (
+        row.agentId &&
+        (input.grantTypes || input.redirectUris || input.postLogoutRedirectUris || input.tokenEndpointAuthMethod)
+      )
+        throw new ConflictException(
+          'An agent’s application has no redirects or secret, and its grant types are set with it.',
+        );
       const updated = await tx.oidcClient.update({
         where: { id },
         data: {
@@ -106,6 +193,7 @@ export class ApplicationsService {
           grantTypes: input.grantTypes,
           apiScopes: input.apiScopes,
           minimumAcr: input.minimumAcr,
+          tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
         },
       });
       await appendAudit(tx, this.db.tenantId, {
@@ -126,6 +214,8 @@ export class ApplicationsService {
   async rotateSecret(id: string, actor: Principal): Promise<ApplicationWithSecret> {
     const row = await this.db.tx(async (tx) => {
       const current = await this.editable(tx, id);
+      if (current.agentId)
+        throw new ConflictException('An agent’s application has no secret: replace its keys instead.');
       const updated = await tx.oidcClient.update({ where: { id }, data: { secretVersion: { increment: 1 } } });
       await appendAudit(tx, this.db.tenantId, {
         ...audited(actor),

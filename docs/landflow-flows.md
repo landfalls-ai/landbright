@@ -1,6 +1,6 @@
 # The Landflow flows
 
-Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Six flows
+Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Seven flows
 ship in [`integrations/landflow/flows/`](../integrations/landflow/flows/). Each is plain Landflow workflow JSON built
 from core nodes (Webhook, Code, If, HTTP Request, Set, Wait, Schedule), so it imports into any Landflow, edits on the
 canvas, and needs no Landflow change.
@@ -12,6 +12,7 @@ canvas, and needs no Landflow change.
 | **Approve a request (Slack)** | `request.created` | When the current step allows chat votes: gets one ticket per approver, finds each in Slack by email, and sends a direct message with Approve and Deny (carrying the ticket) and *Open in Landbright* |
 | **Slack approval buttons** | The Slack app's Interactivity URL | Relays the click with its ticket to `POST /api/v1/requests/:id/decisions`, then replaces the message with the outcome (or why Landbright refused) |
 | **Onboard a new person** | `identity.created` | For a person: re-reads them, adds them to their birthright groups (*Everyone*, and their department's: Engineering gets *Engineers* and *Landflow Editors*) as source `hr`, asks them to set up a second step and accept the terms at their first sign-in ([account.md](account.md#required-actions)), and emails a welcome. Keycloak's onboarding, as a flow; the map of groups is the *Birthright groups* Code node |
+| **Ask a person for an agent (CIBA)** | `ciba.requested` | Emails the person the agent asks to act for: the agent's name, the code it shows, the link to Landbright's decision page and how long it works. The person decides there, signed in; the flow only carries the link ([agents.md](agents.md#asking-a-person-ciba-with-landflow-as-the-channel)) |
 | **Disable inactive people** | Every day at 9:00 | Finds people who haven't signed in for 90 days (administrators excepted), emails their manager, waits 7 days, checks again, and deactivates who is still inactive. Keycloak's *disable inactive users* workflow, as a flow |
 
 Each flow reaches Landbright only through the [machine API](reference/api.md#machine-api-apiv1), with the scopes its
@@ -93,6 +94,11 @@ The *Onboard* flow, the same day: an administrator added Noam Katz (Engineering)
 *Everyone*, *Engineers* and *Landflow Editors* (source `hr`), set `configure_second_step` and `accept_terms`, and sent
 the welcome; Landbright sent the invite. The required actions at a first sign-in are covered by the e2e and browser
 tests ([account.md](account.md#required-actions)).
+
+The *CIBA* flow, the same day: a new agent, *Release bot*, asked Landbright to act for Rina Mor. The flow emailed Rina
+*Release bot … asks to act for you* with the code and a link good for 10 minutes; Rina signed in (doing the required
+actions the *Onboard* flow had set), approved, and the agent's poll got tokens it then exchanged and used on the
+machine API ([agents.md](agents.md#checked)).
 
 ## Writing your own
 

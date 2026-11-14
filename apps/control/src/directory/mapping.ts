@@ -14,6 +14,7 @@ export type PersonRow = Prisma.IdentityGetPayload<{ include: typeof personInclud
 
 export const agentInclude = {
   agent: { include: { sponsor: true } },
+  application: { select: { id: true, clientId: true, grantTypes: true } },
   memberships: { include: { group: { select: { id: true, name: true } } } },
 } satisfies Prisma.IdentityInclude;
 export type AgentRow = Prisma.IdentityGetPayload<{ include: typeof agentInclude }>;
@@ -75,6 +76,7 @@ export function toAgent(row: AgentRow): Agent {
     homeProject: a.homeProject,
     maxTokenTtlSeconds: a.maxTokenTtlSeconds,
     actFor: a.actFor,
+    application: row.application,
     groups: groupsOf(row.memberships),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

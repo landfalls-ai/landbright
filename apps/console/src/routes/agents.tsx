@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Bot, Plus } from 'lucide-react';
+import { Bot, KeyRound, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { Agent, type AgentRuntime, type RiskTier } from '@landbright/contracts';
+import { Agent, type AgentRuntime, Application, PublicJwks, type RiskTier } from '@landbright/contracts';
 import { ListState, StatusBadge } from '@/components/directory/bits';
 import { PageBody, PageHeader } from '@/components/shell/page-header';
 import { Badge, Chip, type Tone } from '@/components/ui/badge';
@@ -22,11 +22,13 @@ const ACT_FOR = { sponsor: 'Its sponsor', anyone: 'Anyone who asks', nobody: 'On
 
 /**
  * Agent identities. Every agent has a sponsor, the person accountable for it; deactivating the sponsor suspends the
- * agent. Credentials and tokens for agents arrive in wave 5.
+ * agent. An agent's application holds its public keys (private_key_jwt): with it the agent gets tokens as itself,
+ * exchanges a person's token, asks a person (CIBA) or uses the device grant.
  */
 export function AgentsPage() {
   const agents = useAgents();
   const [adding, setAdding] = useState(false);
+  const [keysFor, setKeysFor] = useState<Agent | undefined>();
   const status = useWrite(({ id, action }: { id: string; action: 'suspend' | 'resume' }) =>
     send('POST', `/api/agents/${id}/${action}`, undefined, Agent),
   );
@@ -39,14 +41,14 @@ export function AgentsPage() {
   return (
     <>
       <PageHeader title="Agents" meta={agents.data && <span>{items.length} registered</span>} actions={add} />
-      <PageBody className="max-w-[1180px]">
+      <PageBody className="max-w-[1400px]">
         {items.length ? (
-          <Table head={['Agent', 'Sponsor', 'Runtime', 'Risk', 'Acts for', 'Token TTL', 'Status', '']}>
+          <Table head={['Agent', 'Sponsor', 'Runtime', 'Risk', 'Acts for', 'Application', 'Status', '']}>
             {items.map((a) => (
               <Row key={a.id} testId={`agent-${a.displayName}`}>
                 <Cell>
                   <div className="font-medium text-t1">{a.displayName}</div>
-                  <div className="max-w-[300px] truncate text-[12px] text-t3" title={a.purpose}>
+                  <div className="max-w-[240px] truncate text-[12px] text-t3" title={a.purpose}>
                     {a.purpose}
                   </div>
                 </Cell>
@@ -61,12 +63,28 @@ export function AgentsPage() {
                 <Cell>
                   <Badge tone={RISK[a.riskTier]}>{a.riskTier}</Badge>
                 </Cell>
-                <Cell className="text-t2">{ACT_FOR[a.actFor]}</Cell>
-                <Cell className="font-mono text-[12px] text-t2">{Math.round(a.maxTokenTtlSeconds / 60)} min</Cell>
+                <Cell>
+                  <div className="whitespace-nowrap text-t2">{ACT_FOR[a.actFor]}</div>
+                  <div className="whitespace-nowrap font-mono text-[11px] text-t3" title="Longest token it gets">
+                    tokens {Math.round(a.maxTokenTtlSeconds / 60)} min
+                  </div>
+                </Cell>
+                <Cell>
+                  {a.application ? (
+                    <span title={a.application.clientId} data-testid={`agent-app-${a.displayName}`}>
+                      <Badge tone="neutral">Connected</Badge>
+                    </span>
+                  ) : (
+                    <span className="text-[12px] text-t3">None</span>
+                  )}
+                </Cell>
                 <Cell>
                   <StatusBadge status={a.status} />
                 </Cell>
-                <Cell className="text-right">
+                <Cell className="whitespace-nowrap text-right">
+                  <Button size="sm" variant="ghost" onClick={() => setKeysFor(a)} data-testid={`keys-${a.displayName}`}>
+                    <KeyRound className="size-3.5" /> {a.application ? 'Keys' : 'Connect'}
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -95,6 +113,7 @@ export function AgentsPage() {
         )}
       </PageBody>
       {adding && <AddAgentDialog onClose={() => setAdding(false)} />}
+      {keysFor && <AgentKeysDialog agent={keysFor} onClose={() => setKeysFor(undefined)} />}
     </>
   );
 }
@@ -214,6 +233,104 @@ function AddAgentDialog({ onClose }: { onClose: () => void }) {
         </div>
         <FormError error={create.error} />
       </div>
+    </Dialog>
+  );
+}
+
+/**
+ * The agent's application: paste its public keys (a JWKS). The private key stays with the agent; Landbright refuses
+ * one. Creating it the first time also chooses what the agent may ask the machine API for.
+ */
+function AgentKeysDialog({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+  const [jwks, setJwks] = useState('');
+  const [parseError, setParseError] = useState<string>();
+  const existing = agent.application;
+  const save = useWrite((body: { jwks: unknown }) =>
+    existing
+      ? send('PUT', `/api/agents/${agent.id}/application/keys`, body, Application)
+      : send('POST', `/api/agents/${agent.id}/application`, body, Application),
+  );
+  const [saved, setSaved] = useState<Application>();
+  const submit = () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jwks);
+    } catch {
+      return setParseError('That isn’t JSON. Paste the agent’s JWKS: {"keys": [ … ]}.');
+    }
+    const checked = PublicJwks.safeParse(parsed);
+    if (!checked.success) return setParseError(checked.error.issues[0]?.message ?? 'That isn’t a public JWKS.');
+    setParseError(undefined);
+    save.mutate(
+      { jwks: checked.data },
+      {
+        onSuccess: (app) => {
+          setSaved(app);
+          toast.success(
+            existing ? 'Keys replaced: the old ones no longer work.' : `${agent.displayName} is connected.`,
+          );
+        },
+      },
+    );
+  };
+  return (
+    <Dialog
+      title={existing ? `${agent.displayName}: keys` : `Connect ${agent.displayName}`}
+      subtitle={
+        existing ? 'New public keys replace the old ones at once.' : 'No secret: it signs in with a key only it holds.'
+      }
+      onClose={onClose}
+      onSubmit={saved ? onClose : submit}
+      footer={
+        saved ? (
+          <Button type="submit" variant="primary">
+            Done
+          </Button>
+        ) : (
+          <>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" loading={save.isPending} data-testid="save-keys">
+              {existing ? 'Replace keys' : 'Connect'}
+            </Button>
+          </>
+        )
+      }
+    >
+      {saved ? (
+        <dl className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-2 text-[13px]" data-testid="agent-app">
+          <dt className="text-t3">Client id</dt>
+          <dd className="font-mono text-t1">{saved.clientId}</dd>
+          <dt className="text-t3">Signs in with</dt>
+          <dd className="text-t1">private_key_jwt · {saved.keys === 1 ? '1 key' : `${saved.keys} keys`}</dd>
+          <dt className="text-t3">Can use</dt>
+          <dd className="text-t1">Client credentials, token exchange, CIBA, the device grant</dd>
+          <dt className="text-t3">Machine API</dt>
+          <dd className="font-mono text-[12px] text-t2">{saved.apiScopes.join(' ')}</dd>
+        </dl>
+      ) : (
+        <div className="flex flex-col gap-3.5">
+          {existing && (
+            <p className="text-[13px] text-t2">
+              Client id <span className="font-mono text-t1">{existing.clientId}</span>
+            </p>
+          )}
+          <Field label="Public keys (JWKS)" hint="RSA, P-256 or Ed25519. Paste the public part only.">
+            <Textarea
+              rows={7}
+              className="font-mono text-[12px]"
+              value={jwks}
+              onChange={(e) => setJwks(e.target.value)}
+              required
+              autoFocus
+              placeholder={'{"keys": [{"kty": "EC", "crv": "P-256", "x": "…", "y": "…", "kid": "bot-1"}]}'}
+              data-testid="jwks"
+            />
+          </Field>
+          <FormError error={parseError ? new Error(parseError) : save.error} />
+        </div>
+      )}
     </Dialog>
   );
 }

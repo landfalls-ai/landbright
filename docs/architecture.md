@@ -29,7 +29,7 @@ Prisma 6 over Postgres. Tenant tables carry `tenant_id` under forced row-level s
 ## What every service shares (`libs/platform`)
 
 - `startService` / `applyServiceDefaults`: Helmet (the idp sets a strict CSP for its pages), the global
-  `DefaultDenyGuard`, graceful shutdown, a listener on 127.0.0.1.
+  `DefaultDenyGuard`, graceful shutdown, listeners on 127.0.0.1 and [::1] (loopback only).
 - `DefaultDenyGuard` + `@Public()`: a route is closed unless marked public or a principal is on the request (control's
   session middleware sets it from `lb_session`).
 - `loadConfig` / `loadWorkspaceEnv`, `issuerOf`: zod-validated settings with development defaults.
@@ -50,23 +50,25 @@ test fails when they drift from Landflow's `globals.css`.
 ## Code map
 
 ```
-apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,provider-ref,adapter,account} ·
-                         interactions/ (sign-in, lockout, required actions) · invite/ · account/ (account page, forgot password) ·
-                         mail/ · pages/ (server-rendered HTML)
+apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,provider-ref,adapter,account,
+                         agents,token-exchange,ciba} ·
+                         interactions/ (sign-in, lockout, required actions) · invite/ · account/ (account page, forgot password, self-session) ·
+                         ciba/ (the decision page) · mail/ · pages/ (server-rendered HTML; agent-pages: device, CIBA)
 apps/control/src/        main.ts · configure.ts (prefix, origin check, session, service tokens on /api/v1, OpenAPI) ·
                          auth/ (console sign-in) · directory/ (people, agents, groups) · applications/ · audit/ ·
                          access/ (bundles, requests, decisions, grants, sweeper) · events/ (subscriptions, the
-                         worker: deliveries and wake-ups) · machine/ (/api/v1) · mail/ · health/ ·
+                         worker: deliveries and wake-ups) · machine/ (/api/v1, DPoP) · mail/ · health/ ·
                          common/ (principal, key-ring)
 apps/console/src/        router.tsx · nav.ts · routes/ · components/{shell,ui,directory,access}/ · lib/api.ts
 libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap,signing-keys}.ts
 libs/platform/src/       config.ts · crypto.ts · valkey.ts · bootstrap.ts · auth/ · health/ · telemetry/
-libs/contracts/src/      health · directory · applications · audit · session · access · events · machine-api
+libs/contracts/src/      health · directory · applications · agent-apps · audit · session · access · events · machine-api
 e2e/test/                stack.ts (processes) · browser.ts · landflow-rp.ts · authenticator.ts · signin.test.ts ·
-                         access.test.ts (access, events and the machine API, with a hook server)
+                         access.test.ts (access, events and the machine API, with a hook server) ·
+                         agents.test.ts (agent applications, token exchange, CIBA, device grant, PAR, DPoP)
 e2e/browser/             console.spec.ts (Playwright: the console and sign-in pages in Chromium; the screenshots)
 e2e/landflow/            install.ts (installs the Landflow flows and wires both sides)
-integrations/landflow/   flows/*.json (the Landflow flows: approval, provisioning, inactive people)
+integrations/landflow/   flows/*.json (the Landflow flows: approval, provisioning, onboarding, inactive people, CIBA)
 e2e/conformance/         run.ts (pnpm conformance: the OpenID conformance suite against a dedicated identity plane)
 deploy/                  compose.infra.yml · infra/postgres/init.sql · conformance/ (suite, TLS proxy) ·
                          landflow/ (a throwaway Landflow signing in through Landbright) ·

@@ -62,6 +62,7 @@ model Identity {
 
   person      PersonProfile?
   agent       AgentProfile?  @relation("AgentIdentity")
+  application OidcClient?    @relation("AgentApplication")
   sponsoring  AgentProfile[] @relation("AgentSponsor")
   memberships Membership[]
   credentials Credential[]
@@ -249,10 +250,16 @@ model OidcClient {
   apiScopes               String[] @default([]) @map("api_scopes")
   /// The weakest sign-in it accepts: urn:landbright:acr:pwd, :mfa or :phr (a passkey). Null: any.
   minimumAcr              String?  @map("minimum_acr")
+  /// An agent's own application: bound to that agent (it acts as the agent only), authenticating with private_key_jwt
+  /// against `jwks` (the agent's public keys). One per agent.
+  agentId                 String?  @unique @map("agent_id") @db.Uuid
+  jwks                    Json?
   /// Landbright's own console: managed by the bootstrap, not editable in the console.
   system                  Boolean  @default(false)
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
+
+  agent Identity? @relation("AgentApplication", fields: [agentId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@map("oidc_client")

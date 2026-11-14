@@ -3,12 +3,14 @@ import {
   Agent,
   AgentList,
   CreateAgent,
+  CreateAgentApplication,
   CreateGroup,
   CreatePerson,
   GroupDetail,
   GroupList,
   InviteResult,
   PeopleList,
+  ReplaceAgentKeys,
   ServiceAddMember,
   SetRequiredActions,
   Person,
@@ -33,3 +35,5 @@ export class UpdateGroupDto extends createZodDto(CreateGroup.partial()) {}
 export class AddMemberDto extends createZodDto(AddMember) {}
 export class SetRequiredActionsDto extends createZodDto(SetRequiredActions) {}
 export class ServiceAddMemberDto extends createZodDto(ServiceAddMember) {}
+export class CreateAgentApplicationDto extends createZodDto(CreateAgentApplication) {}
+export class ReplaceAgentKeysDto extends createZodDto(ReplaceAgentKeys) {}

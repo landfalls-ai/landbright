@@ -13,7 +13,7 @@
 | T009 | The account page: password, authenticator app, passkeys, recovery codes, sessions | ✓ 2026-11-14 |
 | T010 | `acr` and per-application minimums | ✓ 2026-11-14 |
 | T011 | Machine API for people and groups; the *Onboard* flow | ✓ 2026-11-14 |
-| T012 | Agent applications with `private_key_jwt` | Next |
-| T013 | Token exchange with `act` | Later |
-| T014 | CIBA with Landflow as the channel | Later |
-| T015 | Device grant, PAR, DPoP | Later |
+| T012 | Agent applications with `private_key_jwt` | ✓ 2026-11-14 |
+| T013 | Token exchange with `act` | ✓ 2026-11-14 |
+| T014 | CIBA with Landflow as the channel | ✓ 2026-11-14 |
+| T015 | Device grant, PAR, DPoP | ✓ 2026-11-14 |

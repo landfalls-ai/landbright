@@ -3,6 +3,8 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import { type BrowserContext, expect, type Locator, type Page, test } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { Secret, TOTP } from 'otpauth';
 import { LandflowLikeRp } from '../test/landflow-rp';
 import { MAILPIT, type Stack, startStack } from '../test/stack';
@@ -12,7 +14,8 @@ import { MAILPIT, type Stack, startStack } from '../test/stack';
  * directory through the console; Maya sets her password from the invite, adds a passkey (Chrome's virtual
  * authenticator, so the page's own script runs the ceremony) and signs in to a Landflow-shaped app with it; Noa sets
  * up an authenticator app; the console then shows what happened; Tom meets required actions, resets a forgotten
- * password, uses their account page and a recovery code, and is asked again by an app that needs a passkey. Each screen
+ * password, uses their account page and a recovery code, and is asked again by an app that needs a passkey; Lia
+ * connects her release bot's key, and approves the bot on Landbright's CIBA page and with a device code. Each screen
  * is captured on the way.
  */
 const flags = (process.env.LANDBRIGHT_INTEGRATION ?? '').split(',');
@@ -630,6 +633,113 @@ test('Tom: required actions, a forgotten password, their account page, recovery 
   await signInAs(tom.password);
   await expect(tab.getByRole('heading', { name: 'This app needs a passkey' })).toBeVisible();
   await api(`/api/applications/${app.id}`, 'PATCH', { minimumAcr: null });
+  await context.close();
+});
+
+test('Lia: her release bot’s key, a CIBA request she approves, and a device code', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const lia = { email: `lia@${stack.slug}.test`, password: 'lia-correct-horse-battery' };
+  const person = await api<{ id: string }>('/api/people', 'POST', {
+    email: lia.email,
+    givenName: 'Lia',
+    familyName: 'Peretz',
+    department: 'Platform',
+  });
+  const context = await browser.newContext();
+  const tab = await personBrowser(context);
+  await tab.goto((await invite(lia.email)).link);
+  await tab.getByLabel('Password', { exact: true }).fill(lia.password);
+  await tab.getByLabel('Repeat it').fill(lia.password);
+  await tab.getByRole('button', { name: 'Set password' }).click();
+  await expect(tab.getByRole('heading', { name: 'Your password is set' })).toBeVisible();
+  const agent = await api<{ id: string }>('/api/agents', 'POST', {
+    displayName: 'Release bot',
+    sponsorId: person.id,
+    purpose: 'Cuts releases and files access requests for Lia',
+    runtime: 'claude_code',
+    maxTokenTtlSeconds: 600,
+    actFor: 'sponsor',
+  });
+
+  // Lia's administrator connects the bot: its public key, pasted on the Agents page.
+  const keys = await generateKeyPair('ES256', { extractable: true });
+  const jwk = { ...(await exportJWK(keys.publicKey)), kid: 'release-bot-1', alg: 'ES256', use: 'sig' };
+  await page.goto(`${stack.console}/agents`);
+  await page.getByTestId('keys-Release bot').click();
+  await page.getByTestId('jwks').fill(JSON.stringify({ keys: [jwk] }, null, 2));
+  await shot(page, '80-agent-connect');
+  await page.getByTestId('save-keys').click();
+  await expect(page.getByTestId('agent-app')).toContainText('private_key_jwt');
+  await shot(page, '81-agent-connected');
+  const clientId = (await page.getByTestId('agent-app').locator('dd').first().textContent())!.trim();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.goto(`${stack.console}/applications`);
+  await expect(page.getByTestId(`app-${clientId}`)).toContainText('Agent');
+  await page.getByTestId(`app-${clientId}`).scrollIntoViewIfNeeded();
+  await shot(page, '82-agent-application');
+
+  const asAgent = async (path: string, fields: Record<string, string>) => {
+    const assertion = await new SignJWT({})
+      .setProtectedHeader({ alg: 'ES256', kid: jwk.kid })
+      .setIssuer(clientId)
+      .setSubject(clientId)
+      .setAudience(stack.issuer)
+      .setJti(randomUUID())
+      .setIssuedAt()
+      .setExpirationTime('60s')
+      .sign(keys.privateKey);
+    const response = await fetch(`${stack.issuer}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: assertion,
+        ...fields,
+      }),
+    });
+    return (await response.json()) as Record<string, string>;
+  };
+
+  // CIBA: the bot asks Lia; the link (Landflow emails it) opens Landbright's page; she signs in and approves.
+  const asked = await asAgent('/backchannel', {
+    login_hint: lia.email,
+    scope: 'openid profile',
+    binding_message: 'REL-7',
+  });
+  const audit = await api<{ items: Array<{ action: string; data: { link?: string } }> }>('/api/audit?limit=20');
+  const link = audit.items.find((e) => e.action === 'ciba.requested')!.data.link!;
+  await tab.goto(link);
+  await tab.getByLabel('Email').fill(lia.email);
+  await tab.getByLabel('Password').fill(lia.password);
+  await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await tab.getByRole('button', { name: 'Not now' }).click();
+  await expect(tab.getByRole('heading', { name: 'Release bot asks to act for you' })).toBeVisible();
+  await shot(tab, '83-ciba-decide');
+  await tab.getByRole('button', { name: 'Approve' }).click();
+  await expect(tab.getByRole('heading', { name: 'Approved' })).toBeVisible();
+  const ciba = await asAgent('/token', {
+    grant_type: 'urn:openid:params:grant-type:ciba',
+    auth_req_id: asked.auth_req_id!,
+  });
+  expect(ciba.access_token).toBeTruthy();
+
+  // The device grant: the bot shows a code in Lia's terminal; she confirms it here.
+  const device = await asAgent('/device/auth', { scope: 'openid' });
+  await tab.goto(device.verification_uri!);
+  await tab.getByLabel('Code').fill(device.user_code!);
+  await shot(tab, '84-device-code');
+  await tab.getByRole('button', { name: 'Continue' }).click();
+  await expect(tab.getByRole('heading', { name: 'Connect Release bot?' })).toBeVisible();
+  await shot(tab, '85-device-confirm');
+  await tab.getByRole('button', { name: 'Connect' }).click();
+  await expect(tab.getByRole('heading', { name: 'Done' })).toBeVisible();
+  const tokens = await asAgent('/token', {
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    device_code: device.device_code!,
+  });
+  expect(tokens.access_token).toBeTruthy();
+  expect(agent.id).toBeTruthy();
   await context.close();
 });
 

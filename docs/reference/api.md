@@ -8,7 +8,7 @@ The control API's machine-readable description is at `GET /api/openapi.json` (Op
 | Route | Access | What |
 |---|---|---|
 | `GET /healthz` | Public | `Liveness`: `{ status: "ok", service: "landbright-idp", version, uptimeSeconds }`. |
-| `/oidc/*` | Public (the protocol authenticates clients itself) | `oidc-provider`: `/.well-known/openid-configuration`, `/auth`, `/token`, `/me` (userinfo), `/jwks`, `/token/introspection`, `/token/revocation`, `/session/end`. [sign-in.md](../sign-in.md) has the scopes and claims. |
+| `/oidc/*` | Public (the protocol authenticates clients itself) | `oidc-provider`: `/.well-known/openid-configuration`, `/auth`, `/token`, `/me` (userinfo), `/jwks`, `/token/introspection`, `/token/revocation`, `/session/end`; for agents ([agents.md](../agents.md)): `/backchannel` (CIBA, poll mode), `/device/auth` and `/device` (the device grant), `/request` (PAR, for any client), and at `/token` the token-exchange grant (`urn:ietf:params:oauth:grant-type:token-exchange`) and DPoP proofs. [sign-in.md](../sign-in.md) has the scopes and claims. |
 | `GET /interaction/:uid` | Public (people who aren't signed in yet) | The sign-in page for an authorization request in progress. |
 | `POST /interaction/:uid/login` | Public | Email and password (form). Success continues the authorization, or shows the second step: the code or passkey page for someone with one set up, the setup page for someone without one (unless they chose *Not now* in the last 30 days and it isn't required). Failure shows the page again. Locked for 15 min after 10 failures per email. |
 | `POST /interaction/:uid/totp` | Public (after the password) | `code` from the authenticator app. A wrong or reused code shows the page again and counts toward the lockout. |
@@ -32,6 +32,8 @@ The control API's machine-readable description is at `GET /api/openapi.json` (Op
 | `POST /account/credentials/:id/remove` | Their session, `csrf`, recent sign-in | Removes an app or passkey; not the last when the tenant requires a second step. |
 | `POST /account/recovery-codes` | Their session, `csrf`, recent sign-in | Ten new codes, shown once; the old ones stop working. |
 | `POST /account/sessions/end-others` | Their session, `csrf` | Ends their other sessions. |
+| `GET /ciba/:id` | Their session (else a sign-in through `landbright-account`) | The decision page for an agent's CIBA request (`:id` is the request's id; the link is in `ciba.requested`). 404 page when it has ended, 403 when it is someone else's, 409 when decided. |
+| `POST /ciba/:id` | Their session, `csrf` | `decision`: `approve` (the agent's poll gets tokens for them) or `deny` (`access_denied`). Audited `ciba.approved` / `ciba.denied`. |
 | `GET /assets/signin.css?v=<hash>` | Public | The pages' stylesheet: `@land/tokens` plus the sign-in styles. The pages link it with a hash of its content, so it is cached for good. |
 | `GET /assets/passkey.js?v=<hash>` | Public | The pages' only script: runs the WebAuthn ceremony for a `form[data-passkey]` and submits it. Content-hashed like the stylesheet. |
 
@@ -64,6 +66,8 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | `GET /api/agents` · `POST /api/agents` | `{ items: Agent[] }`; `CreateAgent` (sponsor must be an active person) → 201 `Agent`. |
 | `GET /api/agents/:id` · `PATCH /api/agents/:id` | One agent; `UpdateAgent`. |
 | `POST /api/agents/:id/suspend` · `/resume` | Resume needs an active sponsor. |
+| `POST /api/agents/:id/application` | `CreateAgentApplication` (`jwks`: 1–5 public keys, RSA or EC/OKP, no private parts; `grantTypes`, default all four: client credentials, token exchange, CIBA, the device grant; `apiScopes`, default `requests:read requests:create`) → 201 `Application`. The agent's own application: client id `agent-<name>-<id prefix>`, `private_key_jwt`, no secret, no redirects. 404 for no agent; 409 when the agent or its sponsor isn't active, or it already has one. Audited `client.created`. |
+| `PUT /api/agents/:id/application/keys` | `ReplaceAgentKeys` (`jwks`) → `Application`. The old keys stop working at once. Audited `client.keys_replaced`. |
 | `GET /api/groups` · `POST /api/groups` | `{ items: Group[] }` with `memberCount` and `system`; `CreateGroup` → 201 `GroupDetail`. 409 on a taken name. |
 | `GET /api/groups/:id` · `PATCH` · `DELETE` | `GroupDetail` with `members[]`. *Landbright Admins* can't be renamed (403) or deleted (403). |
 | `POST /api/groups/:id/members` | `{ identityId }` → 201 `GroupDetail`. Only people in *Landbright Admins*. 409 if already in. |
@@ -74,9 +78,11 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | Route | What |
 |---|---|
 | `GET /api/applications` | `{ items: Application[], issuer }`. |
-| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
+| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null, `tokenEndpointAuthMethod`: `client_secret_basic`, the default, or `client_secret_post`) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
 | `GET /api/applications/:id` · `PATCH` · `DELETE` | One application; delete revokes its tokens. The console's client answers 403 to changes. |
-| `POST /api/applications/:id/rotate-secret` | → `ApplicationWithSecret` with the new secret. |
+| `POST /api/applications/:id/rotate-secret` | → `ApplicationWithSecret` with the new secret. 409 for an agent's application (it has keys, not a secret). |
+
+An `Application` says how it signs in (`tokenEndpointAuthMethod`), and an agent's has `agentId` and `keys` (how many). An agent's application can't change its grant types, redirects or auth method (409).
 
 ### Settings (administrators)
 
@@ -117,6 +123,10 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 For flows and services: `Authorization: Bearer <access token>` from the identity plane's token endpoint with
 `grant_type=client_credentials` and `resource=urn:landbright:api` (a JWT, 10 minutes). The token carries the scopes the
 application asked for and holds (`apiScopes`). A session cookie doesn't work here, and a token doesn't work elsewhere.
+An agent's application may also call with a token from token exchange: it then acts for that person (`act` in the
+token; `actingFor` on what it files). A token bound with DPoP (`cnf.jkt`) must come as `Authorization: DPoP <token>`
+with a `DPoP` proof for this method and URL (`ath` of the token, `iat` within 5 minutes, each `jti` once); an unbound
+token as `Bearer`. A suspended agent's tokens stop working at once.
 
 | Route | Scope | What |
 |---|---|---|

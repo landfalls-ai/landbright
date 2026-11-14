@@ -33,7 +33,7 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   container with host networking as `deploy/landflow/compose.yml` does ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
 - **Landflow must ask for the `roles` scope** (`LANDFLOW_OIDC_SCOPES="openid email profile roles"`); its default
   doesn't, and then everyone lands with Landflow's default role.
-- **Agents are directory entries only.** No credentials, tokens or Landflow sync until wave 5.
+- **Agents aren't synced with Landflow** (wave 5). Their credentials are in [agents.md](agents.md).
 - **No consent screen.** Every application is registered by an administrator and gets the scopes it asks for.
   Third-party and agent clients get policy-based consent in wave 5.
 - **Sign-in lockout fails open.** When Valkey is down, failed sign-ins aren't counted, so there is no lockout until it
@@ -69,7 +69,24 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **The *Onboard* flow's groups are a map in its Code node** (by department). Changing a department later doesn't
   move anyone: a *mover* flow is next. Birthright memberships are ordinary memberships with source `hr`.
 
+## Agents (spec 005, slice 3)
+
+- **One application per agent**, made with it (`private_key_jwt`); no agent signs in through a browser (no redirects).
+  No SPIFFE or workload identity yet: the agent holds a key pair it was given.
+- **Token exchange** takes only access tokens Landbright issued, not `actor_token` (the agent's application is the
+  actor), not a sender-constrained subject token, and the exchanged token isn't DPoP-bound itself. No ID-JAG yet.
+- **CIBA is poll mode only**; `login_hint` is the person's email (no `login_hint_token`, `id_token_hint`); `user_code`
+  is advertised by oidc-provider but ignored (the person signs in). The person hears through Landflow's email flow; no
+  push to a phone.
+- **DPoP's `jti` cache** on the machine API is in the control process (a restart forgets it; one process only).
+- **No consent screen** for an ordinary application: the CIBA and device pages are the only places a person says yes
+  to someone acting for them.
+
 ## Lifted
+
+- Spec 005, slice 3: agents were directory entries without credentials; no token exchange, CIBA, device grant, PAR or
+  DPoP. An application's secret could only be sent as basic (now `client_secret_post` too). The services listened on
+  127.0.0.1 only (now [::1] too).
 
 - Spec 005, slice 2: no self-service *forgot password*, recovery codes or account page; a second step all or nothing
   (applications now set a minimum, and ask with `acr_values`); no `acr` claim; required actions (Keycloak's) and an

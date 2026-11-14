@@ -124,6 +124,8 @@ export const Agent = IdentityRef.extend({
   homeProject: z.string().nullable(),
   maxTokenTtlSeconds: z.number().int(),
   actFor: ActFor,
+  /** Its own application, when it has one (spec 005, slice 3). */
+  application: z.object({ id: z.uuid(), clientId: z.string(), grantTypes: z.array(z.string()) }).nullable(),
   groups: z.array(GroupRef),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

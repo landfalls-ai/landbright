@@ -43,7 +43,8 @@ type BundleRow = Prisma.AccessBundleGetPayload<object>;
  * Who files a request: a signed-in person (for themselves or an agent they sponsor), or a service on the machine API
  * (for the agent it is, or a person an intake flow names).
  */
-type Asker = { kind: 'person'; id: string } | { kind: 'service'; agentId: string | null };
+/** A service asks as itself, or as an agent; with a token-exchange token, the agent acts for a person (`actingFor`). */
+type Asker = { kind: 'person'; id: string } | { kind: 'service'; agentId: string | null; actingFor?: string | null };
 /** How a vote arrived: Landbright's decision page, or a chat a flow relays. */
 type Via = { channel: string; assurance: 'signed-in' | 'chat'; submittedBy: string | null; evidence?: object };
 type RequestRow = Prisma.AccessRequestGetPayload<{
@@ -318,7 +319,8 @@ export class AccessService {
         const found = await agentOf(subject.id);
         if (!found.agent) return { ...fail(found.whyNot!), policy, bundle };
         subjectId = requesterId = subject.id;
-        actingForId = eligibleId = found.agent.sponsorId;
+        // The person the agent acts for (token exchange) is accountable for this request; otherwise its sponsor.
+        actingForId = eligibleId = asker.actingFor ?? found.agent.sponsorId;
         subjectKind = 'agent';
       } else if (subject.kind === 'person') {
         subjectId = requesterId = eligibleId = subject.id;
@@ -483,7 +485,7 @@ export class AccessService {
     agentId: string | null,
   ): Promise<AccessRequestView> {
     const id = await this.file(
-      { kind: 'service', agentId },
+      { kind: 'service', agentId, actingFor: agentId ? (service.actingFor?.id ?? null) : null },
       audited(service),
       { ...input, breakGlass: false },
       {

@@ -23,6 +23,8 @@ access engine; Landfall signs in with it.
   sign-in an application needs (`acr`).
 - [access.md](access.md): just-in-time access: bundles, policies, requests, decisions, grants and their targets.
 - [events.md](events.md): every audit event out to Landflow, signed with Landbright's key; waking a waiting flow.
+- [agents.md](agents.md): agents' own applications (`private_key_jwt`), token exchange with `act`, CIBA through
+  Landflow, the device grant, PAR and DPoP.
 - [landflow-flows.md](landflow-flows.md): the Landflow flows that run the approval conversation, provisioning and the
   inactive-people lifecycle, and how to install them.
 
@@ -41,6 +43,7 @@ access engine; Landfall signs in with it.
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | | | 3 |
 | Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (design; first slice built by 004) | 3–4 |
 | Just-in-time access, events out, the machine API, Landflow flows (from the Keycloak and open-source JIT studies) | [access.md](access.md), [events.md](events.md), [landflow-flows.md](landflow-flows.md) | [004-access-and-events](../specs/004-access-and-events/spec.md) | 4 (first slice ✓) |
-| Access follow-ups (extensions, chat votes, service requests), the identity plane's next pages, agents | [access.md](access.md), [account.md](account.md), [landflow-flows.md](landflow-flows.md) | [005-follow-ups](../specs/005-follow-ups/spec.md) | 4–5 (slices 1–2 ✓) |
-| Agentic identity: sync, sponsors, token exchange, ID-JAG | | | 5 |
+| Access follow-ups (extensions, chat votes, service requests), the identity plane's next pages, agents | [access.md](access.md), [account.md](account.md), [landflow-flows.md](landflow-flows.md) | [005-follow-ups](../specs/005-follow-ups/spec.md) | 4–5 (slices 1–3 ✓) |
+| Agentic identity: agents' applications, token exchange, CIBA, device grant, DPoP | [agents.md](agents.md) | [005-follow-ups](../specs/005-follow-ups/spec.md) (slice 3) | 5 (brought forward ✓) |
+| Agentic identity: sync, ID-JAG, workload identity | | | 5 |
 | OpenFGA, AuthZEN, access reviews, Landfall break-glass | | | 6 |

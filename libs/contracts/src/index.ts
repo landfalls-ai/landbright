@@ -9,3 +9,4 @@ export * from './events';
 export * from './machine-api';
 export * from './patch';
 export * from './acr';
+export * from './agent-apps';

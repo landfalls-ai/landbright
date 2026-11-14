@@ -1,6 +1,7 @@
 import { clientSecret } from '@landbright/platform';
 import { type PrismaClient, type TenantRef, withTenant } from '@landbright/persistence';
 import type { Adapter, AdapterPayload, ClientMetadata } from 'oidc-provider';
+import { CIBA_GRANT } from '@landbright/contracts';
 
 /**
  * oidc-provider's storage in Postgres (oidc_payload), and its client lookup in the applications table. Sessions,
@@ -67,18 +68,26 @@ export function postgresAdapter(
   };
 }
 
-/** An application as oidc-provider's client metadata, with its derived secret. */
+/**
+ * An application as oidc-provider's client metadata, with its derived secret. An agent's application (spec 005, slice
+ * 3) has no secret: it authenticates with private_key_jwt against the agent's public keys, and carries the agent's
+ * rules (`agent_*`); it doesn't exist while the agent or its sponsor isn't active.
+ */
 export async function findClient(
   prisma: PrismaClient,
   tenant: TenantRef,
   secretKey: string,
   clientId: string,
 ): Promise<ClientMetadata | undefined> {
-  const client = await withTenant(prisma, tenant.id, (tx) => tx.oidcClient.findUnique({ where: { clientId } }));
+  const client = await withTenant(prisma, tenant.id, (tx) =>
+    tx.oidcClient.findUnique({
+      where: { clientId },
+      include: { agent: { include: { agent: { include: { sponsor: true } } } } },
+    }),
+  );
   if (!client) return undefined;
-  return {
+  const base: ClientMetadata = {
     client_id: client.clientId,
-    client_secret: clientSecret(secretKey, client.clientId, client.secretVersion),
     client_name: client.name,
     redirect_uris: client.redirectUris,
     post_logout_redirect_uris: client.postLogoutRedirectUris,
@@ -87,5 +96,19 @@ export async function findClient(
     token_endpoint_auth_method: client.tokenEndpointAuthMethod as ClientMetadata['token_endpoint_auth_method'],
     api_scopes: client.apiScopes,
     ...(client.minimumAcr && { minimum_acr: client.minimumAcr }),
+  };
+  if (!client.agentId)
+    return { ...base, client_secret: clientSecret(secretKey, client.clientId, client.secretVersion) };
+  const agent = client.agent?.agent;
+  if (client.agent?.status !== 'active' || !agent || agent.sponsor.status !== 'active') return undefined;
+  return {
+    ...base,
+    jwks: client.jwks as unknown as ClientMetadata['jwks'],
+    ...(client.grantTypes.includes(CIBA_GRANT) && { backchannel_token_delivery_mode: 'poll' }),
+    agent_id: client.agentId,
+    agent_name: client.agent.displayName,
+    agent_ttl: agent.maxTokenTtlSeconds,
+    agent_act_for: agent.actFor,
+    agent_sponsor_id: agent.sponsorId,
   };
 }

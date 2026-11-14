@@ -88,5 +88,10 @@ password*; the account page (password, authenticator app, passkeys, recovery cod
 sign-in; `acr` in the ID token, a minimum per application and `acr_values` step-up; the machine API for people and
 groups; the *Onboard* flow in Landflow ([account.md](account.md)).
 
-Next (slice 3): agent applications with `private_key_jwt`, token exchange with `act`, CIBA with Landflow as the
-channel, the device grant, PAR and DPoP.
+### Spec 005, slice 3: agents' own credentials
+
+Agent applications with `private_key_jwt` (keys pasted on the Agents page); token exchange with `act`; CIBA with
+Landflow's email flow as the channel and Landbright's decision page; the device grant; PAR and DPoP, with DPoP-bound
+tokens on the machine API ([agents.md](agents.md)).
+
+Next: wave 2 (SCIM to Landflow and Landfall), and in wave 5 the rest of agentic identity (ID-JAG, workload identity).

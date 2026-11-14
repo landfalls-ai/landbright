@@ -3,6 +3,8 @@ import { type Config, createValkey, livenessController } from '@landbright/platf
 import { CONFIG, PersistenceModule, PRISMA, type PrismaClient, TENANT, type TenantRef } from '@landbright/persistence';
 import { AccountController } from './account/account.controller';
 import { AccountService } from './account/account.service';
+import { SelfSession } from './account/self-session';
+import { CibaController } from './ciba/ciba.controller';
 import { ResetController } from './account/reset.controller';
 import { InteractionController } from './interactions/interaction.controller';
 import { Mailer } from './mail/mailer';
@@ -21,6 +23,7 @@ import { OIDC_PROVIDER, VALKEY } from './valkey';
 @Module({
   imports: [PersistenceModule],
   controllers: [
+    CibaController,
     livenessController('landbright-idp'),
     AssetsController,
     InteractionController,
@@ -30,6 +33,7 @@ import { OIDC_PROVIDER, VALKEY } from './valkey';
   ],
   providers: [
     AccountService,
+    SelfSession,
     Mailer,
     LoginService,
     PasskeyService,

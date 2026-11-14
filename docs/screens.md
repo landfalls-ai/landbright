@@ -206,6 +206,35 @@ page and a recovery code, and is asked again by an application that needs a pass
 
 ![Sign in, "Landflow asks for a passkey."](screenshots/78-step-up.png)
 
+## Agents acting for a person
+
+Lia connects her release bot's key, approves the bot's CIBA request on Landbright's page, and connects it from a
+terminal with a device code (`pnpm screenshots`, [agents.md](agents.md)).
+
+**Connect the agent: paste its public keys.**
+
+![Connect Release bot.](screenshots/80-agent-connect.png)
+
+**Its own application: no secret.**
+
+![Release bot is connected.](screenshots/81-agent-connected.png)
+
+**On Applications, with an Agent badge.**
+
+![The agent's application.](screenshots/82-agent-application.png)
+
+**CIBA: the agent asks; Lia compares the code and approves.**
+
+![Release bot asks to act for you.](screenshots/83-ciba-decide.png)
+
+**The device grant: the code from the terminal.**
+
+![Connect a device: enter the code.](screenshots/84-device-code.png)
+
+**Then what it is, and that it will act for her.**
+
+![Connect Release bot?](screenshots/85-device-confirm.png)
+
 ## In the real Landflow
 
 Landflow's own image (`landflow/host:dev`), a throwaway instance from [`deploy/landflow/compose.yml`](../deploy/landflow/compose.yml),

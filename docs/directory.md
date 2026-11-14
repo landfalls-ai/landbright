@@ -26,7 +26,9 @@ An agent identity has a **sponsor** (an active person who answers for it), a pur
 Claude Code, external), an optional home project, a risk tier, whom it may act for, and the longest token it may hold
 (1 to 60 minutes, 15 by default). Agents can be in groups but not in *Landbright Admins*. Suspending one is immediate.
 
-Agents can't sign in or get tokens yet; wave 5 gives them credentials, token exchange and Landflow sync.
+An agent gets tokens through its own application (*Connect* on its row: its public keys, `private_key_jwt`), and acts
+for a person only with that person's say-so: token exchange, CIBA or the device grant ([agents.md](agents.md)).
+Landflow sync is still wave 5.
 
 ## Groups
 

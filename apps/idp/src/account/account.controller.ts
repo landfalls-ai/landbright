@@ -1,6 +1,5 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res } from '@nestjs/common';
-import { type Config, deriveKey, Public } from '@landbright/platform';
+import { type Config, Public } from '@landbright/platform';
 import {
   CONFIG,
   MIN_PASSWORD_LENGTH,
@@ -15,12 +14,12 @@ import type { Redis } from 'ioredis';
 import { PasskeyService } from '../interactions/passkey.service';
 import { SecondStepService } from '../interactions/second-step.service';
 import { groupSecret, newTotpSecret, totpQrCode } from '../interactions/totp';
-import type { OidcProviderRef } from '../oidc/provider-ref';
-import { ACCOUNT_CLIENT_ID, accountRedirectUri } from '../oidc/provider';
+import { ACCOUNT_CLIENT_ID } from '../oidc/provider';
 import { accountPage, recoveryCodesPage } from '../pages/account-pages';
 import { enrollTotpPage, errorPage } from '../pages/pages';
-import { OIDC_PROVIDER, VALKEY } from '../valkey';
-import { AccountService, type Self } from './account.service';
+import { VALKEY } from '../valkey';
+import { AccountService } from './account.service';
+import { SelfSession, type Signed } from './self-session';
 
 /** Changing a second step or the recovery codes asks for a sign-in this recent (or signs them in again). */
 export const RECENT_SIGN_IN_SECONDS = 15 * 60;
@@ -40,12 +39,6 @@ const FLASH: Record<string, { ok?: string; error?: string }> = {
   expired: { error: 'That form had expired. Try again.' },
 };
 
-interface Signed {
-  self: Self;
-  sessionId: string;
-  loginTs: number;
-}
-
 /**
  * The account page on the identity plane (Keycloak's account console, in one page): change the password, add or
  * remove an authenticator app and passkeys, recovery codes, and where you're signed in. Public routes because the
@@ -57,7 +50,6 @@ interface Signed {
 @Controller('account')
 export class AccountController {
   constructor(
-    @Inject(OIDC_PROVIDER) private readonly oidc: OidcProviderRef,
     @Inject(CONFIG) private readonly config: Config,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(TENANT) private readonly tenant: TenantRef,
@@ -65,6 +57,7 @@ export class AccountController {
     private readonly account: AccountService,
     private readonly secondStep: SecondStepService,
     private readonly passkeys: PasskeyService,
+    private readonly session: SelfSession,
   ) {}
 
   @Get()
@@ -114,8 +107,8 @@ export class AccountController {
 
   /** Where the account client comes back to after sign-in. */
   @Get('signed-in')
-  back(@Res() res: Response): void {
-    res.redirect(303, '/account');
+  back(@Query('state') state: string | undefined, @Res() res: Response): void {
+    res.redirect(303, this.session.afterSignIn(state));
   }
 
   @Post('password')
@@ -231,20 +224,8 @@ export class AccountController {
   }
 
   /** The person signed in to Landbright in this browser (oidc-provider's session), if any and still active. */
-  private async signedIn(req: Request, res: Response): Promise<Signed | undefined> {
-    const provider = this.oidc.current;
-    const ctx = provider.createContext(req, res);
-    const session = await provider.Session.get(ctx).catch(() => undefined);
-    if (!session?.accountId) return undefined;
-    const identity = await withTenant(this.prisma, this.tenant.id, (tx) =>
-      tx.identity.findFirst({ where: { id: session.accountId, kind: 'person', status: 'active' } }),
-    );
-    if (!identity) return undefined;
-    return {
-      self: { identityId: identity.id, displayName: identity.displayName, email: identity.email ?? '' },
-      sessionId: session.jti,
-      loginTs: Number(session.loginTs ?? 0),
-    };
+  private signedIn(req: Request, res: Response): Promise<Signed | undefined> {
+    return this.session.signedIn(req, res);
   }
 
   /** A form post: signed in, the session's CSRF token, and (for second steps) a recent sign-in. */
@@ -259,9 +240,7 @@ export class AccountController {
       this.signIn(res);
       return undefined;
     }
-    const expected = Buffer.from(this.csrf(signed.sessionId));
-    const given = Buffer.from(String(token ?? ''));
-    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    if (!this.session.csrfMatches(signed.sessionId, token)) {
       this.page(res, 403, errorPage('This form expired. Go back to your account page and try again.'));
       return undefined;
     }
@@ -276,27 +255,12 @@ export class AccountController {
     return Date.now() / 1000 - signed.loginTs <= RECENT_SIGN_IN_SECONDS;
   }
 
-  /**
-   * To the authorization endpoint with the account client (response type `none`: a session, no tokens). `again`
-   * asks for the password even when signed in (max_age=0), before a change to a second step.
-   */
   private signIn(res: Response, opts: { again?: boolean } = {}): void {
-    const url = new URL('/oidc/auth', this.config.LANDBRIGHT_IDP_URL);
-    url.search = new URLSearchParams({
-      client_id: ACCOUNT_CLIENT_ID,
-      response_type: 'none',
-      scope: 'openid',
-      redirect_uri: accountRedirectUri(this.config),
-      state: randomBytes(12).toString('base64url'),
-      ...(opts.again && { max_age: '0' }),
-    }).toString();
-    res.redirect(303, url.pathname + url.search);
+    this.session.signIn(res, opts);
   }
 
   private csrf(sessionId: string): string {
-    return createHmac('sha256', deriveKey(this.config.LANDBRIGHT_SECRET_KEY, 'account-csrf'))
-      .update(sessionId)
-      .digest('base64url');
+    return this.session.csrf(sessionId);
   }
 
   /** The key a passkey ceremony's challenge is kept under: one per session. */

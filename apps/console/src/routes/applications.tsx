@@ -1,7 +1,17 @@
 import { useState } from 'react';
-import { AppWindow, KeyRound, Lock, Plus, Trash2 } from 'lucide-react';
+import { AppWindow, Bot, KeyRound, Lock, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { type Acr, ACR_LABELS, ACR_VALUES, Application, ApplicationWithSecret } from '@landbright/contracts';
+import {
+  type Acr,
+  ACR_LABELS,
+  ACR_VALUES,
+  Application,
+  ApplicationWithSecret,
+  type SecretAuthMethod,
+  CIBA_GRANT,
+  DEVICE_CODE_GRANT,
+  TOKEN_EXCHANGE_GRANT,
+} from '@landbright/contracts';
 import { formatDate, ListState } from '@/components/directory/bits';
 import { Card, PageBody, PageHeader } from '@/components/shell/page-header';
 import { Badge, Chip } from '@/components/ui/badge';
@@ -93,19 +103,43 @@ export function ApplicationsPage() {
                     <Lock className="size-3" /> Landbright
                   </Badge>
                 )}
+                {a.agentId && (
+                  <Badge tone="muted" title="An agent’s own application: its keys are on the Agents page">
+                    <Bot className="size-3" /> Agent
+                  </Badge>
+                )}
                 <span className="ml-auto text-[12px] text-t3">Added {formatDate(a.createdAt)}</span>
               </div>
               <div className="grid gap-x-6 gap-y-1.5 text-[12px] sm:grid-cols-[120px_1fr]">
-                <span className="text-t3">Redirect URIs</span>
-                <span className="flex flex-col font-mono text-t2">
-                  {a.redirectUris.map((u) => (
-                    <span key={u}>{u}</span>
-                  ))}
-                </span>
+                {a.redirectUris.length > 0 && (
+                  <>
+                    <span className="text-t3">Redirect URIs</span>
+                    <span className="flex flex-col font-mono text-t2">
+                      {a.redirectUris.map((u) => (
+                        <span key={u}>{u}</span>
+                      ))}
+                    </span>
+                  </>
+                )}
                 <span className="text-t3">Grant types</span>
-                <span className="text-t2">{a.grantTypes.join(', ')}</span>
-                <span className="text-t3">Secret</span>
-                <span className="text-t2">Version {a.secretVersion}</span>
+                <span className="text-t2">{a.grantTypes.map(grantLabel).join(', ')}</span>
+                {a.agentId ? (
+                  <>
+                    <span className="text-t3">Signs in with</span>
+                    <span className="text-t2">
+                      A key only the agent holds (private_key_jwt), {a.keys === 1 ? '1 key' : `${a.keys} keys`}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-t3">Secret</span>
+                    <span className="text-t2">
+                      Version {a.secretVersion}
+                      {a.tokenEndpointAuthMethod === 'client_secret_post' &&
+                        ', sent as form fields (client_secret_post)'}
+                    </span>
+                  </>
+                )}
                 <span className="self-center text-t3">Sign-in needs</span>
                 <span>
                   {a.system ? (
@@ -136,15 +170,19 @@ export function ApplicationsPage() {
               </div>
               {!a.system && (
                 <div className="flex gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    loading={rotate.isPending && rotate.variables === a.id}
-                    onClick={() =>
-                      rotate.mutate(a.id, { onSuccess: setSecret, onError: (e) => toast.error(e.message) })
-                    }
-                  >
-                    <KeyRound className="size-3.5" /> New secret
-                  </Button>
+                  {!a.agentId && (
+                    <>
+                      <Button
+                        size="sm"
+                        loading={rotate.isPending && rotate.variables === a.id}
+                        onClick={() =>
+                          rotate.mutate(a.id, { onSuccess: setSecret, onError: (e) => toast.error(e.message) })
+                        }
+                      >
+                        <KeyRound className="size-3.5" /> New secret
+                      </Button>
+                    </>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => setDeleting(a)}>
                     <Trash2 className="size-3.5" /> Delete
                   </Button>
@@ -201,6 +239,7 @@ function RegisterDialog({
   const [form, setForm] = useState({ name: '', clientId: '', redirectUris: '', postLogoutRedirectUris: '' });
   const [grantTypes, setGrantTypes] = useState<Grant[]>(['authorization_code', 'refresh_token']);
   const [minimumAcr, setMinimumAcr] = useState<Acr | null>(null);
+  const [authMethod, setAuthMethod] = useState<SecretAuthMethod>('client_secret_basic');
   const create = useWrite(() =>
     send(
       'POST',
@@ -212,6 +251,7 @@ function RegisterDialog({
         postLogoutRedirectUris: lines(form.postLogoutRedirectUris),
         grantTypes,
         minimumAcr,
+        tokenEndpointAuthMethod: authMethod,
       },
       ApplicationWithSecret,
     ),
@@ -280,6 +320,16 @@ function RegisterDialog({
         >
           <StrengthSelect value={minimumAcr} onChange={setMinimumAcr} aria-label="Sign-in needs" />
         </Field>
+        <Field label="Sends its secret" hint="How the app proves itself at the token endpoint; most use a header.">
+          <Select
+            value={authMethod}
+            onChange={(e) => setAuthMethod(e.target.value as SecretAuthMethod)}
+            aria-label="Sends its secret"
+          >
+            <option value="client_secret_basic">In a header (client_secret_basic)</option>
+            <option value="client_secret_post">As form fields (client_secret_post)</option>
+          </Select>
+        </Field>
         <FormError error={create.error} />
       </div>
     </Dialog>
@@ -336,5 +386,16 @@ function SecretDialog({ result, onClose }: { result: ApplicationWithSecret; onCl
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/** Grant types by what they do, not their URNs. */
+function grantLabel(grant: string): string {
+  return (
+    {
+      [TOKEN_EXCHANGE_GRANT]: 'token exchange',
+      [CIBA_GRANT]: 'CIBA',
+      [DEVICE_CODE_GRANT]: 'device code',
+    }[grant] ?? grant
   );
 }

@@ -65,7 +65,7 @@ export async function getJson<T>(path: string, schema: z.ZodType<T>): Promise<T>
 
 /** A write. The session cookie goes along (same origin); control checks the Origin header. */
 export async function send<T>(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   schema?: z.ZodType<T>,
