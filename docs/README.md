@@ -39,5 +39,6 @@ access engine; Landfall signs in with it.
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | | | 3 |
 | Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (design; first slice built by 004) | 3–4 |
 | Just-in-time access, events out, the machine API, Landflow flows (from the Keycloak and open-source JIT studies) | [access.md](access.md), [events.md](events.md), [landflow-flows.md](landflow-flows.md) | [004-access-and-events](../specs/004-access-and-events/spec.md) | 4 (first slice ✓) |
+| Access follow-ups (extensions, chat votes, service requests), the identity plane's next pages, agents | [access.md](access.md), [landflow-flows.md](landflow-flows.md) | [005-follow-ups](../specs/005-follow-ups/spec.md) | 4–5 (slice 1 ✓) |
 | Agentic identity: sync, sponsors, token exchange, ID-JAG | | | 5 |
 | OpenFGA, AuthZEN, access reviews, Landfall break-glass | | | 6 |

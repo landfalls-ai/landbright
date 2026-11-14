@@ -10,6 +10,10 @@ import {
   CreateSubscription,
   DecideRequest,
   DeliveryList,
+  ExtendGrant,
+  RelayDecision,
+  RelayTicketList,
+  ServiceCreateRequest,
   GrantList,
   PreviewRequest,
   PutAnnotation,
@@ -45,4 +49,8 @@ export class SubscriptionListDto extends createZodDto(SubscriptionList) {}
 export class CreateSubscriptionDto extends createZodDto(CreateSubscription) {}
 export class UpdateSubscriptionDto extends createZodDto(UpdateSubscription) {}
 export class DeliveryListDto extends createZodDto(DeliveryList) {}
+export class ExtendGrantDto extends createZodDto(ExtendGrant) {}
+export class ServiceCreateRequestDto extends createZodDto(ServiceCreateRequest) {}
+export class RelayDecisionDto extends createZodDto(RelayDecision) {}
+export class RelayTicketListDto extends createZodDto(RelayTicketList) {}
 export class DeactivateDto extends createZodDto(z.object({ reason: z.string().trim().max(500).optional() })) {}

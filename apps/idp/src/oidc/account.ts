@@ -1,12 +1,19 @@
 import { type PrismaClient, type TenantRef, withTenant } from '@landbright/persistence';
-import type { Account, AccountClaims } from 'oidc-provider';
+import type { Account, AccountClaims, KoaContextWithOIDC } from 'oidc-provider';
+
+/** An account, and when the soonest just-in-time membership in its claims ends (tokens don't outlive it). */
+export type LandbrightAccount = Account & { grantEndsAt?: Date };
 
 /**
  * The claims Landbright issues. `roles` and `groups` both carry the names of the groups a person is in (expired
  * just-in-time memberships excluded): Landflow maps `roles` (LANDFLOW_OIDC_ROLE_MAP), Landfall and others read
  * `groups`. Emails are verified because an administrator or an HR source entered them.
  */
-export async function loadAccount(prisma: PrismaClient, tenant: TenantRef, sub: string): Promise<Account | undefined> {
+export async function loadAccount(
+  prisma: PrismaClient,
+  tenant: TenantRef,
+  sub: string,
+): Promise<LandbrightAccount | undefined> {
   const identity = await withTenant(prisma, tenant.id, (tx) =>
     tx.identity.findFirst({
       where: { id: sub, kind: 'person', status: 'active' },
@@ -32,7 +39,24 @@ export async function loadAccount(prisma: PrismaClient, tenant: TenantRef, sub: 
     roles: groups,
     groups,
   };
-  return { accountId: identity.id, claims: () => claims };
+  const ends = identity.memberships
+    .map((m) => m.expiresAt?.getTime())
+    .filter((t): t is number => t !== undefined && t !== null);
+  return {
+    accountId: identity.id,
+    claims: () => claims,
+    ...(ends.length && { grantEndsAt: new Date(Math.min(...ends)) }),
+  };
+}
+
+/**
+ * A token's lifetime, cut short so it ends with the soonest just-in-time membership its claims carry: an ID token
+ * that says `roles: [Payments Editors]` must not outlive the grant that made it true. At least 30 seconds.
+ */
+export function capToGrant(ctx: KoaContextWithOIDC, seconds: number): number {
+  const ends = (ctx.oidc.account as LandbrightAccount | undefined)?.grantEndsAt;
+  if (!ends) return seconds;
+  return Math.max(30, Math.min(seconds, Math.floor((ends.getTime() - Date.now()) / 1000)));
 }
 
 /**

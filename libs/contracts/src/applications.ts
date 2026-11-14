@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchOf } from './patch';
 import { MACHINE_API_SCOPE_NAMES } from './machine-api';
 
 /** Applications: the OIDC clients that sign in with Landbright. */
@@ -42,7 +43,7 @@ export const CreateApplication = z.object({
 });
 export type CreateApplication = z.input<typeof CreateApplication>;
 
-export const UpdateApplication = CreateApplication.omit({ clientId: true }).partial();
+export const UpdateApplication = patchOf(CreateApplication.omit({ clientId: true }));
 export type UpdateApplication = z.input<typeof UpdateApplication>;
 
 /** Returned once, on creation and on rotation. Landbright never stores the secret and can't show it again. */

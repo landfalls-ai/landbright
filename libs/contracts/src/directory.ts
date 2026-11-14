@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchOf } from './patch';
 
 /** The directory: people, agents, groups. docs/reference/api.md lists the routes. */
 
@@ -119,7 +120,7 @@ export const CreateAgent = z.object({
 });
 export type CreateAgent = z.input<typeof CreateAgent>;
 
-export const UpdateAgent = CreateAgent.partial().extend({
+export const UpdateAgent = patchOf(CreateAgent).extend({
   homeProject: z.string().trim().max(200).nullable().optional(),
 });
 export type UpdateAgent = z.input<typeof UpdateAgent>;

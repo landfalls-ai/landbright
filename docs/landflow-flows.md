@@ -1,6 +1,6 @@
 # The Landflow flows
 
-Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Three flows
+Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Five flows
 ship in [`integrations/landflow/flows/`](../integrations/landflow/flows/). Each is plain Landflow workflow JSON built
 from core nodes (Webhook, Code, If, HTTP Request, Set, Wait, Schedule), so it imports into any Landflow, edits on the
 canvas, and needs no Landflow change.
@@ -9,6 +9,8 @@ canvas, and needs no Landflow change.
 |---|---|---|
 | **Approve a request (email)** | `request.created` | Re-reads the request. While it's pending: emails each approver the decision link, registers its resume URL with Landbright, and waits until the deadline. Wakes on Landbright's nudge, re-reads, and tells the requester the outcome |
 | **Provision and revoke a Landflow project role** | `grant.activated`, `grant.expired`, `grant.revoked`, `grant.revoke_overdue` | Re-reads the grant. For each `landflow-project-role` target (`config: { project, role }`): adds the person to the project's members when the grant is live, removes them when it ended, and reports `provisioned` / `revoked` (or `failed` / `revoke_failed`) to Landbright |
+| **Approve a request (Slack)** | `request.created` | When the current step allows chat votes: gets one ticket per approver, finds each in Slack by email, and sends a direct message with Approve and Deny (carrying the ticket) and *Open in Landbright* |
+| **Slack approval buttons** | The Slack app's Interactivity URL | Relays the click with its ticket to `POST /api/v1/requests/:id/decisions`, then replaces the message with the outcome (or why Landbright refused) |
 | **Disable inactive people** | Every day at 9:00 | Finds people who haven't signed in for 90 days (administrators excepted), emails their manager, waits 7 days, checks again, and deactivates who is still inactive. Keycloak's *disable inactive users* workflow, as a flow |
 
 Each flow reaches Landbright only through the [machine API](reference/api.md#machine-api-apiv1), with the scopes its
@@ -31,7 +33,7 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
 **In Landbright**, through the console API, as the bootstrap administrator, the installer:
 
 - gives the Landflow application client credentials and the scopes `requests:read grants:record annotations:write
-  directory:read directory:write`;
+  directory:read directory:write decisions:relay`;
 - subscribes `…/api/webhook/landbright-requests` to `request.created`, and `…/landbright-grants` to `grant.activated`,
   `expired`, `revoked` and `revoke_overdue`, with audience `http://localhost:57300`;
 - creates the bundle *Landflow Editors (JIT)*: the group *Landflow Editors*, plus the target *Landflow project Payments,
@@ -47,6 +49,16 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
 - imports and publishes the flows.
 
 Run it again to update: it finds everything by name first.
+
+**The Slack flows** are installed when `SLACK_BOT_TOKEN` is set (a bot token with `users:read.email` and `chat:write`).
+They subscribe `…/landbright-requests-slack` to `request.created`. Set the Slack app's Interactivity Request URL to
+`…/api/webhook/landbright-slack-actions` (a Slack app has one, so use an app of its own, not the one Landflow's agents
+use). `SLACK_API_URL` points them at another Web API; the live check used a local stand-in:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-local-stub SLACK_API_URL=http://127.0.0.1:57991 \
+  LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/install.ts
+```
 
 Email goes through Mailpit's HTTP API (`POST /api/v1/send`) because the throwaway Landflow has only core nodes. With
 Landflow's messaging plugin, swap that HTTP Request for a Send Email or Slack node.

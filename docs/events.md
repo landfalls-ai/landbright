@@ -50,8 +50,15 @@ The worker that sends them runs in control every 2 seconds, one replica at a tim
 
 A flow that waits for a decision registers its resume URL: `POST /api/v1/requests/:id/waits { resumeUrl }`. The URL
 must be on the origin of an enabled subscription. When a vote is recorded, the request is decided or it escalates,
-Landbright POSTs that URL. The POST carries nothing: it is a nudge, and the flow re-reads the request. A missed nudge
-costs only time, because the flow's Wait also ends at the decision deadline.
+Landbright POSTs that URL. The POST carries nothing: it is a nudge, and the flow re-reads the request. A nudge that
+fails is tried again with the deliveries' back-off for a day (a new wait from the flow replaces it); a lost one costs
+only time, because the flow's Wait also ends at the decision deadline.
+
+## An application's own subscriptions
+
+With `events:manage`, an application lists, adds and removes its own subscriptions on the machine API
+(`/api/v1/subscriptions`), only at an origin among its redirect URIs, so a token can't point Landbright anywhere else.
+They show in the console's Events with the application as owner (`ownerClientId`).
 
 ## Event types
 
@@ -63,7 +70,8 @@ costs only time, because the flow's Wait also ends at the decision deadline.
 - `group.*` (including `member_added` / `member_removed`)
 - `client.*`
 - `bundle.*`
-- `request.*`: created, vote_recorded, decision_refused, escalated, break_glass, decided
-- `grant.*`: activated, expiring, expired, revoked, target_provisioned, target_failed, target_revoked,
+- `request.*`: created, vote_recorded (with `channel` and `assurance`), decision_refused, escalated, break_glass,
+  relay_tickets_issued, decided
+- `grant.*`: activated, expiring, extended, expired, revoked, target_provisioned, target_failed, target_revoked,
   target_revoke_failed, target_verified, target_drift, revoke_overdue
 - `tenant.sign_in_changed`, `signing_key.rotated`

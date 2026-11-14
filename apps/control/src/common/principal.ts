@@ -20,6 +20,8 @@ export interface ServicePrincipal {
   /** The application's name, as the audit log shows it ("Landflow (service)"). */
   name: string;
   scopes: string[];
+  /** When the application is an agent's: the agent's identity (it may only ask for access for itself). */
+  agentId?: string | null;
 }
 
 export type WithPrincipal = { principal?: Principal | ServicePrincipal };

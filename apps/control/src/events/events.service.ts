@@ -38,7 +38,9 @@ export const EVENT_TYPES = [
   'request.escalated',
   'request.break_glass',
   'request.decided',
+  'request.relay_tickets_issued',
   'grant.activated',
+  'grant.extended',
   'grant.expiring',
   'grant.expired',
   'grant.revoked',
@@ -64,9 +66,13 @@ type SubscriptionRow = Prisma.EventSubscriptionGetPayload<object>;
 export class EventsService {
   constructor(private readonly db: TenantDb) {}
 
-  async list(): Promise<Subscription[]> {
+  /** Every subscription, or (for an application on the machine API) only its own. */
+  async list(ownerClientId?: string): Promise<Subscription[]> {
     return this.db.tx(async (tx) => {
-      const rows = await tx.eventSubscription.findMany({ orderBy: { createdAt: 'asc' } });
+      const rows = await tx.eventSubscription.findMany({
+        where: ownerClientId ? { ownerClientId } : {},
+        orderBy: { createdAt: 'asc' },
+      });
       return Promise.all(rows.map((r) => this.toSubscription(tx, r)));
     });
   }
@@ -75,6 +81,14 @@ export class EventsService {
     const url = new URL(input.url);
     if (url.username || url.password) throw new BadRequestException('Put no credentials in the URL.');
     return this.db.tx(async (tx) => {
+      if (actor.kind === 'service') {
+        const client = await tx.oidcClient.findUnique({ where: { clientId: actor.clientId } });
+        const origins = new Set((client?.redirectUris ?? []).map((u) => new URL(u).origin));
+        if (!origins.has(url.origin))
+          throw new BadRequestException(
+            `An application subscribes only at its own origins (its redirect URIs): ${url.origin} isn’t one.`,
+          );
+      }
       // Start after the newest audit event, or `replay` events before it (to try a new flow on recent history).
       const newest = await tx.auditEvent.findFirst({ orderBy: { id: 'desc' }, select: { id: true } });
       const cursor = (newest?.id ?? 0n) - BigInt(input.replay);
@@ -87,6 +101,7 @@ export class EventsService {
           audience: input.audience ?? url.origin,
           cursor: cursor < 0n ? 0n : cursor,
           createdBy: actor.kind === 'person' ? actor.displayName : `${actor.name} (service)`,
+          ownerClientId: actor.kind === 'service' ? actor.clientId : null,
         },
       });
       await appendAudit(tx, this.db.tenantId, {
@@ -122,6 +137,8 @@ export class EventsService {
   async remove(id: string, actor: Principal | ServicePrincipal): Promise<void> {
     await this.db.tx(async (tx) => {
       const row = await this.find(tx, id);
+      if (actor.kind === 'service' && row.ownerClientId !== actor.clientId)
+        throw new NotFoundException('No such subscription.');
       await tx.eventSubscription.delete({ where: { id } });
       await appendAudit(tx, this.db.tenantId, {
         ...audited(actor),
@@ -198,6 +215,7 @@ export class EventsService {
       audience: r.audience,
       disabled: r.disabled,
       createdBy: r.createdBy,
+      ownerClientId: r.ownerClientId,
       createdAt: r.createdAt.toISOString(),
       stats: { pending: count('pending'), delivered: count('delivered'), failed: count('failed') },
     };

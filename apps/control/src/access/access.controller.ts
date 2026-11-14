@@ -10,6 +10,7 @@ import {
   CreateBundleDto,
   CreateRequestDto,
   DecideRequestDto,
+  ExtendGrantDto,
   GrantListDto,
   PreviewRequestDto,
   RequestPreviewDto,
@@ -114,6 +115,13 @@ export class AccessController {
   @ZodResponse({ type: GrantListDto })
   async grants(@Actor() _admin: Principal, @Query('status') status?: string) {
     return { items: await this.access.grants({ status }) };
+  }
+
+  /** Ask for more time on a grant you hold: a request of its own (`extends`), decided like the first. */
+  @Post('grants/:id/extend')
+  @ZodResponse({ status: 201, type: AccessRequestDto })
+  extend(@Param('id', ParseUUIDPipe) id: string, @Body() body: ExtendGrantDto, @Person() person: Principal) {
+    return this.access.extend(person, id, body);
   }
 
   @Post('grants/:id/revoke')

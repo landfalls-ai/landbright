@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
-import { ArrowLeft, Check, Inbox, Siren, Workflow, X, Zap } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router';
+import { ArrowLeft, Check, Clock, Inbox, Siren, Workflow, X, Zap } from 'lucide-react';
 import { AccessRequestView } from '@landbright/contracts';
 import { GrantStatusBadge, minutes, relative, RequestStatusBadge, TargetStatusBadge } from '@/components/access/bits';
 import { Fact, formatTime, ListState } from '@/components/directory/bits';
@@ -8,14 +8,15 @@ import { Card, PageBody, PageHeader } from '@/components/shell/page-header';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, FormError } from '@/components/ui/dialog';
-import { Field, Textarea } from '@/components/ui/inputs';
+import { Field, Input, Textarea } from '@/components/ui/inputs';
 import { SectionLabel } from '@/components/ui/section-label';
 import { Cell, Row, Table } from '@/components/ui/table';
 import { send, useRequest, useWrite } from '@/lib/api';
 
 /**
  * One request: the decision page every Landflow flow links to (`decisionUrl`). Approvers decide here, signed in, so
- * the vote carries their session's assurance; an email or a Slack button only brings them here.
+ * the vote carries their session's assurance. Where a step allows it, a vote can also come from a chat a flow relays,
+ * with a ticket Landbright gave that approver (`assurance: chat`).
  */
 export function RequestPage() {
   const { ref = '' } = useParams();
@@ -23,6 +24,7 @@ export function RequestPage() {
   const r = request.data;
   const [deciding, setDeciding] = useState<'approve' | 'deny'>();
   const [revoking, setRevoking] = useState(false);
+  const [extending, setExtending] = useState(false);
   const cancel = useWrite(() => send('POST', `/api/access/requests/${r?.id}/cancel`, undefined, AccessRequestView));
   if (!r)
     return (
@@ -62,6 +64,11 @@ export function RequestPage() {
                 Cancel request
               </Button>
             )}
+            {r.actions.extend && r.grant && (
+              <Button size="sm" variant="ghost" onClick={() => setExtending(true)} data-testid="extend">
+                <Clock className="size-3.5" /> Ask for more time
+              </Button>
+            )}
             {r.actions.revoke && r.grant && (
               <Button size="sm" variant="danger" onClick={() => setRevoking(true)} data-testid="revoke">
                 Revoke now
@@ -82,6 +89,18 @@ export function RequestPage() {
       />
       <PageBody className="flex max-w-[1080px] flex-col gap-4">
         <FormError error={cancel.error} />
+        {r.extends && (
+          <Card className="flex items-center gap-3">
+            <Clock className="size-4 text-ac" />
+            <span className="text-[13px] text-t1">
+              More time on the grant of{' '}
+              <Link to={`/access/requests/${r.extends.ref}`} className="text-ac underline">
+                {r.extends.ref}
+              </Link>
+              . Approved, that grant ends {minutes(r.durationMinutes)} later.
+            </span>
+          </Card>
+        )}
         {r.breakGlass != null && (
           <Card className="flex items-center gap-3 border-rdbd bg-rddim">
             <Siren className="size-4 text-rd" />
@@ -264,6 +283,7 @@ export function RequestPage() {
       </PageBody>
       {deciding && <DecideDialog request={r} outcome={deciding} onClose={() => setDeciding(undefined)} />}
       {revoking && r.grant && <RevokeDialog request={r} grantId={r.grant.id} onClose={() => setRevoking(false)} />}
+      {extending && r.grant && <ExtendDialog request={r} grantId={r.grant.id} onClose={() => setExtending(false)} />}
     </>
   );
 }
@@ -363,6 +383,72 @@ function RevokeDialog({
           <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} autoFocus />
         </Field>
         <FormError error={revoke.error} />
+      </div>
+    </Dialog>
+  );
+}
+
+function ExtendDialog({
+  request: r,
+  grantId,
+  onClose,
+}: {
+  request: AccessRequestView;
+  grantId: string;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const [duration, setDuration] = useState(Math.min(60, r.durationMinutes));
+  const [reason, setReason] = useState('');
+  const extend = useWrite(() =>
+    send(
+      'POST',
+      `/api/access/grants/${grantId}/extend`,
+      { durationMinutes: duration, reason: reason || undefined },
+      AccessRequestView,
+    ),
+  );
+  return (
+    <Dialog
+      title={`More time on ${r.bundle.name}?`}
+      subtitle={`${r.subject.displayName} · ${r.ref} · ends ${relative(r.grant!.expiresAt)}`}
+      onClose={onClose}
+      onSubmit={() =>
+        extend.mutate(undefined, {
+          onSuccess: (x) => {
+            onClose();
+            void navigate(`/access/requests/${x.ref}`);
+          },
+        })
+      }
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Back
+          </Button>
+          <Button type="submit" variant="primary" loading={extend.isPending} data-testid="confirm-extend">
+            Ask
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <p className="text-[13px] leading-snug text-t2">
+          An extension is a request of its own, decided like the first. Approved, the grant’s end moves; nothing is
+          provisioned again.
+        </p>
+        <Field label="Minutes more">
+          <Input
+            type="number"
+            min={1}
+            value={duration}
+            onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
+          />
+        </Field>
+        <Field label="Why">
+          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+        </Field>
+        <FormError error={extend.error} />
       </div>
     </Dialog>
   );

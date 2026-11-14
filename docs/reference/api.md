@@ -86,6 +86,7 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | `POST /api/access/requests/:id/cancel` | Who asked | A waiting request. |
 | `GET /api/access/grants?status=` | Administrators | `{ items: GrantSummary[] }`, newest first. |
 | `POST /api/access/grants/:id/revoke` | Administrators, and the holder | `{ comment? }`: ends it now. |
+| `POST /api/access/grants/:id/extend` | The holder (or the sponsor of the agent holding it) | `{ durationMinutes, reason? }` → 201 `AccessRequestView` with `extends: { grantId, ref }`: a request of its own, through the bundle's steps. Approved, the grant's end moves (`grant.extended`). 400 when the policy allows no more (`extensions`). |
 
 ### Events (administrators, [events.md](../events.md))
 
@@ -106,7 +107,10 @@ application asked for and holds (`apiScopes`). A session cookie doesn't work her
 | Route | Scope | What |
 |---|---|---|
 | `GET /api/v1/requests/:id` | `requests:read` | `AccessRequestView` (by id or `REQ-n`); `actions.decide` is always false. |
-| `POST /api/v1/requests/:id/waits` | `requests:read` | `{ resumeUrl }`: POSTed when a vote is recorded, the request is decided or escalates. The URL's origin must be an enabled subscription's. Kept as the annotation `wait.<client id>`. |
+| `POST /api/v1/requests` | `requests:create` | `ServiceCreateRequest` (`bundleId`, `subjectId`, `durationMinutes?`, `reason?`, `ticket?`, `startsAt?`) → 201. For an agent: the agent asks, its sponsor is `actingFor` (and can't approve), at most `agentMaxDurationMinutes`. For a person: never auto-approved. An agent's own application may ask only for that agent. No break-glass. |
+| `POST /api/v1/requests/:id/relay-tickets` | `decisions:relay` | `{ items: [{ decider, ticket, expiresAt }] }`: one ticket per approver of the current step who hasn't voted, valid until the deadline. 403 when the step doesn't allow chat votes. Audited (`request.relay_tickets_issued`). |
+| `POST /api/v1/requests/:id/decisions` | `decisions:relay` | `{ ticket, outcome, comment?, channel: chat:<name>, evidence? }` → `AccessRequestView`. The vote is the ticket's approver's, recorded with `assurance: chat` and the application as `submittedBy`; every rule of a decision still applies, and the ticket must be for this request and its current step. |
+| `POST /api/v1/requests/:id/waits` | `requests:read` | `{ resumeUrl }`: POSTed when a vote is recorded, the request is decided or escalates; a failed call is tried again with back-off for a day. The URL's origin must be an enabled subscription's. Kept as the annotation `wait.<client id>`. |
 | `PUT /api/v1/requests/:id/annotations/:key` | `annotations:write` | `{ value }`, `If-Match: <version>` to compare and set (409 on a mismatch). Keys are lowercase (`landflow.run`). |
 | `GET /api/v1/grants?status=&type=` | `requests:read` | Grants, optionally only those with a target of `type`. |
 | `GET /api/v1/grants/:id` | `requests:read` | One grant with its targets and their config. |
@@ -115,7 +119,9 @@ application asked for and holds (`apiScopes`). A session cookie doesn't work her
 | `GET /api/v1/people?inactiveSince=<ISO date>` | `directory:read` | Active people with no sign-in since then (or never, and created before then). |
 | `POST /api/v1/people/:id/deactivate` | `directory:write` | `{ reason? }`: what the console's deactivation does (sessions, tokens, grants, sponsored agents), audited with the application as actor. |
 
-`requests:create` and `events:manage` are reserved for the next slices.
+| `GET /api/v1/subscriptions` · `POST` · `DELETE /api/v1/subscriptions/:id` | `events:manage` | The application's own subscriptions (`ownerClientId`), as in the console's Events. A new one must be at an origin among the application's redirect URIs. |
+
+Update routes (`PATCH`) change only the fields they name; a field left out keeps its value.
 
 ### Audit and health (administrators)
 

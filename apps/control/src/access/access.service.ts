@@ -14,24 +14,38 @@ import {
   type CreateBundle,
   type CreateRequest,
   type DecideRequest,
+  type ExtendGrant,
   type GrantView,
   type IdentityRef,
+  inWindow,
   type PreviewRequest,
+  type RelayDecision,
   type ReportTarget,
   type RequestPreview,
+  type ServiceCreateRequest,
   type UpdateBundle,
 } from '@landbright/contracts';
 import { type Config } from '@landbright/platform';
 import { appendAudit, CONFIG, Prisma } from '@landbright/persistence';
 import { audited, type Principal, type ServicePrincipal } from '../common/principal';
+import { KeyRing } from '../common/key-ring';
 import { TenantDb, uniquely } from '../common/tenant-db';
 import { toRef } from '../directory/mapping';
 import { closeGrant, createGrant, type NamedApprover, resolveStep, stillNamed, type Tx, type Who } from './grants';
 
 const MINUTE = 60_000;
+/** The audience of the tickets a flow hands approvers in a chat. */
+export const RELAY_AUDIENCE = 'urn:landbright:relay';
 const MAX_START_DELAY_MS = 7 * 24 * 60 * MINUTE;
 
 type BundleRow = Prisma.AccessBundleGetPayload<object>;
+/**
+ * Who files a request: a signed-in person (for themselves or an agent they sponsor), or a service on the machine API
+ * (for the agent it is, or a person an intake flow names).
+ */
+type Asker = { kind: 'person'; id: string } | { kind: 'service'; agentId: string | null };
+/** How a vote arrived: Landbright's decision page, or a chat a flow relays. */
+type Via = { channel: string; assurance: 'signed-in' | 'chat'; submittedBy: string | null; evidence?: object };
 type RequestRow = Prisma.AccessRequestGetPayload<{
   include: { bundle: true; decisions: true; grant: { include: { targets: true } } };
 }>;
@@ -42,7 +56,7 @@ const requestInclude = {
 } satisfies Prisma.AccessRequestInclude;
 
 /** The approvers a request named, per step (escalation appends to a step). */
-type StepSnapshot = { name: string; approvalsRequired: number; approvers: NamedApprover[] };
+type StepSnapshot = { name: string; approvalsRequired: number; approvers: NamedApprover[]; allowRelayed?: boolean };
 
 export const refOf = (n: number) => `REQ-${n}`;
 const policyOf = (b: BundleRow) => AccessPolicy.parse(b.policy ?? {});
@@ -61,6 +75,7 @@ export class AccessService {
   constructor(
     private readonly db: TenantDb,
     @Inject(CONFIG) private readonly config: Config,
+    private readonly keys: KeyRing,
   ) {}
 
   get tenantId() {
@@ -208,7 +223,12 @@ export class AccessService {
    */
   async preview(person: Principal, input: PreviewRequest): Promise<RequestPreview> {
     return this.db.tx(async (tx) => {
-      const plan = await this.plan(tx, person, { ...input, breakGlass: false }, { dryRun: true });
+      const plan = await this.plan(
+        tx,
+        { kind: 'person', id: person.id },
+        { ...input, breakGlass: false },
+        { dryRun: true },
+      );
       return {
         eligible: plan.whyNot === null,
         whyNot: plan.whyNot,
@@ -227,10 +247,10 @@ export class AccessService {
 
   private async plan(
     tx: Tx,
-    person: Principal,
+    asker: Asker,
     input: Pick<CreateRequest, 'bundleId' | 'subjectId' | 'durationMinutes' | 'breakGlass'> &
       Partial<Pick<CreateRequest, 'reason' | 'ticket' | 'startsAt'>>,
-    { dryRun }: { dryRun: boolean },
+    { dryRun, extendsGrantId }: { dryRun: boolean; extendsGrantId?: string },
   ) {
     const fail = (whyNot: string) => ({
       whyNot,
@@ -245,6 +265,7 @@ export class AccessService {
       pending: null as { id: string; number: number } | null,
       activeGrantUntil: null as Date | null,
       subjectId: '',
+      requesterId: '',
       actingForId: null as string | null,
       subjectKind: 'person' as 'person' | 'agent',
     });
@@ -253,32 +274,83 @@ export class AccessService {
     const policy = policyOf(bundle);
     if (bundle.disabled) return { ...fail('This bundle is turned off.'), policy, bundle };
 
-    // The subject: yourself, or an agent you sponsor (which never gets more than you could).
-    let subjectId = person.id;
+    // The subject: yourself, or an agent you sponsor (which never gets more than you could). A service names it: the
+    // agent it is, or a person an intake flow asks for.
+    let subjectId: string;
+    let requesterId: string;
+    /** Whose standing memberships make the request eligible: the asker, or an agent's sponsor. */
+    let eligibleId: string;
     let actingForId: string | null = null;
     let subjectKind: 'person' | 'agent' = 'person';
-    if (input.subjectId && input.subjectId !== person.id) {
+    /** A request a service files for a person always waits for a person to decide it. */
+    let autoAllowed = true;
+    const agentOf = async (id: string) => {
       const agent = await tx.agentProfile.findFirst({
-        where: { identityId: input.subjectId },
-        include: { identity: true },
+        where: { identityId: id },
+        include: { identity: true, sponsor: true },
       });
-      if (!agent || agent.sponsorId !== person.id)
-        return { ...fail('You can ask for yourself, or for an agent you sponsor.'), policy, bundle };
-      if (agent.identity.status !== 'active') return { ...fail('That agent isn’t active.'), policy, bundle };
-      if (!policy.agentsAllowed) return { ...fail('This bundle isn’t for agents.'), policy, bundle };
-      subjectId = agent.identityId;
-      actingForId = person.id;
-      subjectKind = 'agent';
+      if (!agent) return { whyNot: 'No such agent.' };
+      if (agent.identity.status !== 'active') return { whyNot: 'That agent isn’t active.' };
+      if (agent.sponsor.status !== 'active') return { whyNot: 'That agent’s sponsor isn’t active.' };
+      if (!policy.agentsAllowed) return { whyNot: 'This bundle isn’t for agents.' };
+      return { agent };
+    };
+    if (asker.kind === 'person') {
+      subjectId = requesterId = eligibleId = asker.id;
+      if (input.subjectId && input.subjectId !== asker.id) {
+        const sponsored = await tx.agentProfile.findFirst({ where: { identityId: input.subjectId } });
+        if (sponsored?.sponsorId !== asker.id)
+          return { ...fail('You can ask for yourself, or for an agent you sponsor.'), policy, bundle };
+        const found = await agentOf(sponsored.identityId);
+        if (!found.agent) return { ...fail(found.whyNot!), policy, bundle };
+        subjectId = found.agent.identityId;
+        actingForId = asker.id;
+        subjectKind = 'agent';
+      }
+    } else {
+      if (!input.subjectId) return { ...fail('Name who the access is for (subjectId).'), policy, bundle };
+      if (asker.agentId && asker.agentId !== input.subjectId)
+        return { ...fail('An agent asks for access for itself only.'), policy, bundle };
+      const subject = await tx.identity.findFirst({ where: { id: input.subjectId } });
+      if (!subject || subject.status !== 'active')
+        return { ...fail('No active person or agent has that id.'), policy, bundle };
+      if (subject.kind === 'agent') {
+        const found = await agentOf(subject.id);
+        if (!found.agent) return { ...fail(found.whyNot!), policy, bundle };
+        subjectId = requesterId = subject.id;
+        actingForId = eligibleId = found.agent.sponsorId;
+        subjectKind = 'agent';
+      } else if (subject.kind === 'person') {
+        subjectId = requesterId = eligibleId = subject.id;
+        autoAllowed = false;
+      } else return { ...fail('Services don’t get access through requests.'), policy, bundle };
     }
-    if (!(await this.eligible(tx, policy, person.id)))
-      return { ...fail('The policy doesn’t let you ask for this bundle.'), policy, bundle };
+    if (!(await this.eligible(tx, policy, eligibleId)))
+      return {
+        ...fail(
+          asker.kind === 'person'
+            ? 'The policy doesn’t let you ask for this bundle.'
+            : 'The policy doesn’t let them ask for this bundle.',
+        ),
+        policy,
+        bundle,
+      };
 
     const maxMinutes = Math.min(
       policy.maxDurationMinutes,
       subjectKind === 'agent' ? policy.agentMaxDurationMinutes : Number.POSITIVE_INFINITY,
     );
     const durationMinutes = Math.min(input.durationMinutes ?? policy.defaultDurationMinutes, maxMinutes);
-    const base = { ...fail(''), whyNot: null as string | null, policy, bundle, subjectId, actingForId, subjectKind };
+    const base = {
+      ...fail(''),
+      whyNot: null as string | null,
+      policy,
+      bundle,
+      subjectId,
+      requesterId,
+      actingForId,
+      subjectKind,
+    };
     base.durationMinutes = durationMinutes;
     base.maxMinutes = maxMinutes;
     if (input.durationMinutes && input.durationMinutes > maxMinutes)
@@ -294,40 +366,58 @@ export class AccessService {
     });
     base.pending = pending;
     base.activeGrantUntil = live?.expiresAt ?? null;
-    if (live) return { ...base, whyNot: `Access is already granted until ${live.expiresAt.toISOString()}.` };
+    if (extendsGrantId) {
+      if (live?.id !== extendsGrantId || live.status !== 'active')
+        return { ...base, whyNot: 'Only a live grant can be extended.' };
+      if (!policy.extensions.allowed) return { ...base, whyNot: 'This bundle’s grants can’t be extended.' };
+      if (live.extensions >= policy.extensions.maxCount)
+        return {
+          ...base,
+          whyNot: `This grant was already extended ${live.extensions} times, the most the policy allows.`,
+        };
+      if (input.breakGlass) return { ...base, whyNot: 'An extension can’t be break-glass.' };
+    } else if (live) return { ...base, whyNot: `Access is already granted until ${live.expiresAt.toISOString()}.` };
 
-    // Break-glass: the policy, which a person wrote, approves it at once; a review follows.
+    // Break-glass: the policy, which a person wrote, approves it at once; a review follows. Only a person asking.
     const breakGlassAllowed =
+      asker.kind === 'person' &&
+      !extendsGrantId &&
       policy.breakGlass.allowed &&
       (policy.breakGlass.eligibleGroupIds.length === 0 ||
         (await tx.membership.count({
           where: {
-            identityId: person.id,
+            identityId: eligibleId,
             groupId: { in: policy.breakGlass.eligibleGroupIds },
             source: { not: 'grant' },
           },
         })) > 0);
     base.breakGlassAllowed = breakGlassAllowed;
 
-    // Auto-approve rules: facts Landbright holds (standing memberships), recorded as evidence.
-    for (const rule of policy.autoApprove) {
+    // Auto-approve rules: facts Landbright holds (standing memberships, the time), recorded as evidence.
+    for (const rule of autoAllowed ? policy.autoApprove : []) {
       const inGroup =
         rule.subjectInGroupIds.length === 0 ||
         (await tx.membership.count({
           where: { identityId: subjectId, groupId: { in: rule.subjectInGroupIds }, source: { not: 'grant' } },
         })) > 0;
       const shortEnough = rule.maxDurationMinutes === undefined || durationMinutes <= rule.maxDurationMinutes;
-      if (inGroup && shortEnough) {
+      const inHours = !rule.window || inWindow(rule.window);
+      if (inGroup && shortEnough && inHours) {
         base.autoRule = rule.name;
         break;
       }
     }
 
-    const ctx = { requesterId: person.id, subjectId, actingForId, bundleOwnerId: bundle.ownerId };
+    const ctx = { requesterId, subjectId, actingForId, bundleOwnerId: bundle.ownerId };
     const steps: StepSnapshot[] = [];
     for (const step of policy.steps) {
       const approvers = await resolveStep(tx, step, policy.approverFallback, ctx);
-      steps.push({ name: step.name, approvalsRequired: step.approvalsRequired, approvers });
+      steps.push({
+        name: step.name,
+        approvalsRequired: step.approvalsRequired,
+        approvers,
+        allowRelayed: step.allowRelayed,
+      });
     }
     base.steps = steps;
     const first = steps[0]?.approvers ?? [];
@@ -382,21 +472,74 @@ export class AccessService {
    * approvers until its deadline.
    */
   async create(person: Principal, input: CreateRequest, source = 'portal'): Promise<AccessRequestView> {
-    const id = await this.db.tx(async (tx) => {
+    const id = await this.file({ kind: 'person', id: person.id }, audited(person), input, { source });
+    return this.view(id, { person });
+  }
+
+  /** A request a service files on the machine API (`requests:create`). */
+  async createAsService(
+    service: ServicePrincipal,
+    input: ServiceCreateRequest,
+    agentId: string | null,
+  ): Promise<AccessRequestView> {
+    const id = await this.file(
+      { kind: 'service', agentId },
+      audited(service),
+      { ...input, breakGlass: false },
+      {
+        source: agentId ? 'agent' : 'api',
+      },
+    );
+    return this.view(id, { service });
+  }
+
+  /**
+   * More time on a live grant, asked by its holder (or the sponsor of the agent holding it): a request of its own,
+   * decided by the bundle's steps (and its auto-approve rules). Approved, the grant's end moves; nothing is re-provisioned.
+   */
+  async extend(person: Principal, grantId: string, input: ExtendGrant): Promise<AccessRequestView> {
+    const grant = await this.db.tx((tx) =>
+      tx.accessGrant.findFirst({ where: { id: grantId }, include: { request: true } }),
+    );
+    if (!grant) throw new NotFoundException('No such grant.');
+    if (person.id !== grant.subjectId && person.id !== grant.request.actingForId)
+      throw new ForbiddenException('Only the holder can ask to extend a grant.');
+    const id = await this.file(
+      { kind: 'person', id: person.id },
+      audited(person),
+      {
+        bundleId: grant.bundleId,
+        subjectId: grant.subjectId,
+        durationMinutes: input.durationMinutes,
+        reason: input.reason,
+        breakGlass: false,
+      },
+      { source: 'portal', extendsGrantId: grantId },
+    );
+    return this.view(id, { person });
+  }
+
+  private async file(
+    asker: Asker,
+    who: Who,
+    input: CreateRequest,
+    { source, extendsGrantId }: { source: string; extendsGrantId?: string },
+  ): Promise<string> {
+    return this.db.tx(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`access:${this.tenantId}`}, 0))`;
-      const plan = await this.plan(tx, person, input, { dryRun: false });
+      const plan = await this.plan(tx, asker, input, { dryRun: false, extendsGrantId });
       if (plan.whyNot !== null || !plan.bundle || !plan.policy) throw new BadRequestException(plan.whyNot);
       const policy = plan.policy;
       const now = new Date();
       const last = await tx.accessRequest.findFirst({ orderBy: { number: 'desc' }, select: { number: true } });
       const number = (last?.number ?? 0) + 1;
-      const who = audited(person);
       const request = await tx.accessRequest.create({
         data: {
           tenantId: this.tenantId,
           number,
           bundleId: plan.bundle.id,
-          requesterId: person.id,
+          requesterId: plan.requesterId,
+          extendsGrantId: extendsGrantId ?? null,
           subjectId: plan.subjectId,
           actingForId: plan.actingForId,
           source,
@@ -421,6 +564,7 @@ export class AccessService {
           durationMinutes: plan.durationMinutes,
           source,
           breakGlass: input.breakGlass,
+          ...(extendsGrantId && { extendsGrantId }),
         },
       });
       if (plan.pending) {
@@ -461,7 +605,6 @@ export class AccessService {
       }
       return request.id;
     });
-    return this.view(id, { person });
   }
 
   /** Marks a request approved (clamping its duration to the policy's current maximum) and creates its grant. */
@@ -501,6 +644,11 @@ export class AccessService {
         ...extra,
       },
     });
+    if (request.extendsGrantId) {
+      const extended = await tx.accessGrant.findFirst({ where: { id: request.extendsGrantId, status: 'active' } });
+      // The grant ended while the extension waited: the approval gives a grant of its own instead.
+      if (extended) return this.extendGrant(tx, extended, request, durationSeconds, who);
+    }
     await createGrant(
       tx,
       this.tenantId,
@@ -511,57 +659,182 @@ export class AccessService {
     );
   }
 
+  /** Moves a live grant's end (and its memberships') by the extension's duration. */
+  private async extendGrant(
+    tx: Tx,
+    grant: { id: string; expiresAt: Date; requestId: string; extensions: number },
+    extension: { id: string; number: number },
+    durationSeconds: number,
+    who: Who,
+  ) {
+    const expiresAt = new Date(grant.expiresAt.getTime() + durationSeconds * 1000);
+    await tx.accessGrant.update({
+      where: { id: grant.id },
+      data: { expiresAt, expiringSentAt: null, extensions: { increment: 1 } },
+    });
+    await tx.membership.updateMany({ where: { grantId: grant.id }, data: { expiresAt } });
+    const original = await tx.accessRequest.findUniqueOrThrow({ where: { id: grant.requestId } });
+    await appendAudit(tx, this.tenantId, {
+      ...who,
+      action: 'grant.extended',
+      targetType: 'grant',
+      targetId: grant.id,
+      data: {
+        ref: refOf(original.number),
+        requestId: grant.requestId,
+        extension: refOf(extension.number),
+        extensionRequestId: extension.id,
+        addedMinutes: durationSeconds / 60,
+        expiresAt: expiresAt.toISOString(),
+        count: grant.extensions + 1,
+      },
+    });
+  }
+
   // ---------------------------------------------------------------- deciding
 
   /**
-   * One person's vote. Every rule is checked here, under the request's lock; anything refused is audited
-   * (`request.decision_refused`) with the reason, and the person gets a sentence saying why.
+   * One person's vote on Landbright's decision page. Every rule is checked in `castVote`, under the request's lock;
+   * anything refused is audited (`request.decision_refused`) with the reason, and the person gets a sentence saying why.
    */
   async decide(person: Principal, requestId: string, input: DecideRequest): Promise<AccessRequestView> {
-    const refusal = await this.db.tx(async (tx) => {
+    const refusal = await this.castVote(requestId, person.id, audited(person), input, {
+      channel: 'landbright',
+      assurance: 'signed-in',
+      submittedBy: null,
+    });
+    if (refusal) throw new ForbiddenException(refusal);
+    return this.view(requestId, { person });
+  }
+
+  /**
+   * Tickets for the current step's approvers who haven't voted, for a flow to hand each of them in a chat (a direct
+   * message). A ticket names the approver, the request and the step, and lasts until the deadline. Only for a step
+   * whose policy allows relayed votes.
+   */
+  async relayTickets(service: ServicePrincipal, requestId: string) {
+    return this.db.tx(async (tx) => {
+      const request = await tx.accessRequest.findFirst({ where: { id: requestId }, include: requestInclude });
+      if (!request) throw new NotFoundException('No such request.');
+      if (request.status !== 'pending') throw new ConflictException(`${refOf(request.number)} is ${request.status}.`);
+      const step = (request.approvers as unknown as StepSnapshot[])[request.currentStep];
+      if (!step?.allowRelayed)
+        throw new ForbiddenException('This step’s approvers decide on Landbright’s decision page only.');
+      const voted = new Set(request.decisions.map((d) => d.deciderId));
+      const ttlSeconds = Math.max(60, Math.floor((request.deadline.getTime() - Date.now()) / 1000));
+      const items = [];
+      for (const approver of step.approvers.filter((a) => !voted.has(a.id))) {
+        if (!(await stillNamed(tx, approver))) continue;
+        const identity = await tx.identity.findUniqueOrThrow({ where: { id: approver.id } });
+        const ticket = await this.keys.sign(
+          { sub: approver.id, req: request.id, step: request.currentStep, tenant: this.tenantId, by: service.clientId },
+          { audience: RELAY_AUDIENCE, ttlSeconds, type: 'relay+jwt' },
+        );
+        items.push({ decider: toRef(identity), ticket, expiresAt: request.deadline.toISOString() });
+      }
+      await appendAudit(tx, this.tenantId, {
+        ...audited(service),
+        action: 'request.relay_tickets_issued',
+        targetType: 'request',
+        targetId: request.id,
+        data: { ref: refOf(request.number), step: step.name, approvers: items.map((i) => i.decider.id) },
+      });
+      return { items };
+    });
+  }
+
+  /**
+   * A vote an approver cast in a chat, carried by a flow with the ticket Landbright gave that approver. The ticket, not
+   * the flow, says who voted; the vote is the approver's, with `assurance: chat` and the flow as `submittedBy`.
+   */
+  async relayDecision(service: ServicePrincipal, requestId: string, input: RelayDecision): Promise<AccessRequestView> {
+    let claims: Record<string, unknown>;
+    try {
+      claims = await this.keys.verify(input.ticket, RELAY_AUDIENCE);
+    } catch {
+      throw new ForbiddenException('That ticket isn’t valid (or has expired).');
+    }
+    if (claims.req !== requestId || claims.tenant !== this.tenantId || typeof claims.sub !== 'string')
+      throw new ForbiddenException('That ticket is for another request.');
+    const deciderId = claims.sub;
+    const decider = await this.db.tx((tx) => tx.identity.findFirst({ where: { id: deciderId } }));
+    if (!decider) throw new ForbiddenException('The ticket’s approver no longer exists.');
+    const refusal = await this.castVote(
+      requestId,
+      deciderId,
+      { actorId: decider.id, actorLabel: `${decider.displayName} (via ${service.name})` },
+      input,
+      { channel: input.channel, assurance: 'chat', submittedBy: service.name, evidence: input.evidence },
+      Number(claims.step),
+    );
+    if (refusal) throw new ForbiddenException(refusal);
+    return this.view(requestId, { service });
+  }
+
+  /** Records one vote and what follows from it (the next step, approval, denial). Returns why not, or null. */
+  private async castVote(
+    requestId: string,
+    deciderId: string,
+    who: Who,
+    input: DecideRequest,
+    via: Via,
+    ticketStep?: number,
+  ): Promise<string | null> {
+    return this.db.tx(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`request:${requestId}`}, 0))`;
       const request = await tx.accessRequest.findFirst({ where: { id: requestId }, include: requestInclude });
       if (!request) throw new NotFoundException('No such request.');
-      const why = await this.whyNotDecide(tx, request, person.id);
+      const steps = request.approvers as unknown as StepSnapshot[];
+      const step = steps[request.currentStep];
+      let why = await this.whyNotDecide(tx, request, deciderId);
+      if (!why && via.assurance === 'chat') {
+        if (!step?.allowRelayed) why = 'This step’s approvers decide on Landbright’s decision page only.';
+        else if (ticketStep !== request.currentStep)
+          why = `${refOf(request.number)} has moved to its next step; the ticket was for the one before.`;
+      }
       if (why) {
         await appendAudit(tx, this.tenantId, {
-          ...audited(person),
+          ...who,
           action: 'request.decision_refused',
           targetType: 'request',
           targetId: request.id,
-          data: { ref: refOf(request.number), outcome: input.outcome, why },
+          data: { ref: refOf(request.number), outcome: input.outcome, why, channel: via.channel },
         });
         return why;
       }
-      const steps = request.approvers as unknown as StepSnapshot[];
-      const step = steps[request.currentStep];
       await tx.accessDecision.create({
         data: {
           tenantId: this.tenantId,
           requestId: request.id,
           stepIndex: request.currentStep,
-          deciderId: person.id,
+          deciderId,
           outcome: input.outcome,
           comment: input.comment ?? null,
-          channel: 'landbright',
-          assurance: 'signed-in',
+          channel: via.channel,
+          assurance: via.assurance,
+          submittedBy: via.submittedBy,
         },
       });
       const approvals =
         request.decisions.filter((d) => d.stepIndex === request.currentStep && d.outcome === 'approve').length +
         (input.outcome === 'approve' ? 1 : 0);
       await appendAudit(tx, this.tenantId, {
-        ...audited(person),
+        ...who,
         action: 'request.vote_recorded',
         targetType: 'request',
         targetId: request.id,
         data: {
           ref: refOf(request.number),
+          deciderId,
           outcome: input.outcome,
           step: step?.name,
           approvals,
           approvalsRequired: step?.approvalsRequired,
           comment: input.comment,
+          channel: via.channel,
+          assurance: via.assurance,
+          ...(via.submittedBy && { submittedBy: via.submittedBy }),
+          ...(via.evidence && { evidence: via.evidence }),
         },
       });
       if (input.outcome === 'deny') {
@@ -570,7 +843,7 @@ export class AccessService {
           data: { status: 'denied', decidedAt: new Date(), closingReason: 'denied' },
         });
         await appendAudit(tx, this.tenantId, {
-          ...audited(person),
+          ...who,
           action: 'request.decided',
           targetType: 'request',
           targetId: request.id,
@@ -579,12 +852,10 @@ export class AccessService {
       } else if (step && approvals >= step.approvalsRequired) {
         if (request.currentStep + 1 < steps.length)
           await tx.accessRequest.update({ where: { id: request.id }, data: { currentStep: request.currentStep + 1 } });
-        else await this.approve(tx, request.id, 'reviewed', audited(person));
+        else await this.approve(tx, request.id, 'reviewed', who);
       }
       return null;
     });
-    if (refusal) throw new ForbiddenException(refusal);
-    return this.view(requestId, { person });
   }
 
   /** Why this person may not vote on this request now, or null when they may. */
@@ -829,8 +1100,16 @@ export class AccessService {
       people.get(id) ?? { id, kind: 'person', displayName: 'Unknown', email: null, status: 'deactivated' };
     const voted = new Set(r.decisions.map((d) => d.deciderId));
     const current = steps[r.currentStep];
-    const annotations = await tx.annotation.findMany({ where: { targetId: r.id } });
+    const annotations = await tx.annotation.findMany({
+      where: { targetId: r.id, key: { not: { startsWith: 'wait.' } } },
+    });
     const person = caller.person;
+    const extended = r.extendsGrantId
+      ? await tx.accessGrant.findFirst({ where: { id: r.extendsGrantId }, include: { request: true } })
+      : null;
+    const policy = policyOf(r.bundle);
+    const live = r.grant && (r.grant.status === 'active' || r.grant.status === 'scheduled');
+    const holder = !!person && (person.id === r.subjectId || person.id === r.actingForId);
     const decide = !!person && r.status === 'pending' && (await this.whyNotDecide(tx, r, person.id)) === null;
     return {
       id: r.id,
@@ -840,6 +1119,7 @@ export class AccessService {
       requester: ref(r.requesterId),
       subject: ref(r.subjectId),
       actingFor: r.actingForId ? ref(r.actingForId) : null,
+      extends: extended ? { grantId: extended.id, ref: refOf(extended.request.number) } : null,
       source: r.source,
       reason: r.reason,
       ticket: (r.ticket as AccessRequestView['ticket']) ?? null,
@@ -855,6 +1135,7 @@ export class AccessService {
         approvalsRequired: s.approvalsRequired,
         approvals: r.decisions.filter((d) => d.stepIndex === i && d.outcome === 'approve').length,
         approvers: s.approvers.map((a) => ref(a.id)),
+        allowRelayed: s.allowRelayed ?? false,
       })),
       votes: r.decisions.map((d) => ({
         decider: ref(d.deciderId),
@@ -877,11 +1158,13 @@ export class AccessService {
       actions: {
         decide,
         cancel: !!person && r.status === 'pending' && (person.id === r.requesterId || person.admin),
-        revoke:
-          !!person &&
-          !!r.grant &&
-          (r.grant.status === 'active' || r.grant.status === 'scheduled') &&
-          (person.admin || person.id === r.subjectId || person.id === r.actingForId),
+        revoke: !!person && !!live && (person.admin || holder),
+        extend:
+          holder &&
+          r.grant?.status === 'active' &&
+          !r.bundle.disabled &&
+          policy.extensions.allowed &&
+          r.grant.extensions < policy.extensions.maxCount,
       },
       annotations: Object.fromEntries(annotations.map((a) => [a.key, a.value])),
       createdAt: r.createdAt.toISOString(),

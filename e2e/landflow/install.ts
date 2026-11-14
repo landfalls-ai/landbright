@@ -30,7 +30,20 @@ const ADMIN = {
   email: env.LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL ?? 'admin@landbright.test',
   password: env.LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD ?? 'landbright-dev-only',
 };
-const SCOPES = ['requests:read', 'grants:record', 'annotations:write', 'directory:read', 'directory:write'];
+const SCOPES = [
+  'requests:read',
+  'grants:record',
+  'annotations:write',
+  'directory:read',
+  'directory:write',
+  'decisions:relay',
+];
+/**
+ * The Slack flows are installed only with a bot token (`SLACK_BOT_TOKEN`). `SLACK_API_URL` points them at another Slack
+ * Web API (a local stand-in, for a check without a Slack workspace).
+ */
+const SLACK_TOKEN = env.SLACK_BOT_TOKEN;
+const SLACK_API = env.SLACK_API_URL ?? 'https://slack.com/api';
 const here = dirname(fileURLToPath(import.meta.url));
 const flowsDir = resolve(here, '../../integrations/landflow/flows');
 
@@ -102,6 +115,8 @@ const subscribe = async (path: string, events: string[], description: string) =>
   console.log(`Landbright: ${events.join(', ')} → ${url}`);
 };
 await subscribe('landbright-requests', ['request.created'], 'Landflow: Approve a request (email)');
+if (SLACK_TOKEN)
+  await subscribe('landbright-requests-slack', ['request.created'], 'Landflow: Approve a request (Slack)');
 await subscribe(
   'landbright-grants',
   ['grant.activated', 'grant.expired', 'grant.revoked', 'grant.revoke_overdue'],
@@ -206,19 +221,34 @@ const lfCred = await credential('Landflow API', 'core.httpHeaderAuth', {
   name: 'Authorization',
   value: `Bearer ${token}`,
 });
-console.log('Landflow: credentials Landbright events (JWT, JWKS), Landbright API (client credentials), Landflow API');
+const slackCred = SLACK_TOKEN
+  ? await credential('Slack bot token', 'core.httpHeaderAuth', {
+      name: 'Authorization',
+      value: `Bearer ${SLACK_TOKEN}`,
+    })
+  : '';
+console.log(
+  `Landflow: credentials Landbright events (JWT, JWKS), Landbright API (client credentials), Landflow API${SLACK_TOKEN ? ', Slack bot token' : ''}`,
+);
 
 const existing = ((await lf('/api/workflows')).workflows ?? []) as Array<{ id: string; name: string }>;
 for (const file of readdirSync(flowsDir)
   .filter((f) => f.endsWith('.json'))
   .sort()) {
-  const text = readFileSync(resolve(flowsDir, file), 'utf8')
+  const raw = readFileSync(resolve(flowsDir, file), 'utf8');
+  if (raw.includes('__CRED_SLACK__') && !SLACK_TOKEN) {
+    console.log(`Landflow: skipped ${file} (set SLACK_BOT_TOKEN to install the Slack flows)`);
+    continue;
+  }
+  const text = raw
     .replaceAll('__LANDBRIGHT_API__', CONTROL)
     .replaceAll('__LANDFLOW_API__', LANDFLOW)
     .replaceAll('__MAIL_API__', MAIL_API)
     .replaceAll('__CRED_JWT__', jwtCred)
     .replaceAll('__CRED_LANDBRIGHT__', lbCred)
-    .replaceAll('__CRED_LANDFLOW__', lfCred);
+    .replaceAll('__CRED_LANDFLOW__', lfCred)
+    .replaceAll('__CRED_SLACK__', slackCred)
+    .replaceAll('__SLACK_API__', SLACK_API);
   const flow = JSON.parse(text) as { name: string };
   const old = existing.find((w) => w.name === flow.name);
   let id: string;

@@ -2,7 +2,7 @@ import { deriveKey, issuerOf, MACHINE_API_RESOURCE, type Config } from '@landbri
 import type { PrismaClient, SigningJwk, TenantRef } from '@landbright/persistence';
 import Provider, { errors, type Configuration, type KoaContextWithOIDC } from 'oidc-provider';
 import { errorPage, logoutPage, signedOutPage } from '../pages/pages';
-import { CLAIMS, loadAccount } from './account';
+import { capToGrant, CLAIMS, loadAccount } from './account';
 import { postgresAdapter } from './adapter';
 
 /**
@@ -85,11 +85,13 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
       return grant;
     },
     ttl: {
-      AccessToken: 3600,
+      // Sign-in tokens end with the soonest just-in-time membership in their claims (capToGrant); machine API tokens
+      // keep their resource server's lifetime.
+      AccessToken: (ctx, token) => token.resourceServer?.accessTokenTTL ?? capToGrant(ctx, 3600),
       AuthorizationCode: 60,
       ClientCredentials: 600,
       // A key rotation keeps the replaced key published at least this long (rotateAfter in @landbright/persistence).
-      IdToken: config.LANDBRIGHT_ID_TOKEN_TTL_SECONDS,
+      IdToken: (ctx) => capToGrant(ctx, config.LANDBRIGHT_ID_TOKEN_TTL_SECONDS),
       Interaction: 3600,
       Session: 8 * 3600,
       Grant: 14 * 24 * 3600,

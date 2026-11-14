@@ -119,7 +119,14 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
         take: 25,
       }),
     );
-    for (const d of due) await this.deliver(d);
+    // In parallel across subscriptions (one slow endpoint doesn't hold up the others), in order within each.
+    const bySubscription = new Map<string, typeof due>();
+    for (const d of due) bySubscription.set(d.subscriptionId, [...(bySubscription.get(d.subscriptionId) ?? []), d]);
+    await Promise.all(
+      [...bySubscription.values()].map(async (queue) => {
+        for (const d of queue) await this.deliver(d);
+      }),
+    );
   }
 
   /** The event as flows see it: the audit row, plus the request or grant as it is now (flows re-read anyway). */
@@ -213,8 +220,9 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
 
   /**
    * Wakes Landflow runs waiting on a request (`POST /api/v1/requests/:id/waits`): when the request gets a vote, a
-   * decision or new approvers, its waits' resume URLs are called once each. The call carries nothing that matters; the
-   * flow re-reads the request. A resume URL is only ever called at an origin some enabled subscription delivers to.
+   * decision or new approvers, its waits become due and their resume URLs are called. The call carries nothing that
+   * matters; the flow re-reads the request. A call that fails is tried again (the deliveries' back-off) for up to a
+   * day. A resume URL is only ever called at an origin some enabled subscription delivers to.
    */
   private async wake(): Promise<void> {
     const key = `lb:wake-cursor:${this.tenant.id}`;
@@ -232,40 +240,86 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
         select: { id: true, action: true, targetId: true },
       });
     });
-    if (events.length === 0) return;
-    const requests = [...new Set(events.filter((e) => WAKE_ACTIONS.has(e.action)).map((e) => e.targetId!))];
-    for (const requestId of requests) {
-      const { waits, origins } = await this.db.tx(async (tx) => ({
-        waits: await tx.annotation.findMany({ where: { targetId: requestId, key: { startsWith: 'wait.' } } }),
-        origins: new Set(
-          (await tx.eventSubscription.findMany({ where: { disabled: false }, select: { url: true } })).map(
-            (s) => new URL(s.url).origin,
-          ),
+    const now = new Date();
+    if (events.length) {
+      const changed = [...new Set(events.filter((e) => WAKE_ACTIONS.has(e.action)).map((e) => e.targetId!))];
+      if (changed.length)
+        await this.db.tx(async (tx) => {
+          const waits = await tx.annotation.findMany({
+            where: { targetId: { in: changed }, key: { startsWith: 'wait.' } },
+          });
+          for (const w of waits) {
+            const value = w.value as Wait;
+            if (value.dueAt) continue;
+            await tx.annotation.update({
+              where: { targetId_key: { targetId: w.targetId, key: w.key } },
+              data: { value: { ...value, dueAt: now.toISOString(), attempts: 0, nextAt: now.toISOString() } },
+            });
+          }
+        });
+      await this.valkey.set(key, String(events.at(-1)!.id));
+    }
+
+    const { due, origins } = await this.db.tx(async (tx) => ({
+      due: (await tx.annotation.findMany({ where: { key: { startsWith: 'wait.' } } })).filter((w) => {
+        const v = w.value as Wait;
+        return v.dueAt && new Date(v.nextAt ?? v.dueAt) <= now;
+      }),
+      origins: new Set(
+        (await tx.eventSubscription.findMany({ where: { disabled: false }, select: { url: true } })).map(
+          (s) => new URL(s.url).origin,
         ),
-      }));
-      for (const wait of waits) {
-        const url = (wait.value as { resumeUrl?: string }).resumeUrl;
+      ),
+    }));
+    await Promise.all(
+      due.map(async (wait) => {
+        const value = wait.value as Wait;
         let done = true;
-        if (url && origins.has(new URL(url).origin)) {
+        if (value.resumeUrl && origins.has(new URL(value.resumeUrl).origin)) {
           try {
-            const res = await fetch(url, {
+            const res = await fetch(value.resumeUrl, {
               method: 'POST',
               headers: { 'content-type': 'application/json', 'user-agent': 'Landbright-Events/1' },
-              body: JSON.stringify({ requestId, nudge: true }),
+              body: JSON.stringify({ requestId: wait.targetId, nudge: true }),
               signal: AbortSignal.timeout(TIMEOUT_MS),
               redirect: 'manual',
             });
+            // Gone or already resumed: nothing to wake.
             done = res.ok || res.status === 404 || res.status === 409 || res.status === 410;
           } catch {
             done = false;
           }
         }
-        if (done)
-          await this.db.tx((tx) =>
-            tx.annotation.delete({ where: { targetId_key: { targetId: requestId, key: wait.key } } }),
-          );
-      }
-    }
-    await this.valkey.set(key, String(events.at(-1)!.id));
+        const attempts = (value.attempts ?? 0) + 1;
+        const gaveUp = !done && now.getTime() - new Date(value.dueAt!).getTime() > GIVE_UP_MS;
+        await this.db.tx(async (tx) => {
+          // Only if the flow hasn't attached a new wait meanwhile (a new resume URL is a new wait).
+          const current = await tx.annotation.findUnique({
+            where: { targetId_key: { targetId: wait.targetId, key: wait.key } },
+          });
+          if (!current || current.version !== wait.version) return;
+          if (done || gaveUp)
+            await tx.annotation.delete({ where: { targetId_key: { targetId: wait.targetId, key: wait.key } } });
+          else
+            await tx.annotation.update({
+              where: { targetId_key: { targetId: wait.targetId, key: wait.key } },
+              data: {
+                value: { ...value, attempts, nextAt: new Date(now.getTime() + backoffMs(attempts)).toISOString() },
+              },
+            });
+        });
+        if (gaveUp) this.logger.warn(`gave up waking ${wait.key} on request ${wait.targetId} after ${attempts} tries`);
+      }),
+    );
   }
+}
+
+/** A flow's wait on a request, kept as an annotation (`wait.<client id>`). */
+interface Wait {
+  resumeUrl?: string;
+  at?: string;
+  /** Set when the request changed: the resume URL is due to be called. */
+  dueAt?: string;
+  attempts?: number;
+  nextAt?: string;
 }

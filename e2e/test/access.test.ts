@@ -283,7 +283,7 @@ describe.skipIf(!e2eEnabled)('just-in-time access end to end', () => {
     const read = await machine(`/api/v1/requests/${request.id}`);
     await expectStatus(read, 200);
     const seen = AccessRequestView.parse(await read.json());
-    expect(seen.actions).toEqual({ decide: false, cancel: false, revoke: false });
+    expect(seen.actions).toEqual({ decide: false, cancel: false, revoke: false, extend: false });
     expect((await machine(`/api/v1/requests/${request.ref}`)).status).toBe(200);
 
     expect((await fetch(`${stack.control}/api/v1/requests/${request.id}`)).status).toBe(401);

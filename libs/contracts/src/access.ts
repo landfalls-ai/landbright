@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchOf } from './patch';
 import { IdentityRef } from './directory';
 
 /**
@@ -30,8 +31,58 @@ export const ApprovalStep = z.object({
     })
     .default({ groupIds: [], identityIds: [], manager: false, bundleOwner: false, sponsor: false }),
   approvalsRequired: z.number().int().min(1).max(5).default(1),
+  /**
+   * Whether this step's approvers may also vote from a chat a flow relays (Slack), with a single-use ticket Landbright
+   * issued for that approver. Off by default: a vote on Landbright's own decision page is the stronger one.
+   */
+  allowRelayed: z.boolean().default(false),
 });
 export type ApprovalStep = z.infer<typeof ApprovalStep>;
+
+const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
+
+/** Days (0 Sunday … 6 Saturday) and hours, in an IANA time zone. `to` before `from` spans midnight. */
+export const TimeWindow = z.object({
+  days: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([1, 2, 3, 4, 5]),
+  from: HHMM.default('09:00'),
+  to: HHMM.default('18:00'),
+  timeZone: z
+    .string()
+    .max(60)
+    .refine((tz) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'An IANA time zone, such as Asia/Jerusalem')
+    .default('UTC'),
+});
+export type TimeWindow = z.infer<typeof TimeWindow>;
+
+/** Whether `at` falls inside the window. */
+export function inWindow(window: TimeWindow, at: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: window.timeZone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(part('weekday'));
+  const now = Number(part('hour')) * 60 + Number(part('minute'));
+  const [fh, fm] = window.from.split(':').map(Number);
+  const [th, tm] = window.to.split(':').map(Number);
+  const from = fh! * 60 + fm!;
+  const to = th! * 60 + tm!;
+  if (from === to) return window.days.includes(day);
+  if (from < to) return window.days.includes(day) && now >= from && now < to;
+  // Spans midnight: the evening part belongs to `day`, the morning part to the day before.
+  if (now >= from) return window.days.includes(day);
+  return now < to && window.days.includes((day + 6) % 7);
+}
 
 /**
  * An auto-approve rule: facts Landbright holds itself. A rule only ever approves; it never denies. Its evidence is kept
@@ -43,6 +94,8 @@ export const AutoApproveRule = z.object({
   subjectInGroupIds: Ids,
   /** And asks for at most this long. */
   maxDurationMinutes: Minutes.optional(),
+  /** And asks within these hours (on-call hours, business hours), in the time zone given. */
+  window: TimeWindow.optional(),
 });
 export type AutoApproveRule = z.infer<typeof AutoApproveRule>;
 
@@ -93,6 +146,14 @@ export const AccessPolicy = z.object({
       reviewWithinHours: z.number().int().min(1).max(168).default(24),
     })
     .default({ allowed: false, eligibleGroupIds: [], maxDurationMinutes: 60, reviewWithinHours: 24 }),
+  /** Asking for more time on a live grant: the extension is a request of its own, decided by the same steps. */
+  extensions: z
+    .object({
+      allowed: z.boolean().default(true),
+      /** How many times one grant can be extended. */
+      maxCount: z.number().int().min(0).max(10).default(2),
+    })
+    .default({ allowed: true, maxCount: 2 }),
   /** After this long without a decision, these groups' people are added to the current step (`request.escalated`). */
   escalation: z
     .object({ afterMinutes: Minutes, toGroupIds: z.array(z.uuid()).min(1).max(10) })
@@ -138,7 +199,7 @@ export const CreateBundle = z.object({
   disabled: z.boolean().default(false),
 });
 export type CreateBundle = z.infer<typeof CreateBundle>;
-export const UpdateBundle = CreateBundle.partial();
+export const UpdateBundle = patchOf(CreateBundle);
 export type UpdateBundle = z.infer<typeof UpdateBundle>;
 
 // ---------------------------------------------------------------- requests
@@ -238,6 +299,8 @@ export const AccessRequestView = z.object({
   requester: IdentityRef,
   subject: IdentityRef,
   actingFor: IdentityRef.nullable(),
+  /** For an extension: the grant it adds time to, and the request that grant came from. */
+  extends: z.object({ grantId: z.uuid(), ref: z.string() }).nullable(),
   source: z.string(),
   reason: z.string().nullable(),
   ticket: Ticket.nullable(),
@@ -254,6 +317,7 @@ export const AccessRequestView = z.object({
       approvalsRequired: z.number().int(),
       approvals: z.number().int(),
       approvers: z.array(IdentityRef),
+      allowRelayed: z.boolean(),
     }),
   ),
   votes: z.array(Vote),
@@ -265,7 +329,7 @@ export const AccessRequestView = z.object({
   /** Where an approver decides: Landbright's decision page. */
   decisionUrl: z.string(),
   /** What the caller may do now. A service never gets `decide`. */
-  actions: z.object({ decide: z.boolean(), cancel: z.boolean(), revoke: z.boolean() }),
+  actions: z.object({ decide: z.boolean(), cancel: z.boolean(), revoke: z.boolean(), extend: z.boolean() }),
   annotations: z.record(z.string(), z.unknown()),
   createdAt: z.iso.datetime(),
   decidedAt: z.iso.datetime().nullable(),
@@ -280,6 +344,40 @@ export const DecideRequest = z.object({
 export type DecideRequest = z.infer<typeof DecideRequest>;
 
 export const RevokeGrant = z.object({ comment: z.string().trim().max(1000).optional() });
+
+/** More time on a live grant: a request of its own, through the bundle's policy. */
+export const ExtendGrant = z.object({
+  durationMinutes: Minutes,
+  reason: z.string().trim().max(1000).optional(),
+});
+export type ExtendGrant = z.infer<typeof ExtendGrant>;
+
+/**
+ * A request a service files (machine API, `requests:create`): an agent's own request (an agent client may ask only
+ * for itself), or an intake flow asking for a person. A service never break-glasses, and a request it files for a
+ * person is never auto-approved: a person must decide it.
+ */
+export const ServiceCreateRequest = CreateRequest.omit({ breakGlass: true }).extend({ subjectId: z.uuid() });
+export type ServiceCreateRequest = z.infer<typeof ServiceCreateRequest>;
+
+/**
+ * Tickets a flow hands to the current step's approvers in a chat (one each, in a direct message): a vote relayed with
+ * a ticket is that approver's, for that request and step, once. Only for steps whose policy allows relayed votes.
+ */
+export const RelayTicket = z.object({ decider: IdentityRef, ticket: z.string(), expiresAt: z.iso.datetime() });
+export const RelayTicketList = z.object({ items: z.array(RelayTicket) });
+
+/** A vote an approver cast in a chat, relayed by a flow (`decisions:relay`). */
+export const RelayDecision = z.object({
+  ticket: z.string().min(20).max(4000),
+  outcome: z.enum(['approve', 'deny']),
+  comment: z.string().trim().max(1000).optional(),
+  /** Where they voted: chat:slack, chat:teams… */
+  channel: z.string().regex(/^chat:[a-z0-9-]{1,30}$/),
+  /** What the chat said about who clicked (Slack user and team ids), kept with the vote. */
+  evidence: z.record(z.string(), z.string().max(200)).optional(),
+});
+export type RelayDecision = z.infer<typeof RelayDecision>;
 
 /** What a flow reports for one target of a grant. */
 export const ReportTarget = z.object({

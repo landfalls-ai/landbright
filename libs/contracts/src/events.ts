@@ -19,6 +19,8 @@ export const Subscription = z.object({
   audience: z.string(),
   disabled: z.boolean(),
   createdBy: z.string(),
+  /** Set when an application made it through the machine API (`events:manage`): only that application manages it. */
+  ownerClientId: z.string().nullable(),
   createdAt: z.iso.datetime(),
   stats: z.object({ pending: z.number().int(), delivered: z.number().int(), failed: z.number().int() }),
 });

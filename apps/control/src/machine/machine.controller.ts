@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import {
@@ -7,12 +19,19 @@ import {
   AttachWaitDto,
   DeactivateDto,
   GrantListDto,
+  CreateSubscriptionDto,
   PutAnnotationDto,
+  RelayDecisionDto,
+  RelayTicketListDto,
   ReportTargetDto,
+  ServiceCreateRequestDto,
+  SubscriptionDto,
+  SubscriptionListDto,
 } from '../access/access.dto';
 import { AccessService } from '../access/access.service';
 import { Service, type ServicePrincipal } from '../common/principal';
 import { PeopleService } from '../directory/people.service';
+import { EVENT_TYPES, EventsService } from '../events/events.service';
 import { InactivePeopleDto } from './machine.dto';
 
 const version = (ifMatch?: string) => (ifMatch ? Number(ifMatch.replace(/"/g, '')) : undefined);
@@ -28,7 +47,38 @@ export class MachineController {
   constructor(
     private readonly access: AccessService,
     private readonly people: PeopleService,
+    private readonly events: EventsService,
   ) {}
+
+  /**
+   * Files a request: an agent's own (an agent's application may only ask for that agent), or an intake flow's for a
+   * person (which then always waits for a person to decide).
+   */
+  @Post('requests')
+  @ZodResponse({ status: 201, type: AccessRequestDto })
+  file(@Body() body: ServiceCreateRequestDto, @Service('requests:create') service: ServicePrincipal) {
+    return this.access.createAsService(service, body, service.agentId ?? null);
+  }
+
+  /** Tickets for the current step's approvers, to hand each of them in a chat (steps that allow relayed votes). */
+  @Post('requests/:id/relay-tickets')
+  @HttpCode(200)
+  @ZodResponse({ type: RelayTicketListDto })
+  tickets(@Param('id', ParseUUIDPipe) id: string, @Service('decisions:relay') service: ServicePrincipal) {
+    return this.access.relayTickets(service, id);
+  }
+
+  /** A vote an approver cast in a chat, with the ticket that approver was given. */
+  @Post('requests/:id/decisions')
+  @HttpCode(200)
+  @ZodResponse({ type: AccessRequestDto })
+  relay(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: RelayDecisionDto,
+    @Service('decisions:relay') service: ServicePrincipal,
+  ) {
+    return this.access.relayDecision(service, id, body);
+  }
 
   @Get('requests/:id')
   @ZodResponse({ type: AccessRequestDto })
@@ -119,5 +169,26 @@ export class MachineController {
   ) {
     const p = await this.people.deactivate(id, service, body.reason);
     return { id: p.id, status: p.status };
+  }
+
+  // ---------------------------------------------------------------- its own event subscriptions (events:manage)
+
+  @Get('subscriptions')
+  @ZodResponse({ type: SubscriptionListDto })
+  async subscriptions(@Service('events:manage') service: ServicePrincipal) {
+    return { items: await this.events.list(service.clientId), eventTypes: EVENT_TYPES };
+  }
+
+  /** Only to an origin among the application's own redirect URIs: a token can't point Landbright anywhere else. */
+  @Post('subscriptions')
+  @ZodResponse({ status: 201, type: SubscriptionDto })
+  subscribe(@Body() body: CreateSubscriptionDto, @Service('events:manage') service: ServicePrincipal) {
+    return this.events.create(body, service);
+  }
+
+  @Delete('subscriptions/:id')
+  @HttpCode(204)
+  unsubscribe(@Param('id', ParseUUIDPipe) id: string, @Service('events:manage') service: ServicePrincipal) {
+    return this.events.remove(id, service);
   }
 }

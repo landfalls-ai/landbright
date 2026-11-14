@@ -371,6 +371,8 @@ model AccessRequest {
   closingReason   String?             @map("closing_reason")
   decidedAt       DateTime?           @map("decided_at")
   supersededById  String?             @map("superseded_by_id") @db.Uuid
+  /// An extension: the live grant this request adds time to (approved: the grant's end moves, no new grant).
+  extendsGrantId  String?             @map("extends_grant_id") @db.Uuid
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   bundle    AccessBundle     @relation(fields: [bundleId], references: [id], onDelete: Restrict)
@@ -379,6 +381,7 @@ model AccessRequest {
   @@unique([tenantId, number])
   @@index([tenantId, status])
   @@index([tenantId, subjectId])
+  @@index([extendsGrantId])
   @@map("access_request")
 }
 
@@ -426,6 +429,8 @@ model AccessGrant {
   /// expired, revoked_by_requester, revoked_by_admin, leaver, bundle_disabled
   closingReason  String?     @map("closing_reason")
   expiringSentAt DateTime?   @map("expiring_sent_at")
+  /// How many extensions were approved.
+  extensions     Int         @default(0)
   overdueSentAt  DateTime?   @map("overdue_sent_at")
   isBreakGlass   Boolean     @default(false) @map("is_break_glass")
   createdAt      DateTime    @default(now()) @map("created_at")
@@ -492,6 +497,8 @@ model EventSubscription {
   /// The last audit event id this subscription has been matched against.
   cursor      BigInt   @default(0)
   createdBy   String   @map("created_by")
+  /// The application that made it through the machine API (events:manage); null when an administrator did.
+  ownerClientId String? @map("owner_client_id")
   createdAt   DateTime @default(now()) @map("created_at")
   deliveries EventDelivery[]
   @@index([tenantId])

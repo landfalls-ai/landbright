@@ -7,3 +7,4 @@ export * from './settings';
 export * from './access';
 export * from './events';
 export * from './machine-api';
+export * from './patch';

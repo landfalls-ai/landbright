@@ -75,3 +75,9 @@ decides, records and emits; Landflow runs the processes ([spec 004](../specs/004
 
 Next, from the Keycloak study: required actions and *forgot password*, an account page, `acr`, an *Onboard* flow.
 
+### Spec 005, slice 1: access follow-ups
+
+Extensions; requests services file (agents, intake flows); votes from Slack with per-approver tickets, and two Slack
+flows; tokens that end with the grant; subscriptions an application manages itself; wake-ups that retry; the full
+policy editor, with auto-approve hours ([spec 005](../specs/005-follow-ups/spec.md)).
+
