@@ -11,6 +11,7 @@ application within seconds; deactivating a person sets them inactive there, whic
 | Landflow | `<Landflow>/scim/v2` | As SCIM groups; `LANDFLOW_SCIM_GROUP_MAP` turns them into roles and project memberships | Deletes their sessions at once |
 | Landfall | `<core-api>/scim/v2/<org>` | On each person (`groups`): Landfall picks a role from them and stores no groups | Membership deprovisioned, OpenFGA tuples deleted: its routes refuse at once (see [limitations](limitations.md#provisioning-spec-006)) |
 | Clickland | `<api>/scim/v2` | As SCIM groups: *Clickland Admins*, *Editors*, *Viewers* map to its admin, editor and viewer roles | Ends their sessions at once |
+| Landledger | `<api>/scim/v2` | As SCIM groups: *Finance CFO*, *Finance Controllers*, *Finance FP&A*, *Budget Owners*, *Engineering*, *Landledger Auditors* map to its roles (CFO, controller, FP&A, budget owner, engineer, auditor) | Ends their sessions at once |
 
 ## Connecting an application
 
@@ -148,6 +149,9 @@ own sign-out sends its logout tokens through the same queue, not inline.
   Clickland in sync in under 2 seconds (six people, its three role groups, Tal's account from a first sign-in
   adopted); Landfall's `clickland-it` org with *Landfall Responders* sent on each person; Tal deactivated in Landbright
   was inactive in both within a second, and active in both again after reactivation (Landfall through a new `POST`).
+- Live, the same day, Landledger's server (the finance team's cost subledger, built by the Clickland session): in
+  sync at once with eight people and its six role groups (*Landledger Auditors* still empty); Eden Tzur deactivated in
+  Landbright was inactive there 1.2 seconds later, and active again 1.9 seconds after reactivation.
 - Live, the same day, back-channel logout on the dev Landbright with a stand-in application (none of Landflow, Landfall
   or Clickland takes logout tokens yet): Tal signed in to it and signed out at Landbright, and **its logout token
   arrived 369 ms later** for that session; signed in again, then *Sign out everywhere else* on the account page: the
