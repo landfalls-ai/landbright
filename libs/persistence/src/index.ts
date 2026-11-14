@@ -5,3 +5,4 @@ export * from './passwords';
 export * from './bootstrap';
 export * from './persistence.module';
 export * from './signing-keys';
+export * from './logout';

@@ -25,9 +25,10 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   keys for relying parties that prefer them.
 - **One tenant per deployment.** Every table carries `tenant_id` under row-level security, but the services serve the
   tenant named by `LANDBRIGHT_TENANT_SLUG`, and client ids are global.
-- **Revocation stops at Landbright.** Deactivating a person revokes their sessions and tokens at the identity plane at
-  once, but an application that checked the ID token only at sign-in keeps its own session until it ends. Pushing the
-  change (SCIM, back-channel logout) is wave 2.
+- **Revocation reaches the applications Landbright provisions** ([provisioning.md](provisioning.md)): deactivating a
+  person sets them inactive in each SCIM target within seconds, and an application with a back-channel logout URI is
+  posted a logout token. An application that is neither keeps its own session until it ends. None of Landflow,
+  Landfall or Clickland takes logout tokens yet (SCIM covers them).
 - **Landflow in a bridged container can't use `localhost:4402`.** Landflow takes every endpoint from the discovery
   document, so the issuer must be reachable from both the browser and the container. Run Landflow on the host, or in a
   container with host networking as `deploy/landflow/compose.yml` does ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
@@ -82,7 +83,37 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **No consent screen** for an ordinary application: the CIBA and device pages are the only places a person says yes
   to someone acting for them.
 
+## Provisioning (spec 006)
+
+- **Push only.** Landbright is a SCIM client; it isn't a SCIM server (nothing provisions into it), and it doesn't read
+  people from an application. No `/Bulk`, and no ETags (a change made in the application between two of Landbright's
+  pushes is put back at the next comparison, not refused).
+- **People only.** Agents aren't pushed (wave 5). Attributes are email, names and active; no title, department,
+  manager or the enterprise extension yet.
+- **Group names go as they are.** No per-target renaming: the application maps names itself (Landflow's
+  `LANDFLOW_SCIM_GROUP_MAP`, Landfall's group-role mappings), so renaming a group in Landbright changes what it means
+  there until the map follows.
+- **Landfall:** its session JWT lives up to an hour after deactivation; its routes check membership on every request,
+  so access ends at once, but the token isn't revoked (a Landfall limit). It stores no groups (roles come from the
+  person's `groups`), ignores email changes, and its user list leaves out accounts made before SCIM was switched on
+  (Landbright reads by id, so it isn't affected).
+- **Landflow:** deactivation suspends API keys and MCP tokens rather than deleting them, and an open `/api/events`
+  stream isn't closed (Landflow limits). An unknown member id in a group is dropped without an error.
+- **One worker at a time per tenant**, every 2 seconds; a target answering slowly holds up only itself.
+- **Back-channel logout only**, no front-channel logout (iframes the browser loads) and no logout for sessions that
+  simply expire (the specification doesn't ask for it). A logout token given up after ten tries (about 85 minutes)
+  isn't sent again; it stays in `logout_delivery` with its error and in the ledger.
+- **A grant's pushes are read from the audit log**, the last 200 events of its groups and its holder while it was live
+  (and removals the day after it ended); pushes recorded before slice 2 name removed members by the application's ids
+  and don't show.
+
 ## Lifted
+
+- Spec 006, slice 2: an application that wasn't provisioned kept a deactivated person's session until it ended; a
+  grant didn't show what reached the applications.
+
+- Spec 006: revocation stopped at Landbright; applications learned who existed only at first sign-in; just-in-time
+  access to Landflow projects needed a provisioning flow.
 
 - Spec 005, slice 3: agents were directory entries without credentials; no token exchange, CIBA, device grant, PAR or
   DPoP. An application's secret could only be sent as basic (now `client_secret_post` too). The services listened on

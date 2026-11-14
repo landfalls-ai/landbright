@@ -4,6 +4,7 @@ import { RequiredAction } from '@landbright/contracts';
 import { sha256 } from '@landbright/platform';
 import {
   appendAudit,
+  endSessionsOf,
   hashPassword,
   PRISMA,
   type Prisma,
@@ -266,26 +267,23 @@ export class AccountService {
   }
 
   /**
-   * Ends their sessions, except `keepId` (this browser's session id). Applications' tokens run out on their own (an hour at
-   * most); refresh tokens and grants stay unless the person is deactivated.
+   * Ends their sessions, except `keepId` (this browser's session id). Applications that take back-channel logout are
+   * told (each session they were signed in to through); the others' tokens run out on their own (an hour at most).
+   * Refresh tokens and grants stay unless the person is deactivated.
    */
   async endSessions(self: Self, keepId?: string): Promise<number> {
-    const ended = keepId
-      ? await this.prisma.$executeRaw`DELETE FROM oidc_payload WHERE type = 'Session'
-          AND payload->>'accountId' = ${self.identityId} AND id <> ${keepId}`
-      : await this.prisma.$executeRaw`DELETE FROM oidc_payload WHERE type = 'Session'
-          AND payload->>'accountId' = ${self.identityId}`;
-    if (ended)
-      await this.tx((tx) =>
-        appendAudit(tx, this.tenant.id, {
+    return this.tx(async (tx) => {
+      const { ended, queued } = await endSessionsOf(tx, this.tenant.id, self.identityId, 'sessions_ended', keepId);
+      if (ended)
+        await appendAudit(tx, this.tenant.id, {
           ...this.actor(self),
           action: 'session.others_ended',
           targetType: 'identity',
           targetId: self.identityId,
-          data: { ended, kept: Boolean(keepId) },
-        }),
-      );
-    return ended;
+          data: { ended, kept: Boolean(keepId), logoutsQueued: queued },
+        });
+      return ended;
+    });
   }
 
   private async drop(tx: Prisma.TransactionClient, self: Self, action: RequiredAction): Promise<void> {

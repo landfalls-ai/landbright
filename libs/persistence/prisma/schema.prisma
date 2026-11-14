@@ -250,6 +250,8 @@ model OidcClient {
   apiScopes               String[] @default([]) @map("api_scopes")
   /// The weakest sign-in it accepts: urn:landbright:acr:pwd, :mfa or :phr (a passkey). Null: any.
   minimumAcr              String?  @map("minimum_acr")
+  /// OpenID Back-Channel Logout: where Landbright posts a logout token when someone's session with it ends.
+  backchannelLogoutUri    String?  @map("backchannel_logout_uri")
   /// An agent's own application: bound to that agent (it acts as the agent only), authenticating with private_key_jwt
   /// against `jwks` (the agent's public keys). One per agent.
   agentId                 String?  @unique @map("agent_id") @db.Uuid
@@ -260,6 +262,7 @@ model OidcClient {
   updatedAt               DateTime @updatedAt @map("updated_at")
 
   agent Identity? @relation("AgentApplication", fields: [agentId], references: [id], onDelete: Cascade)
+  scimTargets ScimTarget[]
 
   @@index([tenantId])
   @@map("oidc_client")
@@ -280,6 +283,8 @@ model AuditEvent {
   hash       String
 
   @@index([tenantId, id])
+  /// What happened to one thing (a grant's timeline reads its groups' and its subject's).
+  @@index([tenantId, targetId, id])
   @@map("audit_event")
 }
 
@@ -542,4 +547,106 @@ model EventDelivery {
   @@unique([subscriptionId, auditEventId])
   @@index([tenantId, status, nextAttemptAt])
   @@map("event_delivery")
+}
+
+// ── Provisioning out (spec 006): Landbright as the SCIM 2.0 client of Landflow, Landfall and Clickland ────────────
+
+/// An application's SCIM server that Landbright keeps in step: the people in the assigned groups, and (groups mode)
+/// the groups themselves. Changes come from the audit log, read from `cursor`.
+model ScimTarget {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  name             String
+  /// The SCIM base, e.g. http://127.0.0.1:57300/scim/v2 (Users and Groups are under it).
+  baseUrl          String    @map("base_url")
+  /// The bearer token, sealed with LANDBRIGHT_SECRET_KEY. Never returned.
+  tokenSealed      String    @map("token_sealed")
+  /// groups: assigned groups are pushed as SCIM Groups with members. user_attribute: each person's assigned groups
+  /// are sent as their `groups` (Landfall, which chooses a role from them and stores no groups).
+  groupsMode       String    @default("groups") @map("groups_mode")
+  /// The Landbright groups assigned: their active members are pushed.
+  groupIds         String[]  @map("group_ids") @db.Uuid
+  /// The OIDC application this server belongs to, if any.
+  clientId         String?   @map("client_id") @db.Uuid
+  disabled         Boolean   @default(false)
+  /// The last audit event read.
+  cursor           BigInt    @default(0)
+  /// When everything was last compared with the application; null: due now.
+  lastReconciledAt DateTime? @map("last_reconciled_at")
+  lastSuccessAt    DateTime? @map("last_success_at")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  client OidcClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  links  ScimLink[]
+  jobs   ScimJob[]
+
+  @@index([tenantId])
+  @@map("scim_target")
+}
+
+/// A person or group as the application knows it: its id there and what Landbright last pushed.
+model ScimLink {
+  tenantId String   @map("tenant_id") @db.Uuid
+  targetId String   @map("target_id") @db.Uuid
+  /// user or group
+  kind     String
+  localId  String   @map("local_id") @db.Uuid
+  remoteId String   @map("remote_id")
+  /// A user: { userName, displayName, active, groups? }. A group: { displayName, members: remote ids }.
+  state    Json
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  target ScimTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([targetId, kind, localId])
+  @@index([tenantId])
+  @@map("scim_link")
+}
+
+/// A person or group to push: one row however many changes are waiting, deleted once pushed.
+model ScimJob {
+  tenantId      String   @map("tenant_id") @db.Uuid
+  targetId      String   @map("target_id") @db.Uuid
+  kind          String
+  localId       String   @map("local_id") @db.Uuid
+  /// Reconciliation: read the application's copy before deciding.
+  verify        Boolean  @default(false)
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  lastError     String?  @map("last_error")
+  queuedAt      DateTime @default(now()) @map("queued_at")
+
+  target ScimTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([targetId, kind, localId])
+  @@index([tenantId, nextAttemptAt])
+  @@map("scim_job")
+}
+
+/// A logout token owed to an application (OpenID Back-Channel Logout 1.0): someone signed out, ended their other
+/// sessions, or was deactivated. Signed when sent (a logout token lives two minutes); tried again with backoff; kept
+/// with its outcome.
+model LogoutDelivery {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  /// The application's client id (not a foreign key: a delivery outlives a deleted application, unsent).
+  clientId      String    @map("client_id")
+  uri           String
+  subject       String
+  /// The session at Landbright (`sid`); null: every session of the subject at the application.
+  sid           String?
+  /// signed_out, sessions_ended or deactivated.
+  reason        String
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  deliveredAt   DateTime? @map("delivered_at")
+  failedAt      DateTime? @map("failed_at")
+
+  @@index([tenantId, deliveredAt, failedAt, nextAttemptAt])
+  @@index([tenantId, subject])
+  @@map("logout_delivery")
 }

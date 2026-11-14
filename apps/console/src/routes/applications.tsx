@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AppWindow, Bot, KeyRound, Lock, Plus, Trash2 } from 'lucide-react';
+import { AppWindow, Bot, KeyRound, Lock, LogOut, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   type Acr,
@@ -64,6 +64,7 @@ export function ApplicationsPage() {
   const [adding, setAdding] = useState(false);
   const [secret, setSecret] = useState<ApplicationWithSecret>();
   const [deleting, setDeleting] = useState<Application>();
+  const [logout, setLogout] = useState<Application>();
   const rotate = useWrite((id: string) =>
     send('POST', `/api/applications/${id}/rotate-secret`, undefined, ApplicationWithSecret),
   );
@@ -167,6 +168,18 @@ export function ApplicationsPage() {
                     />
                   )}
                 </span>
+                {(a.backchannelLogoutUri || !a.system) && (
+                  <>
+                    <span className="text-t3">Sign-out reaches</span>
+                    <span className="text-t2" data-testid={`logout-uri-${a.clientId}`}>
+                      {a.backchannelLogoutUri ? (
+                        <span className="font-mono">{a.backchannelLogoutUri}</span>
+                      ) : (
+                        'Not told (no back-channel logout URI)'
+                      )}
+                    </span>
+                  </>
+                )}
               </div>
               {!a.system && (
                 <div className="flex gap-2 pt-1">
@@ -183,6 +196,9 @@ export function ApplicationsPage() {
                       </Button>
                     </>
                   )}
+                  <Button size="sm" onClick={() => setLogout(a)} data-testid={`edit-logout-${a.clientId}`}>
+                    <LogOut className="size-3.5" /> Sign-out
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => setDeleting(a)}>
                     <Trash2 className="size-3.5" /> Delete
                   </Button>
@@ -210,6 +226,7 @@ export function ApplicationsPage() {
         />
       )}
       {secret && <SecretDialog result={secret} onClose={() => setSecret(undefined)} />}
+      {logout && <LogoutDialog app={logout} onClose={() => setLogout(undefined)} />}
       {deleting && (
         <ConfirmDialog
           title={`Delete ${deleting.name}?`}
@@ -236,7 +253,13 @@ function RegisterDialog({
   onClose: () => void;
   onCreated: (r: ApplicationWithSecret) => void;
 }) {
-  const [form, setForm] = useState({ name: '', clientId: '', redirectUris: '', postLogoutRedirectUris: '' });
+  const [form, setForm] = useState({
+    name: '',
+    clientId: '',
+    redirectUris: '',
+    postLogoutRedirectUris: '',
+    backchannelLogoutUri: '',
+  });
   const [grantTypes, setGrantTypes] = useState<Grant[]>(['authorization_code', 'refresh_token']);
   const [minimumAcr, setMinimumAcr] = useState<Acr | null>(null);
   const [authMethod, setAuthMethod] = useState<SecretAuthMethod>('client_secret_basic');
@@ -251,6 +274,7 @@ function RegisterDialog({
         postLogoutRedirectUris: lines(form.postLogoutRedirectUris),
         grantTypes,
         minimumAcr,
+        backchannelLogoutUri: form.backchannelLogoutUri.trim() || null,
         tokenEndpointAuthMethod: authMethod,
       },
       ApplicationWithSecret,
@@ -310,6 +334,14 @@ function RegisterDialog({
             className="font-mono text-[12px]"
           />
         </Field>
+        <Field label="Back-channel logout URI" hint={LOGOUT_HINT}>
+          <Input
+            value={form.backchannelLogoutUri}
+            onChange={set('backchannelLogoutUri')}
+            placeholder="https://app.example.com/oidc/backchannel-logout"
+            className="font-mono text-[12px]"
+          />
+        </Field>
         <div>
           <div className="mb-[5px] text-[12px] font-semibold text-t2">Grant types</div>
           <PickMany options={GRANTS} value={grantTypes} onChange={setGrantTypes} />
@@ -331,6 +363,58 @@ function RegisterDialog({
           </Select>
         </Field>
         <FormError error={create.error} />
+      </div>
+    </Dialog>
+  );
+}
+
+const LOGOUT_HINT =
+  'Optional. Landbright posts a logout token here when someone signed in to it signs out, ends their other sessions or is deactivated (OpenID Back-Channel Logout).';
+
+/** Where an application hears that someone's session ended (OpenID Back-Channel Logout), or that it isn't told. */
+function LogoutDialog({ app, onClose }: { app: Application; onClose: () => void }) {
+  const [uri, setUri] = useState(app.backchannelLogoutUri ?? '');
+  const save = useWrite(() =>
+    send('PATCH', `/api/applications/${app.id}`, { backchannelLogoutUri: uri.trim() || null }, Application),
+  );
+  return (
+    <Dialog
+      title={`When someone signs out of ${app.name}`}
+      subtitle="Landbright tells the application, so it ends their session there too."
+      onClose={onClose}
+      width={520}
+      onSubmit={() =>
+        save.mutate(undefined, {
+          onSuccess: (a) => {
+            toast.success(
+              a.backchannelLogoutUri ? `${a.name} is told when sessions end.` : `${a.name} isn’t told anymore.`,
+            );
+            onClose();
+          },
+        })
+      }
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={save.isPending}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3.5">
+        <Field label="Back-channel logout URI" hint={LOGOUT_HINT}>
+          <Input
+            value={uri}
+            onChange={(e) => setUri(e.target.value)}
+            autoFocus
+            placeholder="https://app.example.com/oidc/backchannel-logout"
+            className="font-mono text-[12px]"
+          />
+        </Field>
+        <FormError error={save.error} />
       </div>
     </Dialog>
   );

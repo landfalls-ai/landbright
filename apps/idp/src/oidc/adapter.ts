@@ -96,6 +96,11 @@ export async function findClient(
     token_endpoint_auth_method: client.tokenEndpointAuthMethod as ClientMetadata['token_endpoint_auth_method'],
     api_scopes: client.apiScopes,
     ...(client.minimumAcr && { minimum_acr: client.minimumAcr }),
+    // Back-channel logout: its logout tokens always carry `sid` (provider.ts queues them; the control plane sends).
+    ...(client.backchannelLogoutUri && {
+      backchannel_logout_uri: client.backchannelLogoutUri,
+      backchannel_logout_session_required: true,
+    }),
   };
   if (!client.agentId)
     return { ...base, client_secret: clientSecret(secretKey, client.clientId, client.secretVersion) };

@@ -7,6 +7,7 @@ import {
   House,
   Inbox,
   KeyRound,
+  RefreshCcw,
   type LucideIcon,
   ScrollText,
   Settings,
@@ -118,8 +119,16 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         label: 'Applications',
         icon: AppWindow,
         wave: 1,
+        summary: 'The OIDC clients that sign in with Landbright: Landflow, Landfall, Clickland.',
+      },
+      {
+        href: '/provisioning',
+        label: 'Provisioning',
+        icon: RefreshCcw,
+        wave: 2,
+        ready: true,
         summary:
-          'The OIDC clients that sign in with Landbright (Landflow, Landfall) and the SCIM targets it provisions.',
+          'The SCIM servers Landbright keeps in step: the people in the groups assigned to each, the groups themselves, and deactivations within seconds.',
       },
       {
         href: '/events',

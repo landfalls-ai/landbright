@@ -14,6 +14,8 @@ import {
   Me,
   PeopleList,
   Person,
+  ScimTargetDetail,
+  ScimTargetList,
   Settings,
   SubscriptionList,
 } from '@landbright/contracts';
@@ -185,6 +187,24 @@ export const useDeliveries = (subscriptionId: string | undefined) =>
     retry: quiet,
   });
 
+// ---------------------------------------------------------------- provisioning (spec 006)
+
+/** Targets refresh every 3 seconds: pushes land within seconds of a change. */
+export const useScimTargets = () =>
+  useQuery({
+    queryKey: ['provisioning'],
+    queryFn: () => getJson('/api/provisioning/targets', ScimTargetList),
+    refetchInterval: 3000,
+    retry: quiet,
+  });
+export const useScimTarget = (id: string) =>
+  useQuery({
+    queryKey: ['provisioning', id],
+    queryFn: () => getJson(`/api/provisioning/targets/${id}`, ScimTargetDetail),
+    refetchInterval: 3000,
+    retry: quiet,
+  });
+
 /** A write that refreshes what it touched: the directory is small, so every write refreshes every list. */
 export function useWrite<A, R>(fn: (args: A) => Promise<R>) {
   const client = useQueryClient();
@@ -203,6 +223,7 @@ export function useWrite<A, R>(fn: (args: A) => Promise<R>) {
         'grants',
         'subscriptions',
         'deliveries',
+        'provisioning',
       ])
         void client.invalidateQueries({ queryKey: [key] });
     },

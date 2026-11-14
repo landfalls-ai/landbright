@@ -1,5 +1,5 @@
 import { deriveKey, issuerOf, MACHINE_API_RESOURCE, type Config } from '@landbright/platform';
-import type { PrismaClient, SigningJwk, TenantRef } from '@landbright/persistence';
+import { type PrismaClient, queueLogouts, type SigningJwk, type TenantRef, withTenant } from '@landbright/persistence';
 import Provider, {
   errors,
   interactionPolicy,
@@ -132,6 +132,8 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
       // PAR (RFC 9126) and DPoP (RFC 9449) are oidc-provider's defaults (on); listed here so the choice is visible.
       pushedAuthorizationRequests: { enabled: true, requirePushedAuthorizationRequests: false },
       dPoP: { enabled: true },
+      // OpenID Back-Channel Logout 1.0: signing out here tells the applications that take it (see queueing below).
+      backchannelLogout: { enabled: true },
       introspection: { enabled: true },
       revocation: { enabled: true },
       rpInitiatedLogout: {
@@ -192,6 +194,14 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
   // Behind a TLS proxy, trust X-Forwarded-Proto so cookies are secure and URLs say https.
   provider.proxy = config.LANDBRIGHT_TRUST_PROXY;
   registerTokenExchange(provider, { prisma, tenant, keys });
+  // Signing out (end_session) owes each application with a backchannel_logout_uri a logout token. Rather than post it
+  // inline, once, as oidc-provider does, it is queued with the logouts that deactivation and "sign out everywhere"
+  // owe: the control plane signs and sends them all the same way, retries, and records each in the audit log.
+  provider.Client.prototype.backchannelLogout = async function (this: { clientId: string }, sub: string, sid: string) {
+    await withTenant(prisma, tenant.id, (tx) =>
+      queueLogouts(tx, tenant.id, [{ clientId: this.clientId, subject: sub, sid }], 'signed_out'),
+    );
+  };
   return provider;
 }
 

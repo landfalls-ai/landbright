@@ -23,6 +23,7 @@ const toApplication = (c: ClientRow): Application => ({
   grantTypes: c.grantTypes,
   apiScopes: c.apiScopes,
   minimumAcr: (c.minimumAcr as Application['minimumAcr']) ?? null,
+  backchannelLogoutUri: c.backchannelLogoutUri,
   system: c.system,
   agentId: c.agentId,
   tokenEndpointAuthMethod: c.tokenEndpointAuthMethod,
@@ -82,6 +83,7 @@ export class ApplicationsService {
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
             minimumAcr: input.minimumAcr ?? null,
+            backchannelLogoutUri: input.backchannelLogoutUri ?? null,
             tokenEndpointAuthMethod: input.tokenEndpointAuthMethod ?? 'client_secret_basic',
           },
         });
@@ -97,6 +99,7 @@ export class ApplicationsService {
             apiScopes: input.apiScopes,
             minimumAcr: input.minimumAcr ?? null,
             tokenEndpointAuthMethod: input.tokenEndpointAuthMethod ?? 'client_secret_basic',
+            backchannelLogoutUri: input.backchannelLogoutUri ?? null,
           },
         });
         return created;
@@ -193,6 +196,7 @@ export class ApplicationsService {
           grantTypes: input.grantTypes,
           apiScopes: input.apiScopes,
           minimumAcr: input.minimumAcr,
+          backchannelLogoutUri: input.backchannelLogoutUri,
           tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
         },
       });
@@ -205,6 +209,7 @@ export class ApplicationsService {
           fields: Object.keys(input),
           ...(input.apiScopes && { apiScopes: input.apiScopes }),
           ...(input.minimumAcr !== undefined && { minimumAcr: input.minimumAcr }),
+          ...(input.backchannelLogoutUri !== undefined && { backchannelLogoutUri: input.backchannelLogoutUri }),
         },
       });
       return toApplication(updated);

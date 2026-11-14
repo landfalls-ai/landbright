@@ -14,6 +14,7 @@ import { HomePage } from './routes/home';
 import { NotFoundPage } from './routes/not-found';
 import { PeoplePage } from './routes/people';
 import { PersonPage } from './routes/person';
+import { ProvisioningPage, ProvisioningTargetPage } from './routes/provisioning';
 import { RequestPage } from './routes/request';
 import { RequestsPage } from './routes/requests';
 import { SettingsPage } from './routes/settings';
@@ -47,6 +48,8 @@ export const routes: RouteObject[] = [
           ['catalog', <CatalogPage />],
           ['applications', <ApplicationsPage />],
           ['events', <EventsPage />],
+          ['provisioning', <ProvisioningPage />],
+          ['provisioning/:id', <ProvisioningTargetPage />],
           ['audit', <AuditLogPage />],
           ['settings', <SettingsPage />],
         ] as const

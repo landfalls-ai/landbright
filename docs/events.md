@@ -65,7 +65,8 @@ They show in the console's Events with the application as owner (`ownerClientId`
 `GET /api/events/subscriptions` lists them (`eventTypes`):
 
 - `identity.*` (created, updated, invited, deactivated, reactivated)
-- `session.signed_in`, `session.sign_in_failed`
+- `session.signed_in`, `session.sign_in_failed`, `session.others_ended`, and `session.logout_sent` /
+  `session.logout_failed` (back-channel logout, [provisioning.md](provisioning.md#back-channel-logout-ending-a-session-in-an-application-that-isnt-a-target))
 - `credential.*`
 - `group.*` (including `member_added` / `member_removed`)
 - `client.*`
@@ -75,3 +76,6 @@ They show in the console's Events with the application as owner (`ownerClientId`
 - `grant.*`: activated, expiring, extended, expired, revoked, target_provisioned, target_failed, target_revoked,
   target_revoke_failed, target_verified, target_drift, revoke_overdue
 - `tenant.sign_in_changed`, `signing_key.rotated`
+- `provisioning.*` ([provisioning.md](provisioning.md#in-the-ledger)): user_created, user_linked, user_updated,
+  user_deactivated, group_created, group_linked, group_updated, group_deleted, push_failed, and target_created,
+  target_updated, target_deleted, target_token_replaced, target_sync_requested

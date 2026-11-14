@@ -8,7 +8,14 @@ import type {
   UpdatePerson,
 } from '@landbright/contracts';
 import { type Config, newToken } from '@landbright/platform';
-import { ADMINS_GROUP, appendAudit, CONFIG, type Prisma } from '@landbright/persistence';
+import {
+  ADMINS_GROUP,
+  appendAudit,
+  CONFIG,
+  logoutsOfSessions,
+  type Prisma,
+  queueLogouts,
+} from '@landbright/persistence';
 import { audited, type Principal, type ServicePrincipal } from '../common/principal';
 import { closeGrantsOf } from '../access/grants';
 import { TenantDb, toDate, uniquely } from '../common/tenant-db';
@@ -161,6 +168,18 @@ export class PeopleService {
           where: { id: { in: agents.map((a) => a.identityId) } },
           data: { status: 'suspended' },
         });
+      // Applications that take back-channel logout are told: one logout token per session they hold, and one for all
+      // sessions where they hold a grant but no session here (their own session outlives Landbright's).
+      const held = await tx.$queryRaw<Array<{ type: string; payload: Record<string, unknown> }>>`
+        SELECT type, payload FROM oidc_payload WHERE payload->>'accountId' = ${id} AND type IN ('Session', 'Grant')`;
+      const perSession = logoutsOfSessions(held.filter((r) => r.type === 'Session').map((r) => r.payload));
+      const withSession = new Set(perSession.map((o) => o.clientId));
+      const grantOnly = [
+        ...new Set(held.filter((r) => r.type === 'Grant').map((r) => String(r.payload.clientId ?? ''))),
+      ]
+        .filter((c) => c && !withSession.has(c))
+        .map((clientId) => ({ clientId, subject: id, sid: null }));
+      const logoutsQueued = await queueLogouts(tx, this.db.tenantId, [...perSession, ...grantOnly], 'deactivated');
       const revoked = await tx.$executeRaw`DELETE FROM oidc_payload WHERE payload->>'accountId' = ${id}`;
       // Just-in-time access ends with them: their grants and their agents' grants, and their pending requests.
       const grantsRevoked = await closeGrantsOf(
@@ -177,6 +196,7 @@ export class PeopleService {
         data: {
           agentsSuspended: agents.map((a) => a.identityId),
           sessionsAndTokensRevoked: revoked,
+          logoutsQueued,
           grantsRevoked,
           ...(reason && { reason }),
         },

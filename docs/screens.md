@@ -235,6 +235,16 @@ terminal with a device code (`pnpm screenshots`, [agents.md](agents.md)).
 
 ![Connect Release bot?](screenshots/85-device-confirm.png)
 
+## Provisioning
+
+| | |
+|---|---|
+| ![Add a provisioning target](screenshots/86-provisioning-add.png) | **86** Add a target: the SCIM base, the token (masked here), the assigned groups and how groups go. |
+| ![A target](screenshots/87-provisioning-target.png) | **87** The target: *Test* took the token; who is there with their ids there, and the groups with their members. |
+| ![Provisioning](screenshots/88-provisioning.png) | **88** In sync after Maya's deactivation: one active, one inactive (signed out there). |
+| ![A grant's pushes](screenshots/89-grant-pushes.png) | **89** A grant's page: added to *Data Team* in Landflow, then removed when it was revoked. |
+| ![Back-channel logout URI](screenshots/12a-application-logout.png) | **12a** An application's back-channel logout URI: where Landbright says a session ended. |
+
 ## In the real Landflow
 
 Landflow's own image (`landflow/host:dev`), a throwaway instance from [`deploy/landflow/compose.yml`](../deploy/landflow/compose.yml),
