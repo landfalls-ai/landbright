@@ -9,6 +9,8 @@ import {
   GroupList,
   InviteResult,
   PeopleList,
+  ServiceAddMember,
+  SetRequiredActions,
   Person,
   UpdateAgent,
   UpdatePerson,
@@ -29,3 +31,5 @@ export class GroupListDto extends createZodDto(GroupList) {}
 export class CreateGroupDto extends createZodDto(CreateGroup) {}
 export class UpdateGroupDto extends createZodDto(CreateGroup.partial()) {}
 export class AddMemberDto extends createZodDto(AddMember) {}
+export class SetRequiredActionsDto extends createZodDto(SetRequiredActions) {}
+export class ServiceAddMemberDto extends createZodDto(ServiceAddMember) {}

@@ -61,15 +61,16 @@ export function capToGrant(ctx: KoaContextWithOIDC, seconds: number): number {
 
 /**
  * Scopes and the claims they release. `acr`, `auth_time`, `sid` and `iss` are oidc-provider's standalone claims (its
- * defaults, restated because this map replaces them). `amr` (how the person signed in: `pwd`, `otp`) comes with
- * `openid`, so every ID token carries it.
+ * defaults, restated because this map replaces them). `amr` (how the person signed in: `pwd`, `otp`) and `acr` (how
+ * strongly: urn:landbright:acr:pwd, :mfa, :phr) come with `openid`, so every ID token carries them; oidc-provider
+ * would otherwise add `acr` only when a request asks for it (`acr_values`).
  */
 export const CLAIMS = {
   acr: null,
   auth_time: null,
   sid: null,
   iss: null,
-  openid: ['sub', 'amr'],
+  openid: ['sub', 'amr', 'acr'],
   email: ['email', 'email_verified'],
   profile: ['name', 'given_name', 'family_name', 'preferred_username'],
   roles: ['roles', 'groups'],

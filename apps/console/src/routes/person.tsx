@@ -1,17 +1,24 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { ArrowLeft, Fingerprint, Mail, Smartphone, UserX } from 'lucide-react';
+import { ArrowLeft, Fingerprint, ListChecks, Mail, Smartphone, UserX } from 'lucide-react';
 import { toast } from 'sonner';
-import { InviteResult, Person } from '@landbright/contracts';
+import { InviteResult, Person, type RequiredAction } from '@landbright/contracts';
 import { Fact, formatDate, StatusBadge } from '@/components/directory/bits';
 import { Card, PageBody, PageHeader } from '@/components/shell/page-header';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog, Dialog, FormError } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Field, Input } from '@/components/ui/inputs';
+import { Field, Input, PickMany, Switch } from '@/components/ui/inputs';
 import { SectionLabel } from '@/components/ui/section-label';
 import { send, useAgents, useMe, usePerson, useWrite } from '@/lib/api';
+
+const ACTIONS: Array<{ value: RequiredAction; label: string }> = [
+  { value: 'update_password', label: 'Choose a new password' },
+  { value: 'configure_second_step', label: 'Set up a second step' },
+  { value: 'accept_terms', label: 'Accept the terms' },
+];
+const actionLabel = (a: RequiredAction) => ACTIONS.find((x) => x.value === a)?.label ?? a;
 
 export function PersonPage() {
   const { id = '' } = useParams();
@@ -25,6 +32,7 @@ export function PersonPage() {
   const invite = useWrite(() => send('POST', `/api/people/${id}/invite`, undefined, InviteResult));
   const resetSecondStep = useWrite(() => send('POST', `/api/people/${id}/reset-second-step`, undefined, Person));
   const [confirmReset, setConfirmReset] = useState(false);
+  const [asking, setAsking] = useState(false);
 
   const p = person.data;
   if (!p) {
@@ -78,6 +86,11 @@ export function PersonPage() {
                 }
               >
                 <Mail className="size-3.5" /> {p.hasPassword ? 'Send a password reset' : 'Send the invite again'}
+              </Button>
+            )}
+            {p.status === 'active' && p.hasPassword && (
+              <Button size="sm" onClick={() => setAsking(true)}>
+                <ListChecks className="size-3.5" /> Ask them to…
               </Button>
             )}
             <Button size="sm" onClick={() => setEditing(true)}>
@@ -134,6 +147,7 @@ export function PersonPage() {
                     <Fingerprint className="size-3" /> {p.passkeys === 1 ? 'Passkey' : `${p.passkeys} passkeys`}
                   </Badge>
                 )}
+                {p.recoveryCodes > 0 && <Badge>{p.recoveryCodes} recovery codes</Badge>}
                 {(p.hasTotp || p.passkeys > 0) && (
                   <button
                     type="button"
@@ -145,6 +159,18 @@ export function PersonPage() {
                 )}
               </span>
             </Fact>
+            {p.requiredActions.length > 0 && (
+              <Fact label="At their next sign-in">
+                <span className="flex flex-wrap gap-1.5" data-testid="required-actions">
+                  {p.requiredActions.map((a) => (
+                    <Badge key={a} tone="warning">
+                      {actionLabel(a)}
+                    </Badge>
+                  ))}
+                </span>
+              </Fact>
+            )}
+            {p.termsAcceptedAt && <Fact label="Terms accepted">{formatDate(p.termsAcceptedAt)}</Fact>}
           </dl>
         </Card>
         <Card className="flex flex-col gap-2.5">
@@ -213,6 +239,7 @@ export function PersonPage() {
         />
       )}
       {editing && <EditPersonDialog person={p} onClose={() => setEditing(false)} />}
+      {asking && <RequiredActionsDialog person={p} onClose={() => setAsking(false)} />}
       {confirmReset && (
         <ConfirmDialog
           title={`Reset ${p.displayName}’s second step?`}
@@ -232,6 +259,61 @@ export function PersonPage() {
         />
       )}
     </>
+  );
+}
+
+/** Keycloak's required actions: what they must do at their next sign-in, and optionally an email saying so. */
+function RequiredActionsDialog({ person, onClose }: { person: Person; onClose: () => void }) {
+  const [actions, setActions] = useState<RequiredAction[]>(person.requiredActions);
+  const [notify, setNotify] = useState(true);
+  const save = useWrite(() => send('POST', `/api/people/${person.id}/required-actions`, { actions, notify }, Person));
+  return (
+    <Dialog
+      title={`Ask ${person.givenName} to…`}
+      subtitle="Before they reach any application, at their next sign-in."
+      onClose={onClose}
+      width={520}
+      onSubmit={() =>
+        save.mutate(undefined, {
+          onSuccess: () => {
+            toast.success(
+              actions.length
+                ? notify
+                  ? `Emailed ${person.email}`
+                  : 'Saved: they’ll be asked at their next sign-in'
+                : 'Nothing is asked of them now',
+            );
+            onClose();
+          },
+        })
+      }
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={save.isPending} data-testid="save-actions">
+            {actions.length ? 'Save' : 'Clear'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <PickMany options={ACTIONS} value={actions} onChange={setActions} />
+        <label className="flex items-start gap-2.5 text-[13px] text-t1">
+          <Switch checked={notify} onChange={setNotify} label="Email them" />
+          <span className="flex flex-col gap-0.5">
+            Email them
+            <span className="text-[12px] text-t3">
+              {actions.includes('update_password')
+                ? 'With a one-time link to choose a new password without the old one (72 hours). The rest happens when they sign in.'
+                : 'A link to sign in, where they’ll be asked.'}
+            </span>
+          </span>
+        </label>
+        <FormError error={save.error} />
+      </div>
+    </Dialog>
   );
 }
 

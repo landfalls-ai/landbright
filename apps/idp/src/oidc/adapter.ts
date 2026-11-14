@@ -86,5 +86,6 @@ export async function findClient(
     response_types: client.grantTypes.includes('authorization_code') ? ['code'] : [],
     token_endpoint_auth_method: client.tokenEndpointAuthMethod as ClientMetadata['token_endpoint_auth_method'],
     api_scopes: client.apiScopes,
+    ...(client.minimumAcr && { minimum_acr: client.minimumAcr }),
   };
 }

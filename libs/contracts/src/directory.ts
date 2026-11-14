@@ -28,6 +28,13 @@ export type GroupRef = z.infer<typeof GroupRef>;
 
 // ---------------------------------------------------------------- people
 
+/**
+ * What a person must do at their next sign-in, before they reach the application: set a new password, set up a
+ * second step, accept the organization's terms.
+ */
+export const RequiredAction = z.enum(['update_password', 'configure_second_step', 'accept_terms']);
+export type RequiredAction = z.infer<typeof RequiredAction>;
+
 export const Person = IdentityRef.extend({
   kind: z.literal('person'),
   givenName: z.string(),
@@ -45,6 +52,11 @@ export const Person = IdentityRef.extend({
   hasTotp: z.boolean(),
   /** How many passkeys they have. */
   passkeys: z.number().int().nonnegative(),
+  /** Unused recovery codes for the second step. */
+  recoveryCodes: z.number().int().nonnegative(),
+  /** What they must do at their next sign-in. */
+  requiredActions: z.array(RequiredAction),
+  termsAcceptedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -76,6 +88,17 @@ export const UpdatePerson = z.object({
   endDate: IsoDate.nullable().optional(),
 });
 export type UpdatePerson = z.input<typeof UpdatePerson>;
+
+export const SetRequiredActions = z.object({
+  /** Replaces what was required before; empty clears it. */
+  actions: z.array(RequiredAction).max(3),
+  /**
+   * Email them. With update_password, the email carries a one-time link to set a new password without the old one
+   * (72 hours); otherwise a link to sign in, where the actions run.
+   */
+  notify: z.boolean().default(false),
+});
+export type SetRequiredActions = z.input<typeof SetRequiredActions>;
 
 export const InviteResult = z.object({
   sentTo: z.string(),
@@ -167,6 +190,13 @@ export type CreateGroup = z.input<typeof CreateGroup>;
 
 export const AddMember = z.object({ identityId: z.uuid() });
 export type AddMember = z.infer<typeof AddMember>;
+
+/**
+ * A lifecycle flow adding someone to a group (birthright groups at onboarding): recorded with source `hr`, and
+ * optionally until a time. Adding someone already in the group changes nothing.
+ */
+export const ServiceAddMember = AddMember.extend({ expiresAt: z.iso.datetime().optional() });
+export type ServiceAddMember = z.infer<typeof ServiceAddMember>;
 
 export const Page = <T extends z.ZodTypeAny>(item: T) => z.object({ items: z.array(item) });
 export const PeopleList = Page(Person);

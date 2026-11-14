@@ -80,7 +80,7 @@ export class LoginService {
     displayName: string,
     email: string,
     from: string,
-    step: 'totp' | 'passkey' = 'totp',
+    step: 'totp' | 'passkey' | 'recovery_code' = 'totp',
   ): Promise<void> {
     await this.countFailure(this.failureKey(email));
     await withTenant(this.prisma, this.tenant.id, (tx) =>

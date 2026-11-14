@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { patchOf } from './patch';
 import { MACHINE_API_SCOPE_NAMES } from './machine-api';
+import { Acr } from './acr';
 
 /** Applications: the OIDC clients that sign in with Landbright. */
 
@@ -15,6 +16,8 @@ export const Application = z.object({
   grantTypes: z.array(z.string()),
   /** What it may do as itself on the machine API (client credentials). */
   apiScopes: z.array(z.string()),
+  /** The weakest sign-in it accepts (`acr`); null accepts any. */
+  minimumAcr: Acr.nullable(),
   /** Landbright's own console client: shown, not editable. */
   system: z.boolean(),
   secretVersion: z.number().int(),
@@ -40,6 +43,8 @@ export const CreateApplication = z.object({
     .default(['authorization_code', 'refresh_token']),
   /** Machine API scopes (needs client_credentials): requests:read, grants:record, … */
   apiScopes: z.array(z.enum(MACHINE_API_SCOPE_NAMES as [string, ...string[]])).default([]),
+  /** The weakest sign-in it accepts: people who signed in more weakly are asked for more (step-up). */
+  minimumAcr: Acr.nullable().default(null),
 });
 export type CreateApplication = z.input<typeof CreateApplication>;
 

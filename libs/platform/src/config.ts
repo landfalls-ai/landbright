@@ -62,6 +62,8 @@ export const ConfigSchema = z.object({
     ),
   LANDBRIGHT_SMTP_URL: z.string().default('smtp://127.0.0.1:57025'),
   LANDBRIGHT_MAIL_FROM: z.string().default('Landbright <no-reply@landbright.test>'),
+  /** The organization's terms of use, linked from the accept_terms required action. Empty: no link. */
+  LANDBRIGHT_TERMS_URL: z.union([z.url(), z.literal('')]).default(''),
   /** The first administrator, created by the bootstrap (pnpm db:seed) if missing. */
   LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL: z.email().default('admin@landbright.test'),
   LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).default('landbright-dev-only'),

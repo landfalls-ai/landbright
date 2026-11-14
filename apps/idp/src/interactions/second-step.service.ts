@@ -28,8 +28,25 @@ export interface Pending {
   totp: boolean;
   passkey: boolean;
   secret?: string;
-  /** Whether the tenant requires a second step, so enrolling can't be skipped. */
+  /**
+   * Whether it can't be skipped: the tenant requires a second step, an administrator asked for one
+   * (configure_second_step), or the application needs more than a password.
+   */
   required: boolean;
+  /** Only a passkey will do: the application needs a phishing-resistant sign-in. */
+  passkeyOnly?: boolean;
+  /** They have recovery codes, and one may stand in for the second step here. */
+  recovery?: boolean;
+  /** Why the step is asked for, when an application asked for it. */
+  note?: string;
+}
+
+export interface NextOptions {
+  /** Ask for a second step even if the tenant doesn't. */
+  force?: boolean;
+  /** Only a passkey (the caller checked they have one). */
+  passkeyOnly?: boolean;
+  note?: string;
 }
 
 const PENDING_TTL_SECONDS = 600;
@@ -53,20 +70,27 @@ export class SecondStepService {
   async next(
     uid: string,
     who: { identityId: string; email: string; displayName: string },
+    opts: NextOptions = {},
   ): Promise<Pending | undefined> {
-    const [totp, passkey, tenant] = await Promise.all([
+    const [totp, passkey, tenant, codes] = await Promise.all([
       withTenant(this.prisma, this.tenant.id, (tx) =>
         tx.credential.findFirst({ where: { identityId: who.identityId, kind: 'totp' }, select: { id: true } }),
       ),
       this.passkeys.has(who.identityId),
       this.prisma.tenant.findUnique({ where: { id: this.tenant.id }, select: { mfaRequired: true } }),
+      withTenant(this.prisma, this.tenant.id, (tx) =>
+        tx.credential.findFirst({ where: { identityId: who.identityId, kind: 'recovery_code' }, select: { id: true } }),
+      ),
     ]);
-    const required = Boolean(tenant?.mfaRequired);
-    const has = { totp: Boolean(totp), passkey };
+    const required = Boolean(tenant?.mfaRequired || opts.force || opts.passkeyOnly);
+    const extra = { note: opts.note, passkeyOnly: opts.passkeyOnly };
     let pending: Pending | undefined;
-    if (has.totp || has.passkey) pending = { ...who, ...has, mode: 'verify', required };
+    if (opts.passkeyOnly && passkey)
+      pending = { ...who, ...extra, totp: false, passkey: true, mode: 'verify', required, recovery: false };
+    else if (totp || passkey)
+      pending = { ...who, ...extra, totp: Boolean(totp), passkey, mode: 'verify', required, recovery: Boolean(codes) };
     else if (required || !(await this.skipped(who.identityId)))
-      pending = { ...who, ...has, mode: 'enroll', secret: newTotpSecret(), required };
+      pending = { ...who, ...extra, totp: false, passkey, mode: 'enroll', secret: newTotpSecret(), required };
     if (pending) await this.valkey.set(this.key(uid), JSON.stringify(pending), 'EX', PENDING_TTL_SECONDS);
     return pending;
   }

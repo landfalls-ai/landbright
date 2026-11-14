@@ -77,9 +77,11 @@ export async function startStack(options: { console?: boolean; idTokenTtlSeconds
     LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL: admin.email,
     LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD: admin.password,
   };
-  // Tracing off: it starts only when an exporter is configured.
+  // Telemetry off: it starts only when an exporter is configured.
   delete env.OTEL_TRACES_EXPORTER;
   delete env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  delete env.OTEL_METRICS_EXPORTER;
+  delete env.OTEL_LOGS_EXPORTER;
   const persistence = resolve(root, 'libs/persistence');
   execFileSync('node', ['scripts/prisma.mjs', 'migrate', 'deploy'], { cwd: persistence, env, stdio: 'pipe' });
   execFileSync('node', ['scripts/prisma.mjs', 'db', 'execute', '--file', 'prisma/dev-roles.sql'], {

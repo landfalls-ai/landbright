@@ -101,7 +101,7 @@ export class InviteController {
   private find(token: string) {
     return withTenant(this.prisma, this.tenant.id, (tx) =>
       tx.inviteToken.findFirst({
-        where: { tokenHash: sha256(token), usedAt: null, expiresAt: { gt: new Date() } },
+        where: { tokenHash: sha256(token), purpose: 'invite', usedAt: null, expiresAt: { gt: new Date() } },
         include: { identity: { include: { person: true } } },
       }),
     );

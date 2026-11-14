@@ -22,6 +22,7 @@
     "express": "^5.2.1",
     "helmet": "^8.3.0",
     "ioredis": "^5.11.1",
+    "nodemailer": "^8.0.11",
     "oidc-provider": "^9.14.0",
     "otpauth": "^9.6.0",
     "qrcode": "^1.5.4",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@nestjs/testing": "^11.1.0",
     "@types/express": "^5.0.6",
+    "@types/nodemailer": "^8.0.2",
     "@types/oidc-provider": "^9.13.1",
     "@types/qrcode": "^1.5.6",
     "unplugin-swc": "^2.0.0",

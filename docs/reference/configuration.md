@@ -24,7 +24,8 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL` | `admin@landbright.test` | The first administrator, created by `pnpm db:setup` if missing. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD` | `landbright-dev-only` | Their password (12+ characters). Used only when creating them. |
 | `LANDBRIGHT_SMTP_URL` | `smtp://127.0.0.1:57025` | control: invite mail (Mailpit). |
-| `LANDBRIGHT_MAIL_FROM` | `Landbright <no-reply@landbright.test>` | control: the From of invite mail. |
+| `LANDBRIGHT_MAIL_FROM` | `Landbright <no-reply@landbright.test>` | control and idp: the From of invite, required-action and password-reset mail. |
+| `LANDBRIGHT_TERMS_URL` | empty | idp: the terms of use linked from the accept_terms required action. |
 | `LANDBRIGHT_VALKEY_URL` | `redis://127.0.0.1:57379` | idp (sign-in lockout), control (console sessions) |
 | `LANDBRIGHT_OPENBAO_ADDR` | `http://127.0.0.1:57200` | control (health probe) |
 | `LANDBRIGHT_OPENBAO_TOKEN` | `landbright-dev-only` | Not used yet (signing keys are in Postgres; docs/limitations.md) |

@@ -1,5 +1,12 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { CreatePerson, InviteResult, Person, UpdatePerson } from '@landbright/contracts';
+import type {
+  CreatePerson,
+  InviteResult,
+  Person,
+  RequiredAction,
+  SetRequiredActions,
+  UpdatePerson,
+} from '@landbright/contracts';
 import { type Config, newToken } from '@landbright/platform';
 import { ADMINS_GROUP, appendAudit, CONFIG, type Prisma } from '@landbright/persistence';
 import { audited, type Principal, type ServicePrincipal } from '../common/principal';
@@ -197,7 +204,9 @@ export class PeopleService {
   async resetSecondStep(id: string, actor: Principal): Promise<Person> {
     await this.db.tx(async (tx) => {
       await this.find(tx, id);
-      const removed = await tx.credential.deleteMany({ where: { identityId: id, kind: { in: ['totp', 'passkey'] } } });
+      const removed = await tx.credential.deleteMany({
+        where: { identityId: id, kind: { in: ['totp', 'passkey', 'recovery_code'] } },
+      });
       await appendAudit(tx, this.db.tenantId, {
         ...audited(actor),
         action: 'credential.second_step_reset',
@@ -217,7 +226,7 @@ export class PeopleService {
       const person = await this.find(tx, id);
       if (person.status !== 'active') throw new ConflictException('Only active people can be invited.');
       if (!person.email) throw new ConflictException('This person has no email address.');
-      await tx.inviteToken.deleteMany({ where: { identityId: id, usedAt: null } });
+      await tx.inviteToken.deleteMany({ where: { identityId: id, usedAt: null, purpose: 'invite' } });
       await tx.inviteToken.create({ data: { tenantId: this.db.tenantId, identityId: id, tokenHash: hash, expiresAt } });
       await appendAudit(tx, this.db.tenantId, {
         ...audited(actor),
@@ -237,6 +246,60 @@ export class PeopleService {
       tenantName: this.db.tenant.name,
     });
     return { sentTo: row.email!, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * What they must do at their next sign-in (Keycloak's required actions), replacing what was required before. With
+   * `notify`, an email: a one-time link to set a new password when update_password is among them (so it works for
+   * someone who forgot theirs; the other actions run at the sign-in after), otherwise a link to sign in.
+   */
+  async setRequiredActions(
+    id: string,
+    input: SetRequiredActions,
+    actor: Principal | ServicePrincipal,
+  ): Promise<Person & { notified: string | null }> {
+    const actions = [...new Set(input.actions)] as RequiredAction[];
+    let link: { token: string; expiresAt: Date } | undefined;
+    const row = await this.db.tx(async (tx) => {
+      const person = await this.find(tx, id);
+      if (person.status !== 'active') throw new ConflictException('Only active people can be asked to do something.');
+      if (input.notify && !person.email) throw new ConflictException('This person has no email address.');
+      await tx.identity.update({ where: { id }, data: { requiredActions: actions } });
+      if (input.notify && actions.includes('update_password')) {
+        const { token, hash } = newToken();
+        link = { token, expiresAt: new Date(Date.now() + INVITE_TTL_HOURS * 3_600_000) };
+        await tx.inviteToken.deleteMany({ where: { identityId: id, usedAt: null, purpose: 'reset' } });
+        await tx.inviteToken.create({
+          data: {
+            tenantId: this.db.tenantId,
+            identityId: id,
+            tokenHash: hash,
+            expiresAt: link.expiresAt,
+            purpose: 'reset',
+          },
+        });
+      }
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(actor),
+        action: 'identity.required_actions_set',
+        targetType: 'identity',
+        targetId: id,
+        data: { actions, notified: Boolean(input.notify) },
+      });
+      return person;
+    });
+    if (input.notify && actions.length) {
+      await this.mailer.sendActions({
+        to: row.email!,
+        name: row.person?.givenName || row.displayName,
+        actions,
+        link: new URL(link ? `/reset/${link.token}` : '/account', this.config.LANDBRIGHT_IDP_URL).href,
+        expiresAt: link?.expiresAt,
+        requestedBy: actor.kind === 'person' ? actor.displayName : actor.name,
+        tenantName: this.db.tenant.name,
+      });
+    }
+    return { ...(await this.get(id)), notified: input.notify && actions.length ? row.email : null };
   }
 
   private async find(tx: Prisma.TransactionClient, id: string): Promise<PersonRow> {

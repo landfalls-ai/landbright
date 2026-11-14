@@ -73,7 +73,7 @@ decides, records and emits; Landflow runs the processes ([spec 004](../specs/004
 - **The console**: Requests and the decision page for everyone; Grants, Catalog and Events for administrators.
 - Live check: in the real Landflow, the whole loop from asking to revoking.
 
-Next, from the Keycloak study: required actions and *forgot password*, an account page, `acr`, an *Onboard* flow.
+Next, from the Keycloak study: required actions and *forgot password*, an account page, `acr`, an *Onboard* flow (spec 005, slice 2, below).
 
 ### Spec 005, slice 1: access follow-ups
 
@@ -81,3 +81,12 @@ Extensions; requests services file (agents, intake flows); votes from Slack with
 flows; tokens that end with the grant; subscriptions an application manages itself; wake-ups that retry; the full
 policy editor, with auto-approve hours ([spec 005](../specs/005-follow-ups/spec.md)).
 
+### Spec 005, slice 2: the identity plane's own pages
+
+Required actions (a new password, a second step, the terms) set by an administrator or a flow; *Forgot your
+password*; the account page (password, authenticator app, passkeys, recovery codes, sessions); recovery codes at
+sign-in; `acr` in the ID token, a minimum per application and `acr_values` step-up; the machine API for people and
+groups; the *Onboard* flow in Landflow ([account.md](account.md)).
+
+Next (slice 3): agent applications with `private_key_jwt`, token exchange with `act`, CIBA with Landflow as the
+channel, the device grant, PAR and DPoP.

@@ -9,11 +9,11 @@
 | T005 | Console: the full policy editor; *Ask for more time* | ✓ |
 | T006 | Slack flows and the installer; live check with a Slack stand-in in the real Landflow | ✓ 2026-11-14 |
 | T007 | e2e `access-follow-ups.test.ts` (7 tests); contracts unit tests | ✓ |
-| T008 | Required actions; forgot password; the execute-actions email | Next |
-| T009 | The account page: password, authenticator app, passkeys, recovery codes, sessions | Next |
-| T010 | `acr` and per-application minimums | Next |
-| T011 | Machine API for people and groups; the *Onboard* flow | Next |
-| T012 | Agent applications with `private_key_jwt` | Later |
+| T008 | Required actions; forgot password; the execute-actions email | ✓ 2026-11-14 |
+| T009 | The account page: password, authenticator app, passkeys, recovery codes, sessions | ✓ 2026-11-14 |
+| T010 | `acr` and per-application minimums | ✓ 2026-11-14 |
+| T011 | Machine API for people and groups; the *Onboard* flow | ✓ 2026-11-14 |
+| T012 | Agent applications with `private_key_jwt` | Next |
 | T013 | Token exchange with `act` | Later |
 | T014 | CIBA with Landflow as the channel | Later |
 | T015 | Device grant, PAR, DPoP | Later |

@@ -2,7 +2,14 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } fr
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import { Actor, type Principal } from '../common/principal';
-import { CreatePersonDto, InviteResultDto, PeopleListDto, PersonDto, UpdatePersonDto } from './directory.dto';
+import {
+  CreatePersonDto,
+  InviteResultDto,
+  PeopleListDto,
+  PersonDto,
+  SetRequiredActionsDto,
+  UpdatePersonDto,
+} from './directory.dto';
 import { PeopleService } from './people.service';
 
 @ApiTags('People')
@@ -66,5 +73,20 @@ export class PeopleController {
   @ZodResponse({ type: InviteResultDto })
   invite(@Param('id', ParseUUIDPipe) id: string, @Actor() actor: Principal) {
     return this.people.invite(id, actor);
+  }
+
+  @Post(':id/required-actions')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'What they must do at their next sign-in (update_password, configure_second_step, accept_terms); optionally email them.',
+  })
+  @ZodResponse({ type: PersonDto })
+  setRequiredActions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SetRequiredActionsDto,
+    @Actor() actor: Principal,
+  ) {
+    return this.people.setRequiredActions(id, body, actor);
   }
 }

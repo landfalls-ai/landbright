@@ -31,6 +31,14 @@ import {
 import { AccessService } from '../access/access.service';
 import { Service, type ServicePrincipal } from '../common/principal';
 import { PeopleService } from '../directory/people.service';
+import { GroupsService } from '../directory/groups.service';
+import {
+  GroupDetailDto,
+  GroupListDto,
+  PersonDto,
+  ServiceAddMemberDto,
+  SetRequiredActionsDto,
+} from '../directory/directory.dto';
 import { EVENT_TYPES, EventsService } from '../events/events.service';
 import { InactivePeopleDto } from './machine.dto';
 
@@ -47,6 +55,7 @@ export class MachineController {
   constructor(
     private readonly access: AccessService,
     private readonly people: PeopleService,
+    private readonly groups: GroupsService,
     private readonly events: EventsService,
   ) {}
 
@@ -169,6 +178,54 @@ export class MachineController {
   ) {
     const p = await this.people.deactivate(id, service, body.reason);
     return { id: p.id, status: p.status };
+  }
+
+  /** One person, with their department, manager and groups: what an onboarding flow decides birthright groups from. */
+  @Get('people/:id')
+  @ZodResponse({ type: PersonDto })
+  person(@Param('id', ParseUUIDPipe) id: string, @Service('directory:read') _service: ServicePrincipal) {
+    return this.people.get(id);
+  }
+
+  /** What they must do at their next sign-in, and optionally an email saying so. */
+  @Post('people/:id/required-actions')
+  @HttpCode(200)
+  @ZodResponse({ type: PersonDto })
+  requiredActions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SetRequiredActionsDto,
+    @Service('directory:write') service: ServicePrincipal,
+  ) {
+    return this.people.setRequiredActions(id, body, service);
+  }
+
+  /** Groups, or the one named `name`. */
+  @Get('groups')
+  @ZodResponse({ type: GroupListDto })
+  async groupList(@Service('directory:read') _service: ServicePrincipal, @Query('name') name?: string) {
+    return { items: await this.groups.list(name) };
+  }
+
+  /** Adds someone (source `hr`); already a member is fine. Never the administrators' group. */
+  @Post('groups/:id/members')
+  @HttpCode(200)
+  @ZodResponse({ type: GroupDetailDto })
+  addMember(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ServiceAddMemberDto,
+    @Service('directory:write') service: ServicePrincipal,
+  ) {
+    return this.groups.addMemberAsService(id, body.identityId, body.expiresAt, service);
+  }
+
+  @Delete('groups/:id/members/:identityId')
+  @ZodResponse({ type: GroupDetailDto })
+  removeMember(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('identityId', ParseUUIDPipe) identityId: string,
+    @Service('directory:write') service: ServicePrincipal,
+  ) {
+    return this.groups.removeMemberAsService(id, identityId, service);
   }
 
   // ---------------------------------------------------------------- its own event subscriptions (events:manage)

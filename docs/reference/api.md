@@ -16,9 +16,22 @@ The control API's machine-readable description is at `GET /api/openapi.json` (Op
 | `POST /interaction/:uid/passkey` | Public (people who aren't signed in yet) | `response`: a passkey assertion (JSON, from `/assets/passkey.js`) against the challenge on the sign-in page. Signs in with the passkey alone. |
 | `POST /interaction/:uid/passkey/verify` | Public (after the password) | `response`: an assertion from one of this person's passkeys, as the second step. Failures count toward the lockout. |
 | `POST /interaction/:uid/passkey/enroll` | Public (after the password) | `response`: a new passkey (attestation `none`, user verification required); saves it and continues. |
+| `POST /interaction/:uid/recovery` | Public (after the password) | `code`: a recovery code instead of the second step. Works once; a wrong one counts toward the lockout. |
+| `POST /interaction/:uid/actions/password` | Public (after sign-in, before the app) | The `update_password` required action: `password`, `confirm` (at least 12 characters, not the current one). |
+| `POST /interaction/:uid/actions/terms` | Public (after sign-in, before the app) | The `accept_terms` required action: `accept=yes`. |
 | `POST /interaction/:uid/totp/skip` | Public (after the password) | *Not now*: continues and doesn't ask for 30 days. When the tenant requires a second step, shows the setup page again with that message. |
 | `GET /interaction/:uid/abort` | Public | Cancel: back to the application with `access_denied`. |
 | `GET /invite/:token` · `POST /invite/:token` | Public (the token is the credential) | Set a password from an invite link. 404 page when used or expired. |
+| `GET /forgot?uid=` · `POST /forgot?uid=` | Public (they can't sign in) | Forgot password: `email`. Always *Check your email*; an active person gets a 30-minute link. 3 links an hour per address, 10 requests per 15 min per client (429). `uid` links back to the sign-in in progress. |
+| `GET /reset/:token` · `POST /reset/:token` | Public (the token is the credential) | Choose a new password from that link (or an administrator's *Email them* with `update_password`). Ends every session of theirs. 404 page when used or expired. |
+| `GET /account` | Their session (else a sign-in through `landbright-account`) | The account page ([account.md](../account.md)). `?m=` shows a message. |
+| `GET /account/signed-in` · `GET /account/confirm` | Public · their session | Where the account client's sign-in lands; *confirm* signs in again (`max_age=0`) before a sensitive change. |
+| `POST /account/password` | Their session, `csrf` | `current`, `password`, `confirm`. |
+| `GET /account/totp` · `POST /account/totp` | Their session, recent sign-in | Add an authenticator app: the QR code (its key kept for this session for 10 minutes), then `code`. |
+| `POST /account/passkeys` | Their session, `csrf`, recent sign-in | `response`: a new passkey. |
+| `POST /account/credentials/:id/remove` | Their session, `csrf`, recent sign-in | Removes an app or passkey; not the last when the tenant requires a second step. |
+| `POST /account/recovery-codes` | Their session, `csrf`, recent sign-in | Ten new codes, shown once; the old ones stop working. |
+| `POST /account/sessions/end-others` | Their session, `csrf` | Ends their other sessions. |
 | `GET /assets/signin.css?v=<hash>` | Public | The pages' stylesheet: `@land/tokens` plus the sign-in styles. The pages link it with a hash of its content, so it is cached for good. |
 | `GET /assets/passkey.js?v=<hash>` | Public | The pages' only script: runs the WebAuthn ceremony for a `form[data-passkey]` and submits it. Content-hashed like the stylesheet. |
 
@@ -40,13 +53,14 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 
 | Route | What |
 |---|---|
-| `GET /api/people` | `{ items: Person[] }`, by name. A `Person` has its profile, `manager`, `groups`, `hasPassword`, `hasTotp`, `passkeys` (a count), `status`. |
+| `GET /api/people` | `{ items: Person[] }`, by name. A `Person` has its profile, `manager`, `groups`, `hasPassword`, `hasTotp`, `passkeys` and `recoveryCodes` (counts), `requiredActions`, `termsAcceptedAt`, `status`. |
 | `POST /api/people` | `CreatePerson` → 201 `Person`. `sendInvite` (default true) emails the link. 409 if the email exists. |
 | `GET /api/people/:id` · `PATCH /api/people/:id` | One person; `UpdatePerson` (name, department, title, site, manager, dates). |
 | `POST /api/people/:id/deactivate` | Blocks sign-in, revokes sessions and tokens, suspends sponsored agents. 400 for yourself, 409 for the last administrator. |
 | `POST /api/people/:id/reactivate` | Active again. |
 | `POST /api/people/:id/invite` | `InviteResult`: `{ sentTo, expiresAt }`. Cancels earlier links. |
-| `POST /api/people/:id/reset-second-step` | → `Person`. Deletes their authenticator app and passkeys. |
+| `POST /api/people/:id/reset-second-step` | → `Person`. Deletes their authenticator app, passkeys and recovery codes. |
+| `POST /api/people/:id/required-actions` | `SetRequiredActions` (`actions`: `update_password`, `configure_second_step`, `accept_terms`; `notify`, default false) → `Person`. Replaces the list. With `notify`, emails them; with `update_password` too, the mail has a one-time link to `/reset` (72 hours). |
 | `GET /api/agents` · `POST /api/agents` | `{ items: Agent[] }`; `CreateAgent` (sponsor must be an active person) → 201 `Agent`. |
 | `GET /api/agents/:id` · `PATCH /api/agents/:id` | One agent; `UpdateAgent`. |
 | `POST /api/agents/:id/suspend` · `/resume` | Resume needs an active sponsor. |
@@ -60,7 +74,7 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | Route | What |
 |---|---|
 | `GET /api/applications` | `{ items: Application[], issuer }`. |
-| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
+| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
 | `GET /api/applications/:id` · `PATCH` · `DELETE` | One application; delete revokes its tokens. The console's client answers 403 to changes. |
 | `POST /api/applications/:id/rotate-secret` | → `ApplicationWithSecret` with the new secret. |
 
@@ -117,6 +131,11 @@ application asked for and holds (`apiScopes`). A session cookie doesn't work her
 | `PUT /api/v1/grants/:id/annotations/:key` | `annotations:write` | As for requests. |
 | `POST /api/v1/grants/:id/targets/:key` | `grants:record` | `{ status: provisioned\|failed\|revoked\|revoke_failed\|verified\|drift, detail?, externalRef? }`. Only for targets a flow manages; 409 for a move the target's state doesn't allow (a late `provisioned` after the end). |
 | `GET /api/v1/people?inactiveSince=<ISO date>` | `directory:read` | Active people with no sign-in since then (or never, and created before then). |
+| `GET /api/v1/people/:id` | `directory:read` | One `Person`. |
+| `POST /api/v1/people/:id/required-actions` | `directory:write` | As the console's, with the application as actor. |
+| `GET /api/v1/groups?name=` | `directory:read` | `{ items: Group[] }`, optionally the one with that exact name. |
+| `POST /api/v1/groups/:id/members` | `directory:write` | `{ identityId, expiresAt? }` → 200 `GroupDetail`. Recorded with source `hr`; already a member is not an error. 403 for *Landbright Admins*, 409 for a deactivated identity. |
+| `DELETE /api/v1/groups/:id/members/:identityId` | `directory:write` | → `GroupDetail`. Not a membership a grant gave (409; the grant ends it) and not *Landbright Admins* (403). |
 | `POST /api/v1/people/:id/deactivate` | `directory:write` | `{ reason? }`: what the console's deactivation does (sessions, tokens, grants, sponsored agents), audited with the application as actor. |
 
 | `GET /api/v1/subscriptions` · `POST` · `DELETE /api/v1/subscriptions/:id` | `events:manage` | The application's own subscriptions (`ownerClientId`), as in the console's Events. A new one must be at an origin among the application's redirect URIs. |

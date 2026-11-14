@@ -37,7 +37,7 @@ export function raw(value: string): Raw {
  * The frame every sign-in page shares: Landflow's tokens (served as /assets/signin.css), and the passkey script on
  * pages that offer passkeys. The CSP comes from Helmet (configure.ts).
  */
-export function layout(title: string, body: string, opts: { passkeys?: boolean } = {}): string {
+export function layout(title: string, body: string, opts: { passkeys?: boolean; wide?: boolean } = {}): string {
   return html`<!doctype html>
     <html lang="en">
       <head>
@@ -50,7 +50,7 @@ export function layout(title: string, body: string, opts: { passkeys?: boolean }
       </head>
       <body>
         <main class="frame">
-          <section class="card">${raw(body)}</section>
+          <section class="${opts.wide ? 'card wide' : 'card'}">${raw(body)}</section>
           <p class="foot">Landbright signs you in to your organization’s apps.</p>
         </main>
       </body>

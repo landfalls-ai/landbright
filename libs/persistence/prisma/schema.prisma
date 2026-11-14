@@ -53,6 +53,10 @@ model Identity {
   email       String?
   /// The last time they signed in to Landbright (any application). Lifecycle flows find inactive people with it.
   lastSignInAt DateTime?     @map("last_sign_in_at")
+  /// What they must do at their next sign-in, in order: update_password, configure_second_step, accept_terms.
+  requiredActions String[]   @default([]) @map("required_actions")
+  /// When they last accepted the organization's terms (the accept_terms action).
+  termsAcceptedAt DateTime?  @map("terms_accepted_at")
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
@@ -182,6 +186,8 @@ enum CredentialKind {
   password
   totp
   passkey
+  /// One single-use recovery code for the second step; `secret` is its SHA-256.
+  recovery_code
 
   @@map("credential_kind")
 }
@@ -216,6 +222,8 @@ model InviteToken {
   tenantId   String    @map("tenant_id") @db.Uuid
   identityId String    @map("identity_id") @db.Uuid
   tokenHash  String    @unique @map("token_hash")
+  /// `invite` (set a first password) or `reset` (forgot password, or an administrator's update_password email).
+  purpose    String    @default("invite")
   expiresAt  DateTime  @map("expires_at")
   usedAt     DateTime? @map("used_at")
   createdAt  DateTime  @default(now()) @map("created_at")
@@ -239,6 +247,8 @@ model OidcClient {
   secretVersion           Int      @default(1) @map("secret_version")
   /// What the application may do as itself on the machine API (client credentials): requests:read, grants:record…
   apiScopes               String[] @default([]) @map("api_scopes")
+  /// The weakest sign-in it accepts: urn:landbright:acr:pwd, :mfa or :phr (a passkey). Null: any.
+  minimumAcr              String?  @map("minimum_acr")
   /// Landbright's own console: managed by the bootstrap, not editable in the console.
   system                  Boolean  @default(false)
   createdAt               DateTime @default(now()) @map("created_at")

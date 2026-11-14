@@ -1,0 +1,327 @@
+{
+  "name": "Landbright · Onboard a new person",
+  "description": "On identity.created from Landbright (a person added by an administrator or an HR source): read the person, add them to their birthright groups (everyone's, and their department's), ask them to set up a second step and accept the terms at their first sign-in, and send a welcome email. Memberships are recorded with source hr. The flow never touches Landbright's administrators.",
+  "tags": ["landbright", "lifecycle", "joiner"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Landbright event",
+      "type": "core.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "path": "landbright-people",
+        "method": "POST",
+        "authentication": "jwtAuth",
+        "respond": "immediately"
+      },
+      "credentials": {
+        "jwtAuth": {
+          "id": "__CRED_JWT__",
+          "name": "Landbright events"
+        }
+      }
+    },
+    {
+      "id": "event",
+      "name": "Read the event",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "// The Webhook's JWT Auth checked this token against Landbright's JWKS: trust jwtPayload, not the body.\nconst e = $json.jwtPayload.event;\nreturn { type: e.type, personId: e.target.id, kind: e.data.kind ?? e.data.identity?.kind };"
+      }
+    },
+    {
+      "id": "joiner",
+      "name": "A person joined?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.type === 'identity.created' && $json.kind === 'person' ? 'yes' : 'no' }}",
+              "operator": "equals",
+              "right": "yes"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "read",
+      "name": "Read the person",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 120],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/people/{{ $json.personId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "birthright",
+      "name": "Birthright groups",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [1200, 120],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "// Birthright groups: everyone gets the first list; a department adds its own. Edit the map here; groups that\n// don't exist in Landbright are skipped (create them there, kind \"birthright\").\nconst EVERYONE = ['Everyone'];\nconst BY_DEPARTMENT = {\n  Engineering: ['Engineers', 'Landflow Editors'],\n  Finance: ['Finance'],\n  Security: ['Security'],\n};\nconst p = $input.first().json;\nconst names = [...new Set([...EVERYONE, ...(BY_DEPARTMENT[p.department] ?? [])])];\nreturn names.map((name) => ({ name }));"
+      }
+    },
+    {
+      "id": "find",
+      "name": "Find the group",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1500, 120],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/groups?name={{ encodeURIComponent($json.name) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "pair",
+      "name": "Who and which group",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [1800, 120],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "fields": {
+          "values": [
+            {
+              "name": "identityId",
+              "type": "string",
+              "value": "{{ $('Read the person').first().json.id }}"
+            },
+            {
+              "name": "groupId",
+              "type": "string",
+              "value": "{{ ($json.items ?? [])[0] ? $json.items[0].id : 'missing' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "add",
+      "name": "Add them",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2100, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/groups/{{ $json.groupId }}/members",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        },
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ identityId: $json.identityId }) }}"
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "once",
+      "name": "Once per person",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [2400, 120],
+      "executeOnce": true,
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "fields": {
+          "values": [
+            {
+              "name": "personId",
+              "type": "string",
+              "value": "{{ $('Read the person').first().json.id }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "actions",
+      "name": "At the first sign-in",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2700, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/people/{{ $json.personId }}/required-actions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        },
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ actions: ['configure_second_step', 'accept_terms'], notify: false }) }}"
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "welcome",
+      "name": "The welcome email",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [3000, 120],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "const p = $json;\nconst groups = (p.groups ?? []).map((g) => g.name);\nreturn {\n  to: p.email,\n  toName: p.displayName,\n  subject: `Welcome${p.department ? ` to ${p.department}` : ''}, ${p.givenName}`,\n  text: [\n    `Hi ${p.givenName},`,\n    '',\n    `You're set up in Landbright${groups.length ? `, in ${groups.join(', ')}` : ''}.`,\n    'Your invite email has the link to choose a password. At your first sign-in you will also set up a second step',\n    '(an authenticator app or a passkey) and accept the terms.',\n    '',\n    'Need more access for a while? Ask in Landbright: Access → Ask for access.',\n  ].join('\\n'),\n};"
+      }
+    },
+    {
+      "id": "send",
+      "name": "Send it",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [3300, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__MAIL_API__",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ From: { Email: 'landflow@landflow.test', Name: 'Landflow' }, To: [{ Email: $json.to, Name: $json.toName }], Subject: $json.subject, Text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_event_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "event",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_event_0_joiner_0_main",
+      "type": "main",
+      "source": "event",
+      "sourceIndex": 0,
+      "target": "joiner",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_joiner_0_read_0_main",
+      "type": "main",
+      "source": "joiner",
+      "sourceIndex": 0,
+      "target": "read",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_read_0_birthright_0_main",
+      "type": "main",
+      "source": "read",
+      "sourceIndex": 0,
+      "target": "birthright",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_birthright_0_find_0_main",
+      "type": "main",
+      "source": "birthright",
+      "sourceIndex": 0,
+      "target": "find",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_find_0_pair_0_main",
+      "type": "main",
+      "source": "find",
+      "sourceIndex": 0,
+      "target": "pair",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_pair_0_add_0_main",
+      "type": "main",
+      "source": "pair",
+      "sourceIndex": 0,
+      "target": "add",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_add_0_once_0_main",
+      "type": "main",
+      "source": "add",
+      "sourceIndex": 0,
+      "target": "once",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_once_0_actions_0_main",
+      "type": "main",
+      "source": "once",
+      "sourceIndex": 0,
+      "target": "actions",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_actions_0_welcome_0_main",
+      "type": "main",
+      "source": "actions",
+      "sourceIndex": 0,
+      "target": "welcome",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_welcome_0_send_0_main",
+      "type": "main",
+      "source": "welcome",
+      "sourceIndex": 0,
+      "target": "send",
+      "targetIndex": 0
+    }
+  ]
+}

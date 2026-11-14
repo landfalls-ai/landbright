@@ -4,13 +4,15 @@ import { html, layout, raw } from './html';
 export interface PasskeyForm {
   action: string;
   options: unknown;
+  /** Hidden fields sent with the response (the account page's CSRF token). */
+  fields?: Record<string, string>;
 }
 
 /**
  * A form the passkey script drives (passkey-script.ts). Hidden until the script shows it, so browsers without the
  * script or without WebAuthn never see a button that can't work.
  */
-function passkeyForm(
+export function passkeyForm(
   kind: 'get' | 'create',
   form: PasskeyForm,
   label: string,
@@ -26,6 +28,7 @@ function passkeyForm(
   >
     ${opts.divider ? raw('<p class="or">or</p>') : ''}
     <input type="hidden" name="response" />
+    ${Object.entries(form.fields ?? {}).map(([name, value]) => raw(html`<input type="hidden" name="${name}" value="${value}" />`))}
     <button type="submit" class="${opts.primary ? 'primary' : 'ghost'}">${label}</button>
     <p class="hint center" data-status role="status" aria-live="polite"></p>
   </form>`;
@@ -38,6 +41,10 @@ export function loginPage(opts: {
   error?: string;
   abort: string;
   passkey?: PasskeyForm;
+  /** "Forgot your password?" */
+  forgot?: string;
+  /** Why they are asked again (step-up). */
+  note?: string;
 }): string {
   return layout(
     'Sign in',
@@ -45,6 +52,7 @@ export function loginPage(opts: {
       <p class="sub">
         ${opts.clientName ? raw(html`to continue to <strong>${opts.clientName}</strong>`) : 'to your organization'}
       </p>
+      ${opts.note ? raw(html`<p class="note" role="status">${opts.note}</p>`) : ''}
       ${opts.error ? raw(html`<p class="alert" role="alert">${opts.error}</p>`) : ''}
       <form method="post" action="${opts.action}" class="stack">
         <label
@@ -54,17 +62,38 @@ export function loginPage(opts: {
         <button type="submit" class="primary">Sign in</button>
       </form>
       ${opts.passkey ? raw(passkeyForm('get', opts.passkey, 'Sign in with a passkey', { divider: true })) : ''}
-      <p class="aside"><a href="${opts.abort}">Cancel</a></p>`,
+      <p class="aside">
+        ${opts.forgot ? raw(html`<a href="${opts.forgot}">Forgot your password?</a> · `) : ''}<a href="${opts.abort}"
+          >Cancel</a
+        >
+      </p>`,
     { passkeys: Boolean(opts.passkey) },
   );
 }
 
-export function invitePage(opts: { action: string; name: string; email: string; error?: string }): string {
+export function invitePage(opts: {
+  action: string;
+  name: string;
+  email: string;
+  error?: string;
+  /** Another page asking for a new password (a reset, a required action): its title, heading and explanation. */
+  title?: string;
+  heading?: string;
+  intro?: string;
+  button?: string;
+}): string {
   return layout(
-    'Set your password',
-    html`<h1>Welcome, ${opts.name}</h1>
+    opts.title ?? 'Set your password',
+    html`<h1>${opts.heading ?? `Welcome, ${opts.name}`}</h1>
       <p class="sub">
-        Choose a password for <strong>${opts.email}</strong>. You’ll use it to sign in to your organization’s apps.
+        ${
+          opts.intro
+            ? opts.intro
+            : raw(
+                html`Choose a password for <strong>${opts.email}</strong>. You’ll use it to sign in to your
+                  organization’s apps.`,
+              )
+        }
       </p>
       ${opts.error ? raw(html`<p class="alert" role="alert">${opts.error}</p>`) : ''}
       <form method="post" action="${opts.action}" class="stack">
@@ -76,7 +105,7 @@ export function invitePage(opts: { action: string; name: string; email: string; 
           >Repeat it<input type="password" name="confirm" autocomplete="new-password" minlength="12" required
         /></label>
         <p class="hint">At least 12 characters. A few unrelated words work well.</p>
-        <button type="submit" class="primary">Set password</button>
+        <button type="submit" class="primary">${opts.button ?? 'Set password'}</button>
       </form>`,
   );
 }
@@ -127,20 +156,38 @@ export function signedOutPage(clientName?: string): string {
 export function secondStepPage(opts: {
   totp?: { action: string };
   passkey?: PasskeyForm;
+  /** A recovery code instead (when they have some, and the app doesn't need a passkey). */
+  recovery?: { action: string };
+  /** Why this step is asked for (step-up). */
+  note?: string;
   abort: string;
   email: string;
   error?: string;
 }): string {
-  const aside = html`<p class="aside">
-    Lost your device? Ask an administrator to reset your second step. · <a href="${opts.abort}">Cancel</a>
-  </p>`;
+  const recovery = opts.recovery
+    ? html`<details class="section">
+        <summary class="hint">Use a recovery code</summary>
+        <form method="post" action="${opts.recovery.action}" class="stack pad">
+          <label
+            >Recovery code<input type="text" name="code" autocomplete="off" spellcheck="false" maxlength="20" required
+          /></label>
+          <button type="submit" class="ghost">Use this code</button>
+        </form>
+      </details>`
+    : '';
+  const aside = html`${raw(recovery)}
+    <p class="aside">
+      Lost your device? ${opts.recovery ? 'Use a recovery code, or ask' : 'Ask'} an administrator to reset your second
+      step. · <a href="${opts.abort}">Cancel</a>
+    </p>`;
+  const note = opts.note ? html`<p class="note" role="status">${opts.note}</p>` : '';
   const error = opts.error ? html`<p class="alert" role="alert">${opts.error}</p>` : '';
   if (!opts.totp) {
     return layout(
       'Use your passkey',
       html`<h1>Use your passkey</h1>
         <p class="sub">Confirm it’s you with your passkey for <strong>${opts.email}</strong>.</p>
-        ${raw(error)}
+        ${raw(note)} ${raw(error)}
         <p class="alert" data-passkey-hint>This browser can’t use passkeys. Try another browser or device.</p>
         ${opts.passkey ? raw(passkeyForm('get', opts.passkey, 'Use your passkey', { primary: true })) : ''}
         ${raw(aside)}`,
@@ -151,7 +198,7 @@ export function secondStepPage(opts: {
     'Enter your code',
     html`<h1>Enter your code</h1>
       <p class="sub">Open your authenticator app and enter the 6-digit code for <strong>${opts.email}</strong>.</p>
-      ${raw(error)}
+      ${raw(note)} ${raw(error)}
       <form method="post" action="${opts.totp.action}" class="stack">
         <label
           >Code<input
@@ -181,15 +228,19 @@ export function enrollTotpPage(opts: {
   secret: string;
   error?: string;
   passkey?: PasskeyForm;
+  /** Replaces the default explanation (the account page's wording). */
+  intro?: string;
+  cancelLabel?: string;
 }): string {
   return layout(
     'Add a second step',
     html`<h1>Add a second step</h1>
       <p class="sub">
         ${
-          opts.skip
+          opts.intro ??
+          (opts.skip
             ? 'Protect your account with an authenticator app: after your password, you’ll enter a code from it.'
-            : 'Your organization asks for a code from an authenticator app after your password. Set one up now.'
+            : 'Your organization asks for a code from an authenticator app after your password. Set one up now.')
         }
       </p>
       ${opts.error ? raw(html`<p class="alert" role="alert">${opts.error}</p>`) : ''}
@@ -220,7 +271,7 @@ export function enrollTotpPage(opts: {
                 <button type="submit" class="link">Not now</button>
               </form>`,
             )
-          : raw(html`<p class="aside"><a href="${opts.abort}">Cancel</a></p>`)
+          : raw(html`<p class="aside"><a href="${opts.abort}">${opts.cancelLabel ?? 'Cancel'}</a></p>`)
       }`,
     { passkeys: Boolean(opts.passkey) },
   );

@@ -51,7 +51,8 @@ test fails when they drift from Landflow's `globals.css`.
 
 ```
 apps/idp/src/            main.ts · configure.ts (CSP, /oidc mount) · oidc/{provider,provider-ref,adapter,account} ·
-                         interactions/ (sign-in, lockout) · invite/ · pages/ (server-rendered HTML)
+                         interactions/ (sign-in, lockout, required actions) · invite/ · account/ (account page, forgot password) ·
+                         mail/ · pages/ (server-rendered HTML)
 apps/control/src/        main.ts · configure.ts (prefix, origin check, session, service tokens on /api/v1, OpenAPI) ·
                          auth/ (console sign-in) · directory/ (people, agents, groups) · applications/ · audit/ ·
                          access/ (bundles, requests, decisions, grants, sweeper) · events/ (subscriptions, the

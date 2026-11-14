@@ -15,6 +15,7 @@ const toApplication = (c: ClientRow): Application => ({
   postLogoutRedirectUris: c.postLogoutRedirectUris,
   grantTypes: c.grantTypes,
   apiScopes: c.apiScopes,
+  minimumAcr: (c.minimumAcr as Application['minimumAcr']) ?? null,
   system: c.system,
   secretVersion: c.secretVersion,
   createdAt: c.createdAt.toISOString(),
@@ -70,6 +71,7 @@ export class ApplicationsService {
             postLogoutRedirectUris: input.postLogoutRedirectUris,
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
+            minimumAcr: input.minimumAcr ?? null,
           },
         });
         await appendAudit(tx, this.db.tenantId, {
@@ -82,6 +84,7 @@ export class ApplicationsService {
             redirectUris: input.redirectUris,
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
+            minimumAcr: input.minimumAcr ?? null,
           },
         });
         return created;
@@ -102,6 +105,7 @@ export class ApplicationsService {
           postLogoutRedirectUris: input.postLogoutRedirectUris,
           grantTypes: input.grantTypes,
           apiScopes: input.apiScopes,
+          minimumAcr: input.minimumAcr,
         },
       });
       await appendAudit(tx, this.db.tenantId, {
@@ -109,7 +113,11 @@ export class ApplicationsService {
         action: 'client.updated',
         targetType: 'client',
         targetId: row.clientId,
-        data: { fields: Object.keys(input), ...(input.apiScopes && { apiScopes: input.apiScopes }) },
+        data: {
+          fields: Object.keys(input),
+          ...(input.apiScopes && { apiScopes: input.apiScopes }),
+          ...(input.minimumAcr !== undefined && { minimumAcr: input.minimumAcr }),
+        },
       });
       return toApplication(updated);
     });

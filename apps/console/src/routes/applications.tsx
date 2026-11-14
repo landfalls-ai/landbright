@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { AppWindow, KeyRound, Lock, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { type Application, ApplicationWithSecret } from '@landbright/contracts';
+import { type Acr, ACR_LABELS, ACR_VALUES, Application, ApplicationWithSecret } from '@landbright/contracts';
 import { formatDate, ListState } from '@/components/directory/bits';
 import { Card, PageBody, PageHeader } from '@/components/shell/page-header';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ConfirmDialog, Dialog, FormError } from '@/components/ui/dialog';
-import { Field, Input, PickMany, Textarea } from '@/components/ui/inputs';
+import { Field, Input, PickMany, Select, Textarea } from '@/components/ui/inputs';
 import { SectionLabel } from '@/components/ui/section-label';
 import { send, useApplications, useGroups, useWrite } from '@/lib/api';
 
@@ -18,6 +18,30 @@ const GRANTS: Array<{ value: Grant; label: string }> = [
   { value: 'refresh_token', label: 'Refresh tokens' },
   { value: 'client_credentials', label: 'Service calls (client credentials)' },
 ];
+/** The weakest sign-in an application accepts: any, or an `acr` (people who signed in more weakly are asked again). */
+function StrengthSelect({
+  value,
+  onChange,
+  ...rest
+}: {
+  value: Acr | null;
+  onChange: (value: Acr | null) => void;
+  disabled?: boolean;
+  'aria-label'?: string;
+  'data-testid'?: string;
+}) {
+  return (
+    <Select value={value ?? ''} onChange={(e) => onChange((e.target.value || null) as Acr | null)} {...rest}>
+      <option value="">Any sign-in</option>
+      {ACR_VALUES.filter((v) => v !== 'urn:landbright:acr:pwd').map((v) => (
+        <option key={v} value={v}>
+          {ACR_LABELS[v]}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
 const lines = (text: string) =>
   text
     .split(/\s+/)
@@ -34,6 +58,9 @@ export function ApplicationsPage() {
     send('POST', `/api/applications/${id}/rotate-secret`, undefined, ApplicationWithSecret),
   );
   const remove = useWrite((id: string) => send('DELETE', `/api/applications/${id}`));
+  const strength = useWrite(({ id, minimumAcr }: { id: string; minimumAcr: Acr | null }) =>
+    send('PATCH', `/api/applications/${id}`, { minimumAcr }, Application),
+  );
   const items = apps.data?.items ?? [];
   const add = (
     <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
@@ -79,6 +106,33 @@ export function ApplicationsPage() {
                 <span className="text-t2">{a.grantTypes.join(', ')}</span>
                 <span className="text-t3">Secret</span>
                 <span className="text-t2">Version {a.secretVersion}</span>
+                <span className="self-center text-t3">Sign-in needs</span>
+                <span>
+                  {a.system ? (
+                    <span className="text-t2">{a.minimumAcr ? ACR_LABELS[a.minimumAcr] : 'Any sign-in'}</span>
+                  ) : (
+                    <StrengthSelect
+                      value={a.minimumAcr}
+                      aria-label={`What ${a.name} needs at sign-in`}
+                      data-testid={`strength-${a.clientId}`}
+                      disabled={strength.isPending}
+                      onChange={(minimumAcr) =>
+                        strength.mutate(
+                          { id: a.id, minimumAcr },
+                          {
+                            onSuccess: () =>
+                              toast.success(
+                                minimumAcr
+                                  ? `${a.name} now asks for ${ACR_LABELS[minimumAcr].toLowerCase()}.`
+                                  : `${a.name} accepts any sign-in.`,
+                              ),
+                            onError: (e) => toast.error(e.message),
+                          },
+                        )
+                      }
+                    />
+                  )}
+                </span>
               </div>
               {!a.system && (
                 <div className="flex gap-2 pt-1">
@@ -146,6 +200,7 @@ function RegisterDialog({
 }) {
   const [form, setForm] = useState({ name: '', clientId: '', redirectUris: '', postLogoutRedirectUris: '' });
   const [grantTypes, setGrantTypes] = useState<Grant[]>(['authorization_code', 'refresh_token']);
+  const [minimumAcr, setMinimumAcr] = useState<Acr | null>(null);
   const create = useWrite(() =>
     send(
       'POST',
@@ -156,6 +211,7 @@ function RegisterDialog({
         redirectUris: lines(form.redirectUris),
         postLogoutRedirectUris: lines(form.postLogoutRedirectUris),
         grantTypes,
+        minimumAcr,
       },
       ApplicationWithSecret,
     ),
@@ -218,6 +274,12 @@ function RegisterDialog({
           <div className="mb-[5px] text-[12px] font-semibold text-t2">Grant types</div>
           <PickMany options={GRANTS} value={grantTypes} onChange={setGrantTypes} />
         </div>
+        <Field
+          label="Sign-in needs"
+          hint="People who signed in more weakly are asked for more before they reach it (step-up)."
+        >
+          <StrengthSelect value={minimumAcr} onChange={setMinimumAcr} aria-label="Sign-in needs" />
+        </Field>
         <FormError error={create.error} />
       </div>
     </Dialog>

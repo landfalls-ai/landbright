@@ -160,6 +160,52 @@ Ido, who isn't an administrator, asks; the administrator approves and later revo
 
 The same loop in the real Landflow is in [landflow-flows.md](landflow-flows.md#live-check-2026-11-14) (screens 50–57).
 
+## Your account and what sign-in asks
+
+Tom, a new person, meets the required actions the administrator set, resets a forgotten password, uses the account
+page and a recovery code, and is asked again by an application that needs a passkey (`pnpm screenshots`,
+[account.md](account.md)).
+
+**The administrator asks Tom to choose a new password and accept the terms.**
+
+![The "Ask Tom to…" dialog.](screenshots/70-ask-them-to.png)
+
+**At sign-in: a new password first.**
+
+![Choose a new password, during sign-in.](screenshots/71-required-new-password.png)
+
+**Then the terms.**
+
+![Before you continue: accept the terms.](screenshots/72-accept-terms.png)
+
+**Forgot your password.**
+
+![Forgot your password?](screenshots/73-forgot-password.png)
+
+**The link from the email.**
+
+![Choose a new password, from the reset link.](screenshots/74-reset-password.png)
+
+**The account page: password, second step, recovery codes, sessions.**
+
+![The account page.](screenshots/75-account.png)
+
+**Recovery codes, shown once.**
+
+![Ten recovery codes.](screenshots/76-recovery-codes.png)
+
+**A recovery code instead of the second step.**
+
+![The second step with "Use a recovery code" open.](screenshots/77-second-step-recovery.png)
+
+**An application that needs a passkey.**
+
+![Applications: Sign-in needs, A passkey.](screenshots/79-application-sign-in-needs.png)
+
+**Step-up: signed in with a code, asked again for a passkey.**
+
+![Sign in, "Landflow asks for a passkey."](screenshots/78-step-up.png)
+
 ## In the real Landflow
 
 Landflow's own image (`landflow/host:dev`), a throwaway instance from [`deploy/landflow/compose.yml`](../deploy/landflow/compose.yml),

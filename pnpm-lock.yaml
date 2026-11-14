@@ -232,6 +232,9 @@ importers:
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
+      nodemailer:
+        specifier: ^8.0.11
+        version: 8.0.11
       oidc-provider:
         specifier: ^9.14.0
         version: 9.14.0
@@ -254,6 +257,9 @@ importers:
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
+      '@types/nodemailer':
+        specifier: ^8.0.2
+        version: 8.0.2
       '@types/oidc-provider':
         specifier: ^9.13.1
         version: 9.13.1

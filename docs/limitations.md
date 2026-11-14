@@ -4,18 +4,20 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 
 ## Now (wave 1)
 
-- **Password, authenticator app and passkeys.** Upstream Google/Entra federation comes after wave 1. There is no
-  self-service "forgot password" or recovery codes: an administrator sends a new invite (a password reset) or resets the
-  second step.
-- **No account page.** People add a passkey or an app only when offered a second step at sign-in, so someone with an
-  app can't add a passkey (or a second passkey) without an administrator's reset, and can't name or remove their own.
-  A self-service account page comes later.
+- **Password, authenticator app and passkeys.** Upstream Google/Entra federation comes after wave 1.
+- **The account page can't rename a passkey or change a profile.** Names and departments come from the directory (an
+  administrator, or HR through Landflow). No email change, no linked accounts, no consent list.
+- **Recovery codes don't recover a lost password** (that is *Forgot your password*), and there is no recovery by
+  email or phone for a lost second step without codes: an administrator resets it.
 - **Passkeys need the issuer on a domain.** `LANDBRIGHT_IDP_URL` is `http://localhost:4402` for that; with an IP
   address there, passkeys are off. Passkeys are bound to that host, so moving the issuer to another host makes the
   existing ones unusable (reset the second step).
-- **A second step is all or nothing.** *Require a second step* applies to everyone in the tenant; per-group or
-  per-application rules (step-up for admin roles, `acr_values`) come with policy in wave 6. Applications can read
-  `amr` meanwhile.
+- **Per-application sign-in strength, not per-group.** An application can need a second step or a passkey
+  (`minimumAcr`, `acr_values`), and *Require a second step* covers the tenant; a rule for a group (administrators
+  always with a passkey) comes with policy in wave 6. The `acr` values are Landbright's own URNs, not a standard
+  profile's (NIST or eIDAS levels).
+- **Required actions are three.** No *verify email*, *update profile* or *configure a passkey* (the second step takes
+  either); terms are one link for the tenant (`LANDBRIGHT_TERMS_URL`), accepted once, without versions.
 - **Signing keys live in Postgres, sealed with `LANDBRIGHT_SECRET_KEY`, not in OpenBao** as plan §7 says. OpenBao
   runs in dev mode, in memory, so keys kept there would vanish (and every token with them) at each restart. Moving to
   OpenBao's transit engine waits for a persistent OpenBao.
@@ -42,7 +44,7 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   client that needs POST; the one OpenID conformance test that checks it fails
   ([spec 002 plan](../specs/002-identity-core/plan.md#conformance-suite-t012b)).
 - **Other conformance warnings, by choice or not yet.** The ID token carries the scopes' claims (email, name, roles)
-  because Landflow reads them there; no `acr` claim; no `address` or `phone` scopes; no `claims` request parameter; no
+  because Landflow reads them there; no `address` or `phone` scopes; no `claims` request parameter; no
   request objects (refused with `request_not_supported`). Firefox and Safari aren't covered by the browser tests.
 - **No Kubernetes manifests.** The plan's `landbright-dev` namespace on OrbStack comes when there is something worth
   running there; compose and `pnpm serve` cover development.
@@ -64,9 +66,14 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   next token drops the group.
 - **The flows' email** goes through Mailpit's HTTP API, because the throwaway Landflow has only core nodes; with
   Landflow's messaging plugin, use its Send Email or Slack nodes.
-- **Required actions, an account page, `acr`** (the Keycloak study's next items): spec 005's second slice.
+- **The *Onboard* flow's groups are a map in its Code node** (by department). Changing a department later doesn't
+  move anyone: a *mover* flow is next. Birthright memberships are ordinary memberships with source `hr`.
 
 ## Lifted
+
+- Spec 005, slice 2: no self-service *forgot password*, recovery codes or account page; a second step all or nothing
+  (applications now set a minimum, and ask with `acr_values`); no `acr` claim; required actions (Keycloak's) and an
+  *Onboard* flow were next.
 
 - Spec 005, slice 1: approvals only in the console (chat votes with tickets); no extensions; the bundle form edited
   one step (the full policy editor); no time-of-day rules (`window`); agents' requests only through the sponsor

@@ -11,7 +11,9 @@ import { MAILPIT, type Stack, startStack } from '../test/stack';
  * The console and the sign-in pages in real Chromium, as one story: an administrator signs in and builds the
  * directory through the console; Maya sets her password from the invite, adds a passkey (Chrome's virtual
  * authenticator, so the page's own script runs the ceremony) and signs in to a Landflow-shaped app with it; Noa sets
- * up an authenticator app; the console then shows what happened. Each screen is captured on the way.
+ * up an authenticator app; the console then shows what happened; Tom meets required actions, resets a forgotten
+ * password, uses their account page and a recovery code, and is asked again by an app that needs a passkey. Each screen
+ * is captured on the way.
  */
 const flags = (process.env.LANDBRIGHT_INTEGRATION ?? '').split(',');
 test.skip(!flags.includes('browser') && !flags.includes('all'), 'LANDBRIGHT_INTEGRATION=browser runs these');
@@ -509,6 +511,126 @@ test('Ido asks for access in the console; the administrator approves it and revo
   expect(bundle.id).toBeTruthy();
   await context.close();
   hook.close();
+});
+
+test('Tom: required actions, a forgotten password, their account page, recovery codes and step-up', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const tom = { email: `tom@${stack.slug}.test`, password: 'tom-correct-horse-battery' };
+  const created = await api<{ id: string }>('/api/people', 'POST', {
+    email: tom.email,
+    givenName: 'Tom',
+    familyName: 'Navon',
+    department: 'Engineering',
+  });
+  const context = await browser.newContext();
+  const tab = await personBrowser(context);
+  await tab.goto((await invite(tom.email)).link);
+  await tab.getByLabel('Password', { exact: true }).fill(tom.password);
+  await tab.getByLabel('Repeat it').fill(tom.password);
+  await tab.getByRole('button', { name: 'Set password' }).click();
+  await expect(tab.getByRole('heading', { name: 'Your password is set' })).toBeVisible();
+
+  // The administrator asks for a new password and the terms, without an email: Tom meets them at sign-in.
+  await page.goto(`${stack.console}/people/${created.id}`);
+  await page.getByRole('button', { name: 'Ask them to…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Ask Tom to…' });
+  await dialog.getByRole('button', { name: 'Choose a new password' }).click();
+  await dialog.getByRole('button', { name: 'Accept the terms' }).click();
+  await shot(page, '70-ask-them-to');
+  await dialog.getByRole('switch', { name: 'Email them' }).click();
+  await page.getByTestId('save-actions').click();
+  await expect(page.getByTestId('required-actions')).toContainText('Choose a new password');
+
+  const signInAs = async (password: string) => {
+    await tab.getByLabel('Email').fill(tom.email);
+    await tab.getByLabel('Password').fill(password);
+    await tab.getByRole('button', { name: 'Sign in', exact: true }).click();
+  };
+  await startLandflowSignIn(tab);
+  await signInAs(tom.password);
+  await tab.getByRole('button', { name: 'Not now' }).click();
+  await expect(tab.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
+  await shot(tab, '71-required-new-password');
+  tom.password = 'tom-second-horse-battery';
+  await tab.getByLabel('Password', { exact: true }).fill(tom.password);
+  await tab.getByLabel('Repeat it').fill(tom.password);
+  await tab.getByRole('button', { name: 'Save and continue' }).click();
+  await expect(tab.getByRole('heading', { name: 'Before you continue' })).toBeVisible();
+  await tab.getByLabel('I accept the terms').check();
+  await shot(tab, '72-accept-terms');
+  await tab.getByRole('button', { name: 'Continue' }).click();
+  await landedWith(tab, ['pwd']);
+
+  // Forgot password: the same answer for anyone; a one-time link by email.
+  await startLandflowSignIn(tab);
+  await tab.getByRole('link', { name: 'Forgot your password?' }).click();
+  await tab.getByLabel('Email').fill(tom.email);
+  await shot(tab, '73-forgot-password');
+  await tab.getByRole('button', { name: 'Send the link' }).click();
+  await expect(tab.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+  let link = '';
+  await expect(async () => {
+    const search = (await (
+      await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${tom.email}" subject:"Reset"`)}`)
+    ).json()) as { messages: Array<{ ID: string }> };
+    const message = (await (await fetch(`${MAILPIT}/api/v1/message/${search.messages[0]!.ID}`)).json()) as {
+      Text: string;
+    };
+    link = /http:\/\/\S+\/reset\/[A-Za-z0-9_-]+/.exec(message.Text)![0];
+  }).toPass({ timeout: 10_000 });
+  await tab.goto(link);
+  tom.password = 'tom-third-horse-battery-staple';
+  await tab.getByLabel('Password', { exact: true }).fill(tom.password);
+  await tab.getByLabel('Repeat it').fill(tom.password);
+  await shot(tab, '74-reset-password');
+  await tab.getByRole('button', { name: 'Save password' }).click();
+  await expect(tab.getByRole('heading', { name: 'Your password is changed' })).toBeVisible();
+
+  // Tom's account page: an authenticator app, then recovery codes.
+  await tab.goto(`${stack.idp}/account`);
+  await signInAs(tom.password);
+  await expect(tab.getByRole('heading', { name: 'Tom Navon' })).toBeVisible();
+  await tab.getByRole('link', { name: 'Add an authenticator app' }).click();
+  const secret = Secret.fromBase32((await tab.locator('[data-secret]').textContent())!.replace(/\s+/g, ''));
+  const code = (offset = 0) => new TOTP({ secret }).generate({ timestamp: Date.now() + offset });
+  await tab.getByLabel(/code/i).fill(code());
+  await tab.getByRole('button', { name: 'Turn it on' }).click();
+  await expect(tab.getByText('Your authenticator app is set up.')).toBeVisible();
+  await tab.getByRole('button', { name: 'Create recovery codes' }).click();
+  await expect(tab.getByRole('heading', { name: 'Your recovery codes' })).toBeVisible();
+  const codes = await tab.locator('[data-codes] code').allTextContents();
+  expect(codes).toHaveLength(10);
+  await shot(tab, '76-recovery-codes');
+  await tab.getByRole('link', { name: 'I’ve saved them' }).click();
+  await expect(tab.getByText('10 unused.')).toBeVisible();
+  await shot(tab, '75-account', { fullPage: true });
+
+  // A recovery code instead of the app.
+  await startLandflowSignIn(tab);
+  await signInAs(tom.password);
+  await expect(tab.getByRole('heading', { name: 'Enter your code' })).toBeVisible();
+  await tab.locator('summary', { hasText: 'Use a recovery code' }).click();
+  await tab.getByLabel('Recovery code').fill(codes[0]!);
+  await shot(tab, '77-second-step-recovery');
+  await tab.getByRole('button', { name: 'Use this code' }).click();
+  await landedWith(tab, ['pwd', 'otp', 'mfa']);
+
+  // Step-up: the application now needs a passkey; Tom, signed in with a code, is asked again.
+  const apps = await api<{ items: Array<{ id: string; clientId: string }> }>('/api/applications');
+  const app = apps.items.find((a) => a.clientId === rp.config.clientId)!;
+  await page.goto(`${stack.console}/applications`);
+  await page.getByTestId(`strength-${app.clientId}`).selectOption('urn:landbright:acr:phr');
+  await expect(page.getByText('now asks for a passkey')).toBeVisible();
+  await shot(page, '79-application-sign-in-needs');
+  await tab.goto(await rp.authorizationUrl());
+  await expect(tab.getByText('asks for a passkey.')).toBeVisible();
+  await shot(tab, '78-step-up');
+  await signInAs(tom.password);
+  await expect(tab.getByRole('heading', { name: 'This app needs a passkey' })).toBeVisible();
+  await api(`/api/applications/${app.id}`, 'PATCH', { minimumAcr: null });
+  await context.close();
 });
 
 test('signs out at the identity plane', async () => {

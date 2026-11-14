@@ -4,7 +4,7 @@
 //
 // Landbright (through the console API, as the bootstrap administrator): gives Landflow's application client
 // credentials and machine API scopes, subscribes Landflow's two webhook paths to the events the flows need, and
-// creates the "Landflow Editors (JIT)" bundle. Landflow (through its API, as its owner): an API key for the flows to
+// creates the "Landflow Editors (JIT)" bundle and the Onboard flow's birthright groups. Landflow (through its API, as its owner): an API key for the flows to
 // call Landflow itself, a "Payments" project, three credentials (Landbright events: JWT Auth against Landbright's
 // JWKS; Landbright API: OAuth2 client credentials; Landflow API: that key), then imports and publishes the flows in
 // integrations/landflow/flows. Run it again to update: everything is found by name first.
@@ -92,10 +92,14 @@ await lb(`/api/applications/${app.id}`, {
 console.log(`Landbright: ${CLIENT_ID} may now call the machine API (${SCOPES.join(', ')})`);
 
 const groups = (await lb('/api/groups')).items as Array<{ id: string; name: string }>;
-const group = async (name: string) =>
-  groups.find((g) => g.name === name) ?? (await lb('/api/groups', { method: 'POST', body: JSON.stringify({ name }) }));
+const group = async (name: string, kind = 'static') =>
+  groups.find((g) => g.name === name) ??
+  (await lb('/api/groups', { method: 'POST', body: JSON.stringify({ name, kind }) }));
 const editors = await group('Landflow Editors');
 const approvers = await group('Landflow Admins');
+// The Onboard flow's birthright groups (its map names them; Landflow Editors is already there).
+await group('Everyone', 'birthright');
+await group('Engineers', 'birthright');
 const me = await lb('/api/auth/me');
 
 const subs = (await lb('/api/events/subscriptions')).items as Array<{ id: string; url: string }>;
@@ -117,6 +121,7 @@ const subscribe = async (path: string, events: string[], description: string) =>
 await subscribe('landbright-requests', ['request.created'], 'Landflow: Approve a request (email)');
 if (SLACK_TOKEN)
   await subscribe('landbright-requests-slack', ['request.created'], 'Landflow: Approve a request (Slack)');
+await subscribe('landbright-people', ['identity.created'], 'Landflow: Onboard a new person');
 await subscribe(
   'landbright-grants',
   ['grant.activated', 'grant.expired', 'grant.revoked', 'grant.revoke_overdue'],

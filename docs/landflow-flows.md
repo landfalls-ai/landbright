@@ -1,6 +1,6 @@
 # The Landflow flows
 
-Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Five flows
+Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Six flows
 ship in [`integrations/landflow/flows/`](../integrations/landflow/flows/). Each is plain Landflow workflow JSON built
 from core nodes (Webhook, Code, If, HTTP Request, Set, Wait, Schedule), so it imports into any Landflow, edits on the
 canvas, and needs no Landflow change.
@@ -11,6 +11,7 @@ canvas, and needs no Landflow change.
 | **Provision and revoke a Landflow project role** | `grant.activated`, `grant.expired`, `grant.revoked`, `grant.revoke_overdue` | Re-reads the grant. For each `landflow-project-role` target (`config: { project, role }`): adds the person to the project's members when the grant is live, removes them when it ended, and reports `provisioned` / `revoked` (or `failed` / `revoke_failed`) to Landbright |
 | **Approve a request (Slack)** | `request.created` | When the current step allows chat votes: gets one ticket per approver, finds each in Slack by email, and sends a direct message with Approve and Deny (carrying the ticket) and *Open in Landbright* |
 | **Slack approval buttons** | The Slack app's Interactivity URL | Relays the click with its ticket to `POST /api/v1/requests/:id/decisions`, then replaces the message with the outcome (or why Landbright refused) |
+| **Onboard a new person** | `identity.created` | For a person: re-reads them, adds them to their birthright groups (*Everyone*, and their department's: Engineering gets *Engineers* and *Landflow Editors*) as source `hr`, asks them to set up a second step and accept the terms at their first sign-in ([account.md](account.md#required-actions)), and emails a welcome. Keycloak's onboarding, as a flow; the map of groups is the *Birthright groups* Code node |
 | **Disable inactive people** | Every day at 9:00 | Finds people who haven't signed in for 90 days (administrators excepted), emails their manager, waits 7 days, checks again, and deactivates who is still inactive. Keycloak's *disable inactive users* workflow, as a flow |
 
 Each flow reaches Landbright only through the [machine API](reference/api.md#machine-api-apiv1), with the scopes its
@@ -34,10 +35,12 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
 
 - gives the Landflow application client credentials and the scopes `requests:read grants:record annotations:write
   directory:read directory:write decisions:relay`;
-- subscribes `…/api/webhook/landbright-requests` to `request.created`, and `…/landbright-grants` to `grant.activated`,
-  `expired`, `revoked` and `revoke_overdue`, with audience `http://localhost:57300`;
+- subscribes `…/api/webhook/landbright-requests` to `request.created`, `…/landbright-grants` to `grant.activated`,
+  `expired`, `revoked` and `revoke_overdue`, and `…/landbright-people` to `identity.created`, with audience
+  `http://localhost:57300`;
 - creates the bundle *Landflow Editors (JIT)*: the group *Landflow Editors*, plus the target *Landflow project Payments,
-  editor*, approved by *Landflow Admins*.
+  editor*, approved by *Landflow Admins*;
+- creates the birthright groups *Everyone* and *Engineers* (kind `birthright`) for the *Onboard* flow.
 
 **In Landflow**, as its owner, the installer:
 
@@ -85,6 +88,11 @@ In the real Landflow (`landflow/host:dev`, compose project `landbright-landflow`
 ![The provisioning run, ending in Tell Landbright.](screenshots/55-live-landflow-provision-run.png)
 
 ![Revoked: both targets removed.](screenshots/57-live-request-revoked.png)
+
+The *Onboard* flow, the same day: an administrator added Noam Katz (Engineering) in the console. The flow added Noam to
+*Everyone*, *Engineers* and *Landflow Editors* (source `hr`), set `configure_second_step` and `accept_terms`, and sent
+the welcome; Landbright sent the invite. The required actions at a first sign-in are covered by the e2e and browser
+tests ([account.md](account.md#required-actions)).
 
 ## Writing your own
 

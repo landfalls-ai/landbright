@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import type { CreateGroup, Group, GroupDetail } from '@landbright/contracts';
 import { ADMINS_GROUP, appendAudit, type Prisma } from '@landbright/persistence';
-import { audited, type Principal } from '../common/principal';
+import { audited, type Principal, type ServicePrincipal } from '../common/principal';
 import { TenantDb, uniquely } from '../common/tenant-db';
 import { toRef } from './mapping';
 import { PeopleService } from './people.service';
@@ -35,11 +35,16 @@ export class GroupsService {
     private readonly people: PeopleService,
   ) {}
 
-  list(): Promise<Group[]> {
+  /** Every group, or the one with this exact name (a flow looking up a birthright group). */
+  list(name?: string): Promise<Group[]> {
     return this.db.tx(async (tx) =>
-      (await tx.group.findMany({ include: { _count: { select: { members: true } } }, orderBy: { name: 'asc' } })).map(
-        toGroup,
-      ),
+      (
+        await tx.group.findMany({
+          where: name ? { name } : undefined,
+          include: { _count: { select: { members: true } } },
+          orderBy: { name: 'asc' },
+        })
+      ).map(toGroup),
     );
   }
 
@@ -159,6 +164,79 @@ export class GroupsService {
       await tx.membership.delete({ where: { groupId_identityId: { groupId: id, identityId } } });
       await appendAudit(tx, this.db.tenantId, {
         ...audited(actor),
+        action: 'group.member_removed',
+        targetType: 'group',
+        targetId: id,
+        data: { group: group.name, identityId, identity: membership.identity.displayName },
+      });
+    });
+    return this.get(id);
+  }
+
+  /**
+   * A lifecycle flow adds someone (birthright groups at onboarding): source `hr`, optionally until a time. Already a
+   * member: nothing changes. Never the administrators' group: a token must not make anyone an administrator.
+   */
+  async addMemberAsService(
+    id: string,
+    identityId: string,
+    expiresAt: string | undefined,
+    service: ServicePrincipal,
+  ): Promise<GroupDetail> {
+    await this.db.tx(async (tx) => {
+      const group = await this.find(tx, id);
+      if (group.name === ADMINS_GROUP)
+        throw new ForbiddenException('Only an administrator can add someone to the administrators’ group.');
+      const identity = await tx.identity.findFirst({ where: { id: identityId } });
+      if (!identity) throw new BadRequestException('No such person or agent.');
+      if (identity.status === 'deactivated') throw new ConflictException(`${identity.displayName} is deactivated.`);
+      const existing = await tx.membership.findUnique({ where: { groupId_identityId: { groupId: id, identityId } } });
+      if (existing) return;
+      await tx.membership.create({
+        data: {
+          tenantId: this.db.tenantId,
+          groupId: id,
+          identityId,
+          source: 'hr',
+          expiresAt: expiresAt ? new Date(expiresAt) : null,
+        },
+      });
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(service),
+        action: 'group.member_added',
+        targetType: 'group',
+        targetId: id,
+        data: {
+          group: group.name,
+          identityId,
+          identity: identity.displayName,
+          source: 'hr',
+          ...(expiresAt && { expiresAt }),
+        },
+      });
+    });
+    return this.get(id);
+  }
+
+  /**
+   * A lifecycle flow removes someone (a mover leaving a department). Not a just-in-time membership (its grant owns
+   * it) and not from the administrators' group. Not a member: nothing changes.
+   */
+  async removeMemberAsService(id: string, identityId: string, service: ServicePrincipal): Promise<GroupDetail> {
+    await this.db.tx(async (tx) => {
+      const group = await this.find(tx, id);
+      if (group.name === ADMINS_GROUP)
+        throw new ForbiddenException('Only an administrator can remove someone from the administrators’ group.');
+      const membership = await tx.membership.findUnique({
+        where: { groupId_identityId: { groupId: id, identityId } },
+        include: { identity: true },
+      });
+      if (!membership) return;
+      if (membership.source === 'grant')
+        throw new ConflictException('This membership belongs to a just-in-time grant; revoke the grant instead.');
+      await tx.membership.delete({ where: { groupId_identityId: { groupId: id, identityId } } });
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(service),
         action: 'group.member_removed',
         targetType: 'group',
         targetId: id,

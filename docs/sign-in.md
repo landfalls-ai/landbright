@@ -68,8 +68,7 @@ WebAuthn passkeys, verified with `@simplewebauthn/server`. The relying-party id 
 - **Sign in with a passkey** on the sign-in page needs no email: passkeys are discoverable, and the browser offers the
   ones it holds for this site. User verification (a PIN or biometric) is required, so a passkey alone is two factors
   and satisfies *Require a second step*.
-- **Add one** when offered a second step (*Use a passkey instead*). There is no account page to add one later yet
-  (docs/limitations.md).
+- **Add one** when offered a second step (*Use a passkey instead*), or later on the [account page](account.md).
 - Each ceremony's challenge is kept in Valkey for 10 minutes and taken when the answer comes back, so an answer works
   once; the authenticator's signature counter is stored and must move forward. Only the public key is stored.
 - The pages' only script (`/assets/passkey.js`) runs the ceremony and submits the form; without it, or in a browser
@@ -85,12 +84,17 @@ The ID token's `amr` (RFC 8176), so an application can ask for a second step its
 | Password and an authenticator app | `["pwd", "otp", "mfa"]` |
 | Password and a passkey | `["pwd", "pop", "mfa"]` |
 | A passkey alone | `["pop", "mfa"]` |
+| Password and a recovery code | `["pwd", "otp", "mfa"]` |
+
+And `acr`, how strong that was (`urn:landbright:acr:pwd`, `:mfa`, `:phr`); an application can require one
+([account.md](account.md#how-strong-a-sign-in-acr)).
 
 ## Passwords
 
 Administrators never set or see passwords. Adding a person emails them a link (`<IDP_URL>/invite/<token>`, 72 hours,
 single use; only the token's SHA-256 is stored) to choose one of at least 12 characters, hashed with argon2id. Sending
-a new invite cancels the old one, which is also how a password is reset. Locally, the mail is in Mailpit at
+a new invite cancels the old one. People who forgot theirs use *Forgot your password?* on the sign-in page
+([account.md](account.md#forgot-your-password)). Locally, the mail is in Mailpit at
 <http://127.0.0.1:57825>.
 
 ## The console signs in the same way
