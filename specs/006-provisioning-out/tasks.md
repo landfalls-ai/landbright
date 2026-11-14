@@ -23,6 +23,6 @@
 
 - [x] T010 Landfall live (user-attribute mode), once its SCIM is on. ✓ 2026-11-14
 - [x] T011 Clickland live, once its server answers. ✓ 2026-11-14
-- [ ] T012 Back-channel logout: an application's `backchannel_logout_uri`; logout tokens on deactivation and on
-      ending sessions.
-- [ ] T013 The grant's timeline shows pushes to applications.
+- [x] T012 Back-channel logout: an application's `backchannel_logout_uri`; logout tokens on deactivation and on
+      ending sessions. ✓ 2026-11-14
+- [x] T013 The grant's timeline shows pushes to applications. ✓ 2026-11-14

@@ -30,6 +30,22 @@ export const retryInMs = (attempts: number, retryAfterMs?: number) =>
   Math.min(Math.max(5_000 * 2 ** Math.max(0, attempts - 1), retryAfterMs ?? 0), 3600_000);
 
 /**
+ * user_attribute mode: the groups a push added to and removed from the person's `groups` (the grant's timeline reads
+ * them, as it reads a group's `added` and `removed` in groups mode). Nothing when the mode has no `groups`.
+ */
+export function groupChanges(prev: string[] | undefined, next: string[] | undefined) {
+  if (!next) return {};
+  const was = new Set(prev ?? []);
+  const now = new Set(next);
+  const groupsAdded = next.filter((g) => !was.has(g));
+  const groupsRemoved = (prev ?? []).filter((g) => !now.has(g));
+  return {
+    ...(groupsAdded.length ? { groupsAdded } : {}),
+    ...(groupsRemoved.length ? { groupsRemoved } : {}),
+  };
+}
+
+/**
  * Provisioning out (spec 006): keeps each target's SCIM server holding the people (and, in groups mode, the groups)
  * Landbright says. The audit log is the outbox: each target reads it from its cursor and queues the people and groups
  * that changed (one job per object, however many changes); jobs are pushed people first, then groups, retried with
@@ -261,6 +277,7 @@ export class ScimSync {
         remoteId: link.remoteId,
         email: next.userName,
         ...(next.active ? { changed: ops.map((o) => o.path ?? Object.keys(o.value as object).join(',')) } : { why }),
+        ...(next.active ? groupChanges(prev.groups, next.groups) : {}),
         ...(verify ? { drift: true } : {}),
       },
     });
@@ -293,7 +310,12 @@ export class ScimSync {
     }
     await this.saveUser(t, personId, remote.id, next, {
       action,
-      data: { remoteId: remote.id, email: next.userName, ...(previousRemoteId ? { reactivated: true } : {}) },
+      data: {
+        remoteId: remote.id,
+        email: next.userName,
+        ...(previousRemoteId ? { reactivated: true } : {}),
+        ...groupChanges([], next.groups),
+      },
     });
     await this.queueGroupsOf(t, personId, remote.id);
   }

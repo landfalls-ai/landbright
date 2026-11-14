@@ -27,6 +27,8 @@ export const EVENT_TYPES = [
   'credential.recovery_code_used',
   'identity.terms_accepted',
   'session.others_ended',
+  'session.logout_sent',
+  'session.logout_failed',
   'group.created',
   'group.updated',
   'group.deleted',

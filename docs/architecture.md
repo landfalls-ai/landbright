@@ -15,7 +15,7 @@ Three processes and four pieces of infrastructure, all on this machine.
 | Process | Owns | Now (wave 1) | Next |
 |---|---|---|---|
 | **idp** (`apps/idp`) | The protocol plane: OIDC/OAuth 2.1, sign-in pages, sessions, JWKS, later token exchange. Small and hardened, no console code. | `oidc-provider` at `/oidc` with a Postgres adapter, rebuilt when the signing keys change; password, authenticator-app and passkey sign-in with lockout; invite pages; sealed signing keys with rotation | Token exchange (wave 5) |
-| **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health; access (bundles, requests, decisions, grants), events out, the machine API `/api/v1`, provisioning targets and SCIM out (spec 006), and a worker (sweeper, SCIM pushes, deliveries, wake-ups) under a Valkey lock | |
+| **control** (`apps/control`) | The console API and the system of record: directory, catalog, requests, grants, the ledger, sync, webhooks, the sweeper. | Console sign-in (backend-for-frontend), people, agents, groups, applications, audit, invite mail, health; access (bundles, requests, decisions, grants), events out, the machine API `/api/v1`, provisioning targets and SCIM out (spec 006), and a worker (sweeper, SCIM pushes, back-channel logout, deliveries, wake-ups) under a Valkey lock | |
 | **console** (`apps/console`) | The UI, in Landflow's shell and tokens. Talks only to control. | Sign-in gate; Home, People, Agents, Groups, Applications, Audit log, Health, Settings; Requests and the request page (everyone), Grants, Catalog, Events | Sources (wave 3) |
 
 ## Data (`libs/persistence`)
@@ -58,10 +58,11 @@ apps/control/src/        main.ts · configure.ts (prefix, origin check, session,
                          auth/ (console sign-in) · directory/ (people, agents, groups) · applications/ · audit/ ·
                          access/ (bundles, requests, decisions, grants, sweeper) · events/ (subscriptions, the
                          worker: deliveries and wake-ups) · provisioning/ (targets, the SCIM client, ScimSync) ·
+                         logout/ (LogoutSender: back-channel logout tokens) ·
                          machine/ (/api/v1, DPoP) · mail/ · health/ ·
                          common/ (principal, key-ring)
 apps/console/src/        router.tsx · nav.ts · routes/ · components/{shell,ui,directory,access}/ · lib/api.ts
-libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap,signing-keys}.ts
+libs/persistence/        prisma/ (schema, migrations) · src/{tenant,audit,passwords,bootstrap,signing-keys,logout}.ts
 libs/platform/src/       config.ts · crypto.ts · valkey.ts · bootstrap.ts · auth/ · health/ · telemetry/
 libs/contracts/src/      health · directory · applications · agent-apps · audit · session · access · events · machine-api ·
                          provisioning

@@ -22,6 +22,8 @@ export const Application = z.object({
   apiScopes: z.array(z.string()),
   /** The weakest sign-in it accepts (`acr`); null accepts any. */
   minimumAcr: Acr.nullable(),
+  /** OpenID Back-Channel Logout: where Landbright posts a logout token when someone's session ends; null: not told. */
+  backchannelLogoutUri: z.string().nullable(),
   /** Landbright's own console client: shown, not editable. */
   system: z.boolean(),
   /** An agent's own application: the agent it acts as (no secret; `private_key_jwt` with the agent's keys). */
@@ -55,6 +57,15 @@ export const CreateApplication = z.object({
   apiScopes: z.array(z.enum(MACHINE_API_SCOPE_NAMES as [string, ...string[]])).default([]),
   /** The weakest sign-in it accepts: people who signed in more weakly are asked for more (step-up). */
   minimumAcr: Acr.nullable().default(null),
+  /**
+   * OpenID Back-Channel Logout 1.0: Landbright posts a `logout_token` here when someone signed in to the application
+   * signs out, ends their other sessions or is deactivated.
+   */
+  backchannelLogoutUri: z
+    .url({ protocol: /^https?$/ })
+    .refine((u) => !u.includes('#'), 'A logout URI can’t have a fragment.')
+    .nullable()
+    .default(null),
   /** How it sends its secret to the token endpoint: an Authorization header (basic) or form fields (post). */
   tokenEndpointAuthMethod: z.enum(SECRET_AUTH_METHODS).default('client_secret_basic'),
 });

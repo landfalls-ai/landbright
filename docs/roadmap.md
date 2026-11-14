@@ -8,7 +8,7 @@ and in the browser, and its bugs fixed in the same wave. The console's Home page
 |---|---|---|
 | **0. Foundations** | ✓ Done 2026-11-12 ([spec 001](../specs/001-foundations/spec.md)) | `pnpm dev:up && pnpm serve` brings up a console in Landflow's shell with a health page |
 | **1. Identity core and sign-in** | In progress: identity core, the second step and passkeys done 2026-11-12 ([spec 002](../specs/002-identity-core/spec.md)) | A person created in the console signs into Landflow over OIDC and lands with the role their group maps to |
-| **2. Provisioning out** | First slice done 2026-11-14 ([spec 006](../specs/006-provisioning-out/spec.md)) | Deactivating a person signs them out of Landflow within seconds |
+| **2. Provisioning out** | Spec 006 done 2026-11-14: SCIM out, back-channel logout ([spec 006](../specs/006-provisioning-out/spec.md)) | Deactivating a person signs them out of Landflow within seconds |
 | **3. Landflow plugins and HR lifecycle** | Planned | A signed HiBob `employee.joined` creates the person and adds birthright groups |
 | **4. Just-in-time access** | First slice done 2026-11-14, ahead of waves 2–3 ([spec 004](../specs/004-access-and-events/spec.md)) | Editor on a Landflow project for 2 hours: requested, approved in Slack, granted, removed at expiry |
 | **5. Agentic identity** | Planned | A Landflow agent gets 15 minutes of read access with its sponsor's approval; the token names both |
@@ -64,6 +64,10 @@ with no flow; the audit log as the outbox with a cursor per target, retries with
 minutes; the Provisioning pages. Live: deactivated in Landbright, signed out of Landflow 1.3 seconds later; inactive in
 Clickland and Landfall within a second.
 
+The second slice: OpenID Back-Channel Logout 1.0 for any application with a URI (signing out, *Sign out everywhere
+else*, a password reset and deactivation each queue a logout token, sent and retried by the worker), and a grant's
+page showing what reached the applications. Live: a logout token 369 ms after signing out.
+
 ## Wave 4: what the first slice built (ahead of order)
 
 The user asked for two studies: Keycloak, reverse-engineered with Craft Anything, and the open-source just-in-time
@@ -103,5 +107,5 @@ Agent applications with `private_key_jwt` (keys pasted on the Agents page); toke
 Landflow's email flow as the channel and Landbright's decision page; the device grant; PAR and DPoP, with DPoP-bound
 tokens on the machine API ([agents.md](agents.md)).
 
-Next: spec 006 slice 2 (back-channel logout, provisioning on the grant's timeline), wave 3 (the Landflow plugins and
+Next: wave 3 (the Landflow plugins and
 the HR lifecycle), and in wave 5 the rest of agentic identity (ID-JAG, workload identity).

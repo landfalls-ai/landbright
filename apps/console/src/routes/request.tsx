@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Check, Clock, Inbox, Siren, Workflow, X, Zap } from 'lucide-react';
+import { ArrowLeft, Check, Clock, Inbox, RefreshCcw, Siren, Workflow, X, Zap } from 'lucide-react';
 import { AccessRequestView } from '@landbright/contracts';
 import { GrantStatusBadge, minutes, relative, RequestStatusBadge, TargetStatusBadge } from '@/components/access/bits';
 import { Fact, formatTime, ListState } from '@/components/directory/bits';
@@ -262,6 +262,30 @@ export function RequestPage() {
                 </Row>
               ))}
             </Table>
+            {r.grant.pushes.length > 0 && (
+              <>
+                <div className="mt-2 text-[12px] font-semibold text-t2">Pushed to applications</div>
+                <Table head={['Application', 'What changed there', 'When']}>
+                  {r.grant.pushes.map((p, i) => (
+                    <Row key={i} testId={`push-${p.target}-${p.change}`}>
+                      <Cell className="text-t1">
+                        <span className="flex items-center gap-1.5">
+                          <RefreshCcw className="size-3.5 text-t3" /> {p.target}
+                        </span>
+                      </Cell>
+                      <Cell className="text-[12px] text-t2">
+                        <Badge tone={p.change === 'added' ? 'success' : 'muted'}>
+                          {p.change === 'added' ? 'Added to' : 'Removed from'}
+                        </Badge>{' '}
+                        {p.group}
+                        {p.drift && <span className="text-t3"> · put right by a reconciliation</span>}
+                      </Cell>
+                      <Cell className="whitespace-nowrap font-mono text-[12px] text-t3">{formatTime(p.at)}</Cell>
+                    </Row>
+                  ))}
+                </Table>
+              </>
+            )}
           </section>
         )}
 

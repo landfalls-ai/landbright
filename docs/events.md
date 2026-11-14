@@ -65,7 +65,8 @@ They show in the console's Events with the application as owner (`ownerClientId`
 `GET /api/events/subscriptions` lists them (`eventTypes`):
 
 - `identity.*` (created, updated, invited, deactivated, reactivated)
-- `session.signed_in`, `session.sign_in_failed`
+- `session.signed_in`, `session.sign_in_failed`, `session.others_ended`, and `session.logout_sent` /
+  `session.logout_failed` (back-channel logout, [provisioning.md](provisioning.md#back-channel-logout-ending-a-session-in-an-application-that-isnt-a-target))
 - `credential.*`
 - `group.*` (including `member_added` / `member_removed`)
 - `client.*`

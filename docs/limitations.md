@@ -26,8 +26,9 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **One tenant per deployment.** Every table carries `tenant_id` under row-level security, but the services serve the
   tenant named by `LANDBRIGHT_TENANT_SLUG`, and client ids are global.
 - **Revocation reaches the applications Landbright provisions** ([provisioning.md](provisioning.md)): deactivating a
-  person sets them inactive in each SCIM target within seconds. An application that isn't a target keeps its own
-  session until it ends (back-channel logout is next, spec 006 slice 2).
+  person sets them inactive in each SCIM target within seconds, and an application with a back-channel logout URI is
+  posted a logout token. An application that is neither keeps its own session until it ends. None of Landflow,
+  Landfall or Clickland takes logout tokens yet (SCIM covers them).
 - **Landflow in a bridged container can't use `localhost:4402`.** Landflow takes every endpoint from the discovery
   document, so the issuer must be reachable from both the browser and the container. Run Landflow on the host, or in a
   container with host networking as `deploy/landflow/compose.yml` does ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
@@ -99,8 +100,17 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **Landflow:** deactivation suspends API keys and MCP tokens rather than deleting them, and an open `/api/events`
   stream isn't closed (Landflow limits). An unknown member id in a group is dropped without an error.
 - **One worker at a time per tenant**, every 2 seconds; a target answering slowly holds up only itself.
+- **Back-channel logout only**, no front-channel logout (iframes the browser loads) and no logout for sessions that
+  simply expire (the specification doesn't ask for it). A logout token given up after ten tries (about 85 minutes)
+  isn't sent again; it stays in `logout_delivery` with its error and in the ledger.
+- **A grant's pushes are read from the audit log**, the last 200 events of its groups and its holder while it was live
+  (and removals the day after it ended); pushes recorded before slice 2 name removed members by the application's ids
+  and don't show.
 
 ## Lifted
+
+- Spec 006, slice 2: an application that wasn't provisioned kept a deactivated person's session until it ended; a
+  grant didn't show what reached the applications.
 
 - Spec 006: revocation stopped at Landbright; applications learned who existed only at first sign-in; just-in-time
   access to Landflow projects needed a provisioning flow.

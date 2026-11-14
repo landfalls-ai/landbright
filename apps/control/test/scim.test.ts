@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { eqFilter, ScimClient, ScimError } from '../src/provisioning/scim-client';
 import { desiredUser, groupOps, readActive, readMembers, userOps, userResource } from '../src/provisioning/scim-ops';
-import { retryInMs } from '../src/provisioning/scim-sync';
+import { groupChanges, retryInMs } from '../src/provisioning/scim-sync';
 
 const maya = {
   id: '6f1c2a40-1111-4c1e-9c0e-0a0b0c0d0e0f',
@@ -138,5 +138,14 @@ describe('the client', () => {
     expect(retryInMs(3)).toBe(20_000);
     expect(retryInMs(30)).toBe(3600_000);
     expect(retryInMs(1, 60_000)).toBe(60_000);
+  });
+});
+
+describe('group changes in user_attribute mode', () => {
+  it('says which groups a push added and removed, and nothing in groups mode', () => {
+    expect(groupChanges(['A', 'B'], ['B', 'C'])).toEqual({ groupsAdded: ['C'], groupsRemoved: ['A'] });
+    expect(groupChanges(undefined, ['A'])).toEqual({ groupsAdded: ['A'] });
+    expect(groupChanges(['A'], ['A'])).toEqual({});
+    expect(groupChanges(['A'], undefined)).toEqual({});
   });
 });

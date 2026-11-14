@@ -8,7 +8,7 @@ The control API's machine-readable description is at `GET /api/openapi.json` (Op
 | Route | Access | What |
 |---|---|---|
 | `GET /healthz` | Public | `Liveness`: `{ status: "ok", service: "landbright-idp", version, uptimeSeconds }`. |
-| `/oidc/*` | Public (the protocol authenticates clients itself) | `oidc-provider`: `/.well-known/openid-configuration`, `/auth`, `/token`, `/me` (userinfo), `/jwks`, `/token/introspection`, `/token/revocation`, `/session/end`; for agents ([agents.md](../agents.md)): `/backchannel` (CIBA, poll mode), `/device/auth` and `/device` (the device grant), `/request` (PAR, for any client), and at `/token` the token-exchange grant (`urn:ietf:params:oauth:grant-type:token-exchange`) and DPoP proofs. [sign-in.md](../sign-in.md) has the scopes and claims. |
+| `/oidc/*` | Public (the protocol authenticates clients itself) | `oidc-provider`: `/.well-known/openid-configuration`, `/auth`, `/token`, `/me` (userinfo), `/jwks`, `/token/introspection`, `/token/revocation`, `/session/end` (with back-channel logout to applications that have a URI); for agents ([agents.md](../agents.md)): `/backchannel` (CIBA, poll mode), `/device/auth` and `/device` (the device grant), `/request` (PAR, for any client), and at `/token` the token-exchange grant (`urn:ietf:params:oauth:grant-type:token-exchange`) and DPoP proofs. [sign-in.md](../sign-in.md) has the scopes and claims. |
 | `GET /interaction/:uid` | Public (people who aren't signed in yet) | The sign-in page for an authorization request in progress. |
 | `POST /interaction/:uid/login` | Public | Email and password (form). Success continues the authorization, or shows the second step: the code or passkey page for someone with one set up, the setup page for someone without one (unless they chose *Not now* in the last 30 days and it isn't required). Failure shows the page again. Locked for 15 min after 10 failures per email. |
 | `POST /interaction/:uid/totp` | Public (after the password) | `code` from the authenticator app. A wrong or reused code shows the page again and counts toward the lockout. |
@@ -78,7 +78,8 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | Route | What |
 |---|---|
 | `GET /api/applications` | `{ items: Application[], issuer }`. |
-| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null, `tokenEndpointAuthMethod`: `client_secret_basic`, the default, or `client_secret_post`) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
+| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null, `tokenEndpointAuthMethod`: `client_secret_basic`, the default, or `client_secret_post`, `backchannelLogoutUri`: an
+http(s) URL without a fragment, or null, where Landbright posts logout tokens) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
 | `GET /api/applications/:id` · `PATCH` · `DELETE` | One application; delete revokes its tokens. The console's client answers 403 to changes. |
 | `POST /api/applications/:id/rotate-secret` | → `ApplicationWithSecret` with the new secret. 409 for an agent's application (it has keys, not a secret). |
 
@@ -104,7 +105,7 @@ An `Application` says how it signs in (`tokenEndpointAuthMethod`), and an agent'
 | `GET /api/access/requests/:ref` | Who asked, who it's for, who decides, administrators | By id or by number (`REQ-12`). `actions` says what the caller may do. |
 | `POST /api/access/requests/:id/decision` | People the policy names | `{ outcome: approve\|deny, comment? }` → `AccessRequestView`. 403 with the reason otherwise (`request.decision_refused` is audited). |
 | `POST /api/access/requests/:id/cancel` | Who asked | A waiting request. |
-| `GET /api/access/grants?status=` | Administrators | `{ items: GrantSummary[] }`, newest first. |
+| `GET /api/access/grants?status=` | Administrators | `{ items: GrantSummary[] }`, newest first. A request's `grant` (`GET /api/access/requests/:ref`) also has `pushes`: `{ target, targetId, group, change: added\|removed, drift, at }[]`, what reached the provisioned applications. |
 | `POST /api/access/grants/:id/revoke` | Administrators, and the holder | `{ comment? }`: ends it now. |
 | `POST /api/access/grants/:id/extend` | The holder (or the sponsor of the agent holding it) | `{ durationMinutes, reason? }` → 201 `AccessRequestView` with `extends: { grantId, ref }`: a request of its own, through the bundle's steps. Approved, the grant's end moves (`grant.extended`). 400 when the policy allows no more (`extensions`). |
 

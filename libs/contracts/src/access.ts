@@ -277,6 +277,22 @@ export const GrantTargetView = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+/**
+ * A push to an application that this grant caused (spec 006): the subject added to (or removed from) one of its groups
+ * there, by SCIM, from the audit log.
+ */
+export const GrantPush = z.object({
+  /** The provisioning target: "Landflow", "Clickland"… */
+  target: z.string(),
+  targetId: z.string(),
+  group: z.string(),
+  change: z.enum(['added', 'removed']),
+  /** Put right by reconciliation, not pushed when it changed. */
+  drift: z.boolean(),
+  at: z.iso.datetime(),
+});
+export type GrantPush = z.infer<typeof GrantPush>;
+
 export const GrantView = z.object({
   id: z.uuid(),
   status: GrantStatus,
@@ -287,6 +303,8 @@ export const GrantView = z.object({
   closingReason: z.string().nullable(),
   isBreakGlass: z.boolean(),
   targets: z.array(GrantTargetView),
+  /** What reached the applications, oldest first. */
+  pushes: z.array(GrantPush),
 });
 export type GrantView = z.infer<typeof GrantView>;
 

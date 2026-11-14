@@ -15,6 +15,7 @@ import {
   type CreateRequest,
   type DecideRequest,
   type ExtendGrant,
+  type GrantPush,
   type GrantView,
   type IdentityRef,
   inWindow,
@@ -31,6 +32,7 @@ import { audited, type Principal, type ServicePrincipal } from '../common/princi
 import { KeyRing } from '../common/key-ring';
 import { TenantDb, uniquely } from '../common/tenant-db';
 import { toRef } from '../directory/mapping';
+import { pushesOf } from './grant-pushes';
 import { closeGrant, createGrant, type NamedApprover, resolveStep, stillNamed, type Tx, type Who } from './grants';
 
 const MINUTE = 60_000;
@@ -1155,7 +1157,7 @@ export class AccessService {
           : [],
       autoApproval: r.autoApproval ?? null,
       breakGlass: r.breakGlass ?? null,
-      grant: r.grant ? this.toGrantView(r.grant) : null,
+      grant: r.grant ? this.toGrantView(r.grant, await pushesOf(tx, r.grant)) : null,
       decisionUrl: new URL(`/access/requests/${refOf(r.number)}`, this.config.LANDBRIGHT_CONSOLE_URL).href,
       actions: {
         decide,
@@ -1174,7 +1176,7 @@ export class AccessService {
     };
   }
 
-  private toGrantView(g: NonNullable<RequestRow['grant']>): GrantView {
+  private toGrantView(g: NonNullable<RequestRow['grant']>, pushes: GrantPush[]): GrantView {
     return {
       id: g.id,
       status: g.status,
@@ -1196,6 +1198,7 @@ export class AccessService {
         config: {},
         updatedAt: t.updatedAt.toISOString(),
       })),
+      pushes,
     };
   }
 
@@ -1208,7 +1211,7 @@ export class AccessService {
     if (!g) throw new NotFoundException('No such grant.');
     const config = new Map(targetsOf(g.request.bundle).map((t) => [t.key, t.config] as const));
     const subject = await tx.identity.findUniqueOrThrow({ where: { id: g.subjectId } });
-    const view = this.toGrantView(g);
+    const view = this.toGrantView(g, await pushesOf(tx, g));
     return {
       ...view,
       requestId: g.requestId,

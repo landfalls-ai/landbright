@@ -144,8 +144,8 @@ the body, nonce, PKCE, JWKS verification, `mappedRole`), so a change on either s
 
 Deactivating a person deletes every session, grant, authorization code and refresh token they hold at the identity
 plane, so introspection reports their access tokens inactive at once and refresh fails. Applications that only check
-the ID token at sign-in keep their own session until it ends; pushing the change to them (SCIM, back-channel logout) is
-wave 2. Deleting an application revokes its tokens the same way. Rotating its secret makes the old secret fail at once.
+the ID token at sign-in keep their own session until it ends, unless Landbright provisions them (SCIM) or they have a
+back-channel logout URI, which gets a logout token ([provisioning.md](provisioning.md)). Deleting an application revokes its tokens the same way. Rotating its secret makes the old secret fail at once.
 
 ## Keys and secrets
 

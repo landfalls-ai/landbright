@@ -32,6 +32,7 @@ import { MachineController } from './machine/machine.controller';
 import { ProvisioningController } from './provisioning/provisioning.controller';
 import { ProvisioningService } from './provisioning/provisioning.service';
 import { ScimSync } from './provisioning/scim-sync';
+import { LogoutSender } from './logout/logout-sender';
 import { ServiceTokenMiddleware } from './machine/service-token.middleware';
 import { SettingsController } from './settings/settings.controller';
 
@@ -76,6 +77,7 @@ import { SettingsController } from './settings/settings.controller';
     EventWorker,
     ProvisioningService,
     ScimSync,
+    LogoutSender,
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
   ],

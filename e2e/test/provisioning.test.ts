@@ -1,4 +1,11 @@
-import { Bundle, GroupDetail, Person, ScimTargetDetail, ScimTestResult } from '@landbright/contracts';
+import {
+  AccessRequestView,
+  Bundle,
+  GroupDetail,
+  Person,
+  ScimTargetDetail,
+  ScimTestResult,
+} from '@landbright/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Browser, formAction } from './browser';
 import { FakeScim } from './fake-scim';
@@ -223,7 +230,7 @@ describe.skipIf(!e2eEnabled)('provisioning end to end', () => {
       items: Array<{ action: string; targetId: string; data: Record<string, unknown> }>;
     };
     const grants = (await ok(await api('/api/access/grants?status=active'))) as {
-      items: Array<{ id: string; subject: { id: string } }>;
+      items: Array<{ id: string; ref: string; subject: { id: string } }>;
     };
     const grant = grants.items.find((g) => g.subject.id === adminId)!;
     expect(
@@ -243,6 +250,14 @@ describe.skipIf(!e2eEnabled)('provisioning end to end', () => {
     expect(
       after.items.find((e) => e.action === 'provisioning.group_updated' && e.targetId === data.id)?.data.removed,
     ).toEqual([adminId]);
+    // The grant's timeline: what reached the application, read from the audit log.
+    const view = AccessRequestView.parse(await ok(await api(`/api/access/requests/${grant.ref}`))).grant!;
+    expect(view.pushes.map((p) => [p.target, p.group, p.change])).toEqual(
+      expect.arrayContaining([
+        [target.name, 'Data Team', 'added'],
+        [target.name, 'Data Team', 'removed'],
+      ]),
+    );
     // Staff isn't assigned and Data Team was the admin's only assigned group: inactive there.
     await eventually(() => remote.active === false, 'the admin inactive there');
   });

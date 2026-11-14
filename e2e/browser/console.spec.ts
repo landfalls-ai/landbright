@@ -264,6 +264,20 @@ test('registers Landflow as an application', async () => {
   await expect(page.getByText('Copy it now.')).toBeHidden();
   await shot(page, '12-applications');
 
+  // Back-channel logout: where Landflow would hear that someone's session ended. Shown, then cleared (the stand-in
+  // Landflow here has no endpoint).
+  await page.getByTestId(`edit-logout-landflow-${stack.slug}`).click();
+  await page
+    .getByRole('textbox', { name: /^Back-channel logout URI/ })
+    .fill(`${callback().replace(/\/api\/auth\/oidc\/callback$/, '')}/api/auth/oidc/backchannel-logout`);
+  await shot(page, '12a-application-logout');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId(`logout-uri-landflow-${stack.slug}`)).toContainText('backchannel-logout');
+  await page.getByTestId(`edit-logout-landflow-${stack.slug}`).click();
+  await page.getByRole('textbox', { name: /^Back-channel logout URI/ }).fill('');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId(`logout-uri-landflow-${stack.slug}`)).toContainText('Not told');
+
   const apps = (await api<{ items: Array<{ clientId: string; name: string }> }>('/api/applications')).items;
   rp = new LandflowLikeRp({
     issuer: stack.issuer,
@@ -746,7 +760,7 @@ test('Lia: her release bot’s key, a CIBA request she approves, and a device co
 });
 
 test('connects a SCIM server and keeps it in step', async () => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   const scim = await new FakeScim('landflow').start();
   try {
     await page.goto(`${stack.console}/provisioning`);
@@ -779,6 +793,37 @@ test('connects a SCIM server and keeps it in step', async () => {
     await expect(page.getByTestId('target-Landflow')).toContainText('In sync', { timeout: 20_000 });
     await shot(page, '88-provisioning');
     await api(`/api/people/${mayaId}/reactivate`, 'POST');
+
+    // A just-in-time grant of Data Team reaches Landflow, and its end takes it away: the request's page shows both.
+    const me = await api<{ id: string }>('/api/auth/me');
+    const groups = (await api<{ items: Array<{ id: string; name: string; system: boolean }> }>('/api/groups')).items;
+    const dataTeam = groups.find((g) => g.name === 'Data Team')!;
+    const admins = groups.find((g) => g.system)!;
+    const bundle = await api<{ id: string }>('/api/bundles', 'POST', {
+      name: 'Data Team (2 hours)',
+      ownerId: me.id,
+      groupIds: [dataTeam.id],
+      policy: {
+        steps: [{ name: admins.name, approvers: { groupIds: [admins.id] }, approvalsRequired: 1 }],
+        autoApprove: [{ name: 'Administrators', subjectInGroupIds: [admins.id] }],
+        maxDurationMinutes: 120,
+      },
+    });
+    const asked = await api<{ ref: string; grant: { id: string } }>('/api/access/requests', 'POST', {
+      bundleId: bundle.id,
+      durationMinutes: 120,
+      reason: 'Quarterly numbers',
+    });
+    await expect
+      .poll(() => scim.byGroupName('Data Team')?.members.includes(scim.byUserName(stack.admin.email)?.id ?? '-'), {
+        timeout: 20_000,
+      })
+      .toBe(true);
+    await api(`/api/access/grants/${asked.grant.id}/revoke`, 'POST', { comment: 'Done with the numbers' });
+    await page.goto(`${stack.console}/access/requests/${asked.ref}`);
+    await expect(page.getByTestId('push-Landflow-removed')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('push-Landflow-added')).toContainText('Data Team');
+    await shot(page, '89-grant-pushes', { fullPage: true });
   } finally {
     await scim.stop();
   }
