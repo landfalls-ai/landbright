@@ -1,6 +1,6 @@
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { RotationResult, Settings, UpdateSignIn } from '@landbright/contracts';
+import { PeopleSettings, RotationResult, Settings, UpdateSignIn } from '@landbright/contracts';
 import { type Config, issuerOf, passkeyRelyingParty } from '@landbright/platform';
 import {
   appendAudit,
@@ -14,9 +14,11 @@ import {
 import { createZodDto, ZodResponse } from 'nestjs-zod';
 import { Actor, audited, type Principal } from '../common/principal';
 import { TenantDb } from '../common/tenant-db';
+import { zonesOf } from '../directory/zones';
 
 class SettingsDto extends createZodDto(Settings) {}
 class UpdateSignInDto extends createZodDto(UpdateSignIn) {}
+class PeopleSettingsDto extends createZodDto(PeopleSettings) {}
 class RotationResultDto extends createZodDto(RotationResult) {}
 
 @ApiTags('Settings')
@@ -59,7 +61,31 @@ export class SettingsController {
       })),
       idTokenTtlSeconds: ttl,
       rotateAfter: rotateAfter(published, ttl)?.toISOString() ?? null,
+      people: (({ timeZone, sites }) => ({ timeZone, siteTimeZones: sites }))(zonesOf(tenant)),
     };
+  }
+
+  @Patch('people')
+  @ApiOperation({
+    summary:
+      'The zones start and last days are read in: each site’s, and the default for people whose site has none. Applies from the next pass of the event worker.',
+  })
+  @ZodResponse({ type: SettingsDto })
+  async updatePeople(@Body() body: PeopleSettingsDto, @Actor() actor: Principal): Promise<Settings> {
+    await this.db.tx(async (tx) => {
+      await tx.tenant.update({
+        where: { id: this.db.tenantId },
+        data: { timeZone: body.timeZone, siteTimeZones: body.siteTimeZones },
+      });
+      await appendAudit(tx, this.db.tenantId, {
+        ...audited(actor),
+        action: 'tenant.people_settings_changed',
+        targetType: 'tenant',
+        targetId: this.db.tenantId,
+        data: { timeZone: body.timeZone, siteTimeZones: body.siteTimeZones },
+      });
+    });
+    return this.get(actor);
   }
 
   @Patch('sign-in')

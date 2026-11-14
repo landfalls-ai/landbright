@@ -37,6 +37,8 @@ const SCOPES = [
   'directory:read',
   'directory:write',
   'decisions:relay',
+  // The Landbright Trigger subscribes itself (spec 007).
+  'events:manage',
 ];
 /**
  * The Slack flows are installed only with a bot token (`SLACK_BOT_TOKEN`). `SLACK_API_URL` points them at another Slack
@@ -132,7 +134,11 @@ const subscribe = async (path: string, events: string[], description: string) =>
 await subscribe('landbright-requests', ['request.created'], 'Landflow: Approve a request (email)');
 if (SLACK_TOKEN)
   await subscribe('landbright-requests-slack', ['request.created'], 'Landflow: Approve a request (Slack)');
-await subscribe('landbright-people', ['identity.created'], 'Landflow: Onboard a new person');
+await subscribe(
+  'landbright-people',
+  ['identity.created', 'identity.updated'],
+  'Landflow: Onboard a new person (and move a mover’s birthright groups)',
+);
 await subscribe('landbright-ciba', ['ciba.requested'], 'Landflow: Ask a person for an agent (CIBA)');
 await subscribe(
   'landbright-grants',
@@ -256,12 +262,16 @@ const lbPluginCred = hrPlugins
       issuer: ISSUER,
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
-      scopes: 'directory:read directory:write',
+      scopes: 'directory:read directory:write events:manage',
     })
   : '';
 if (hrPlugins) console.log(`Landflow: credentials HiBob (${HIBOB.baseUrl}), Landbright (plugin)`);
 
 const existing = ((await lf('/api/workflows')).workflows ?? []) as Array<{ id: string; name: string }>;
+/** Flows installed before under another name: updated in place, not installed twice. */
+const RENAMED: Record<string, string> = {
+  'Landbright · Joiners and movers from HiBob': 'Landbright · Joiner from HiBob',
+};
 for (const file of readdirSync(flowsDir)
   .filter((f) => f.endsWith('.json'))
   .sort()) {
@@ -270,7 +280,7 @@ for (const file of readdirSync(flowsDir)
     console.log(`Landflow: skipped ${file} (set SLACK_BOT_TOKEN to install the Slack flows)`);
     continue;
   }
-  if (raw.includes('__CRED_HIBOB__') && !hrPlugins) {
+  if ((raw.includes('__CRED_HIBOB__') || raw.includes('__CRED_LANDBRIGHT_PLUGIN__')) && !hrPlugins) {
     console.log(`Landflow: skipped ${file} (start the hris and landbright plugins: pnpm plugins:start)`);
     continue;
   }
@@ -286,7 +296,7 @@ for (const file of readdirSync(flowsDir)
     .replaceAll('__CRED_LANDBRIGHT_PLUGIN__', lbPluginCred)
     .replaceAll('__SLACK_API__', SLACK_API);
   const flow = JSON.parse(text) as { name: string };
-  const old = existing.find((w) => w.name === flow.name);
+  const old = existing.find((w) => w.name === flow.name || w.name === RENAMED[flow.name]);
   let id: string;
   if (old) {
     await lf(`/api/workflows/${old.id}`, { method: 'PUT', body: JSON.stringify(flow) });

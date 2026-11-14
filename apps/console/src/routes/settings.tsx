@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { KeyRound, RotateCw, ShieldCheck } from 'lucide-react';
 import { RotationResult, Settings } from '@landbright/contracts';
 import { Fact, formatDate, formatTime } from '@/components/directory/bits';
+import { PeopleZonesCard } from '@/components/settings/people-zones';
 import { Card, PageBody, PageHeader } from '@/components/shell/page-header';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,8 @@ export function SettingsPage() {
                 )}
               </div>
             </Card>
+
+            <PeopleZonesCard key={JSON.stringify(s.people)} people={s.people} />
 
             <Card className="flex flex-col gap-3">
               <div className="flex items-center">

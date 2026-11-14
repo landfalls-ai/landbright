@@ -79,8 +79,16 @@ flow, the person's source on their page. Live: a signed delivery from a fake Bob
 Landflow's flow; on her start date she was active, invited and in Landflow a second later, and signed in there through
 Landbright.
 
-Next (slice 2): movers and leavers (department, title, manager and site changes; deactivation at the end of the last day
-or at once), the Landbright Trigger, start dates in the site's time zone.
+The second slice: **movers** (`employee.updated` updates the person; a new department moves their birthright groups
+through `PUT /api/v1/people/:id/birthright-groups`, called by the *Onboard* flow), **leavers** (Bob's `employee.left` and
+`employee.access.revoked.immediately` deactivate at once, found by the HR record; any last day ending in the person's
+zone deactivates them in the event worker), **start and last days in the site's zone** (Settings → *Start and last
+days*), and the **Landbright Trigger**, which subscribes itself and checks each event's token, used by *Hand over a
+leaver's agents*. Live: a mover's groups moved and SCIM followed; a leaver deactivated 60 ms after Bob's event and their
+manager emailed about the agent they sponsored; a last day ended in London deactivated someone two seconds after HR said
+so.
+
+Next in wave 3: Shapes, when its schema comes (plan §11).
 
 ## Wave 4: what the first slice built (ahead of order)
 

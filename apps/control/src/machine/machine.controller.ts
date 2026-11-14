@@ -35,10 +35,12 @@ import { Service, type ServicePrincipal } from '../common/principal';
 import { PeopleService } from '../directory/people.service';
 import { GroupsService } from '../directory/groups.service';
 import {
+  BirthrightResultDto,
   GroupDetailDto,
   GroupListDto,
   PersonDto,
   ServiceAddMemberDto,
+  SetBirthrightGroupsDto,
   SetRequiredActionsDto,
   UpsertWorkerDto,
   UpsertWorkerResultDto,
@@ -202,6 +204,32 @@ export class MachineController {
   ) {
     const p = await this.people.deactivate(id, service, body.reason);
     return { id: p.id, status: p.status };
+  }
+
+  /** The person an HR record is linked to (`hibob` and the employee id): how a leaver flow finds them. 404 if none. */
+  @Get('people/by-source/:source/:sourceId')
+  @ZodResponse({ type: PersonDto })
+  bySource(
+    @Param('source') source: string,
+    @Param('sourceId') sourceId: string,
+    @Service('directory:read') _service: ServicePrincipal,
+  ) {
+    return this.people.getBySource(source, sourceId);
+  }
+
+  /**
+   * A person's birthright groups from a lifecycle flow's map: their `hr` memberships become exactly these groups.
+   * Memberships held by hand or by a grant stay; unknown names are reported as `missing`.
+   */
+  @Put('people/:id/birthright-groups')
+  @ZodResponse({ type: BirthrightResultDto })
+  async birthright(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: SetBirthrightGroupsDto,
+    @Service('directory:write') service: ServicePrincipal,
+  ) {
+    const result = await this.groups.setBirthright(id, body.groups, service);
+    return { person: await this.people.get(id), ...result };
   }
 
   /** One person, with their department, manager and groups: what an onboarding flow decides birthright groups from. */

@@ -127,6 +127,7 @@ export function PersonPage() {
             <Fact label="Email">{p.email}</Fact>
             <Fact label="Department">{p.department ?? '—'}</Fact>
             <Fact label="Title">{p.title ?? '—'}</Fact>
+            {p.site && <Fact label="Site">{p.site}</Fact>}
             <Fact label="Manager">
               {p.manager ? (
                 <Link className="underline decoration-hair underline-offset-2" to={`/people/${p.manager.id}`}>
@@ -145,6 +146,17 @@ export function PersonPage() {
                 </span>
               )}
             </Fact>
+            {p.endDate && (
+              <Fact label="Last day">
+                {formatDate(p.endDate)}
+                {p.status !== 'deactivated' && (
+                  <span className="text-t3" data-testid="last-day">
+                    {' '}
+                    · access ends after it
+                  </span>
+                )}
+              </Fact>
+            )}
             {p.sources.length > 0 && (
               <Fact label="From">
                 <span className="flex flex-col" data-testid="sources">
@@ -353,6 +365,7 @@ function EditPersonDialog({ person, onClose }: { person: Person; onClose: () => 
     department: person.department ?? '',
     title: person.title ?? '',
     startDate: person.startDate ?? '',
+    endDate: person.endDate ?? '',
   });
   const save = useWrite(() =>
     send(
@@ -364,6 +377,7 @@ function EditPersonDialog({ person, onClose }: { person: Person; onClose: () => 
         department: form.department || null,
         title: form.title || null,
         startDate: form.startDate || null,
+        endDate: form.endDate || null,
       },
       Person,
     ),
@@ -404,9 +418,14 @@ function EditPersonDialog({ person, onClose }: { person: Person; onClose: () => 
             <Input value={form.title} onChange={set('title')} />
           </Field>
         </div>
-        <Field label="Start date">
-          <Input type="date" value={form.startDate} onChange={set('startDate')} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Start date">
+            <Input type="date" value={form.startDate} onChange={set('startDate')} />
+          </Field>
+          <Field label="Last day" hint="Deactivated when it ends">
+            <Input type="date" value={form.endDate} onChange={set('endDate')} />
+          </Field>
+        </div>
         <FormError error={save.error} />
       </div>
     </Dialog>

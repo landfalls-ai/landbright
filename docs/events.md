@@ -58,7 +58,9 @@ only time, because the flow's Wait also ends at the decision deadline.
 
 With `events:manage`, an application lists, adds and removes its own subscriptions on the machine API
 (`/api/v1/subscriptions`), only at an origin among its redirect URIs, so a token can't point Landbright anywhere else.
-They show in the console's Events with the application as owner (`ownerClientId`).
+They show in the console's Events with the application as owner (`ownerClientId`). The landbright plugin's **Landbright
+Trigger** works this way: publishing a Landflow workflow subscribes its URL, unpublishing removes it, and each delivery's
+token is checked against the JWKS ([hr.md](hr.md#the-landbright-trigger)).
 
 ## Event types
 
@@ -75,7 +77,7 @@ They show in the console's Events with the application as owner (`ownerClientId`
   relay_tickets_issued, decided
 - `grant.*`: activated, expiring, extended, expired, revoked, target_provisioned, target_failed, target_revoked,
   target_revoke_failed, target_verified, target_drift, revoke_overdue
-- `tenant.sign_in_changed`, `signing_key.rotated`
+- `tenant.sign_in_changed`, `tenant.people_settings_changed` (the zones), `signing_key.rotated`
 - `provisioning.*` ([provisioning.md](provisioning.md#in-the-ledger)): user_created, user_linked, user_updated,
   user_deactivated, group_created, group_linked, group_updated, group_deleted, push_failed, and target_created,
   target_updated, target_deleted, target_token_replaced, target_sync_requested

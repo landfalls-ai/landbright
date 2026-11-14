@@ -227,6 +227,7 @@ describe('Settings', () => {
     ],
     idTokenTtlSeconds: 3600,
     rotateAfter: null,
+    people: { timeZone: 'UTC', siteTimeZones: { 'Tel Aviv': 'Asia/Jerusalem' } },
   });
 
   it('shows the tenant, the issuer and the signing key', async () => {
@@ -288,6 +289,28 @@ describe('Settings', () => {
     fireEvent.click(toggle);
     await waitFor(() =>
       expect(calls.find((c) => c.key === 'PATCH /api/settings/sign-in')?.body).toEqual({ mfaRequired: true }),
+    );
+  });
+
+  it('keeps the zones start and last days are read in: adds a site and saves', async () => {
+    renderAt('/settings', report(), {
+      routes: {
+        '/api/settings': settings(false),
+        'PATCH /api/settings/people': () => settings(false),
+      },
+    });
+    expect(await screen.findByDisplayValue('Asia/Jerusalem')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a site' }));
+    const sites = screen.getAllByLabelText('Site', { exact: true });
+    const zones = screen.getAllByLabelText('Zone', { exact: true });
+    fireEvent.change(sites.at(-1)!, { target: { value: 'London' } });
+    fireEvent.change(zones.at(-1)!, { target: { value: 'Europe/London' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.key === 'PATCH /api/settings/people')?.body).toEqual({
+        timeZone: 'UTC',
+        siteTimeZones: { 'Tel Aviv': 'Asia/Jerusalem', London: 'Europe/London' },
+      }),
     );
   });
 });

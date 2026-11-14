@@ -67,6 +67,7 @@ export const EVENT_TYPES = [
   'grant.target_drift',
   'grant.revoke_overdue',
   'tenant.sign_in_changed',
+  'tenant.people_settings_changed',
   'signing_key.rotated',
   'provisioning.target_created',
   'provisioning.target_updated',

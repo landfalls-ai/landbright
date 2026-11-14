@@ -246,6 +246,57 @@ export class GroupsService {
     return this.get(id);
   }
 
+  /**
+   * A person's birthright groups, set from a lifecycle flow's map (spec 007): their `hr` memberships become exactly
+   * `names`. Missing ones are added (source `hr`), `hr` memberships not named are removed, memberships held another
+   * way (by hand, by a grant) are left alone, and names with no group are reported, not created. Never the
+   * administrators' group.
+   */
+  async setBirthright(
+    identityId: string,
+    names: string[],
+    service: ServicePrincipal,
+  ): Promise<{ added: string[]; removed: string[]; missing: string[] }> {
+    const wanted = [...new Set(names)];
+    if (wanted.includes(ADMINS_GROUP))
+      throw new ForbiddenException('The administrators’ group is never a birthright group.');
+    return this.db.tx(async (tx) => {
+      const identity = await tx.identity.findFirst({ where: { id: identityId, kind: 'person' } });
+      if (!identity) throw new NotFoundException('No such person.');
+      if (identity.status === 'deactivated') throw new ConflictException(`${identity.displayName} is deactivated.`);
+      const groups = await tx.group.findMany({ where: { name: { in: wanted } } });
+      const byName = new Map(groups.map((g) => [g.name, g]));
+      const held = await tx.membership.findMany({ where: { identityId }, include: { group: true } });
+      const heldIds = new Set(held.map((m) => m.groupId));
+      const added: string[] = [];
+      const removed: string[] = [];
+      const log = (action: string, group: { id: string; name: string }) =>
+        appendAudit(tx, this.db.tenantId, {
+          ...audited(service),
+          action,
+          targetType: 'group',
+          targetId: group.id,
+          data: { group: group.name, identityId, identity: identity.displayName, source: 'hr', birthright: true },
+        });
+      for (const name of wanted) {
+        const group = byName.get(name);
+        if (!group || heldIds.has(group.id)) continue;
+        await tx.membership.create({
+          data: { tenantId: this.db.tenantId, groupId: group.id, identityId, source: 'hr' },
+        });
+        await log('group.member_added', group);
+        added.push(name);
+      }
+      for (const m of held) {
+        if (m.source !== 'hr' || m.expiresAt || byName.has(m.group.name) || m.group.name === ADMINS_GROUP) continue;
+        await tx.membership.delete({ where: { groupId_identityId: { groupId: m.groupId, identityId } } });
+        await log('group.member_removed', m.group);
+        removed.push(m.group.name);
+      }
+      return { added, removed, missing: wanted.filter((n) => !byName.has(n)) };
+    });
+  }
+
   private async find(tx: Prisma.TransactionClient, id: string) {
     const group = await tx.group.findFirst({ where: { id } });
     if (!group) throw new NotFoundException('No such group.');

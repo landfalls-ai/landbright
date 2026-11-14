@@ -1,7 +1,7 @@
 {
   "name": "Landbright · Onboard a new person",
-  "description": "On identity.created from Landbright (a person added by an administrator or an HR source): read the person, add them to their birthright groups (everyone's, and their department's), ask them to set up a second step and accept the terms at their first sign-in, and send a welcome email. Memberships are recorded with source hr. The flow never touches Landbright's administrators.",
-  "tags": ["landbright", "lifecycle", "joiner"],
+  "description": "On identity.created from Landbright (a person added by an administrator or an HR source): read the person, set their birthright groups (everyone's, and their department's), ask them to set up a second step and accept the terms at their first sign-in, and send a welcome email. On identity.updated with a new department (a mover): set their birthright groups again, so they leave the old department's and join the new one's. Birthright memberships have source hr; memberships given by hand or by a grant are left alone. The flow never touches Landbright's administrators.",
+  "tags": ["landbright", "lifecycle", "joiner", "mover"],
   "nodes": [
     {
       "id": "trigger",
@@ -31,12 +31,12 @@
       "parameters": {
         "language": "javascript",
         "mode": "each",
-        "codeEach": "// The Webhook's JWT Auth checked this token against Landbright's JWKS: trust jwtPayload, not the body.\nconst e = $json.jwtPayload.event;\nreturn { type: e.type, personId: e.target.id, kind: e.data.kind ?? e.data.identity?.kind };"
+        "codeEach": "// The Webhook's JWT Auth checked this token against Landbright's JWKS: trust jwtPayload, not the body.\nconst e = $json.jwtPayload.event;\nconst kind = e.data.kind ?? e.data.identity?.kind ?? e.identity?.kind ?? 'person';\nconst fields = Array.isArray(e.data.fields) ? e.data.fields : [];\nreturn {\n  type: e.type,\n  personId: e.target.id,\n  kind,\n  joiner: e.type === 'identity.created' && kind === 'person',\n  // A mover: their department changed (from HR through the upsert, or in the console).\n  mover: e.type === 'identity.updated' && fields.includes('department'),\n};"
       }
     },
     {
       "id": "joiner",
-      "name": "A person joined?",
+      "name": "A joiner or a mover?",
       "type": "core.if",
       "typeVersion": 1,
       "position": [600, 200],
@@ -44,7 +44,7 @@
         "conditions": {
           "condition": [
             {
-              "left": "{{ $json.type === 'identity.created' && $json.kind === 'person' ? 'yes' : 'no' }}",
+              "left": "{{ $json.joiner || $json.mover ? 'yes' : 'no' }}",
               "operator": "equals",
               "right": "yes"
             }
@@ -84,100 +84,50 @@
       "parameters": {
         "language": "javascript",
         "mode": "all",
-        "code": "// Birthright groups: everyone gets the first list; a department adds its own. Edit the map here; groups that\n// don't exist in Landbright are skipped (create them there, kind \"birthright\").\nconst EVERYONE = ['Everyone'];\nconst BY_DEPARTMENT = {\n  Engineering: ['Engineers', 'Landflow Editors'],\n  Finance: ['Finance'],\n  Security: ['Security'],\n};\nconst p = $input.first().json;\nconst names = [...new Set([...EVERYONE, ...(BY_DEPARTMENT[p.department] ?? [])])];\nreturn names.map((name) => ({ name }));"
+        "code": "// Birthright groups: everyone gets the first list; a department adds its own. Edit the map here (the one place: joiners\n// and movers both come through it); groups that don't exist in Landbright are skipped and reported as missing (create\n// them there, kind \"birthright\").\nconst EVERYONE = ['Everyone'];\nconst BY_DEPARTMENT = {\n  Engineering: ['Engineers', 'Landflow Editors'],\n  Finance: ['Finance'],\n  Security: ['Security'],\n};\nconst p = $input.first().json;\nconst names = [...new Set([...EVERYONE, ...(BY_DEPARTMENT[p.department] ?? [])])];\nreturn [{ groups: names }];"
       }
     },
     {
-      "id": "find",
-      "name": "Find the group",
+      "id": "set",
+      "name": "Set their birthright groups",
       "type": "core.httpRequest",
       "typeVersion": 1,
       "position": [1500, 120],
-      "parameters": {
-        "method": "GET",
-        "url": "__LANDBRIGHT_API__/api/v1/groups?name={{ encodeURIComponent($json.name) }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
-        "options": {
-          "splitArray": false
-        }
-      },
       "credentials": {
         "oAuth2Api": {
           "id": "__CRED_LANDBRIGHT__",
           "name": "Landbright API"
         }
-      }
-    },
-    {
-      "id": "pair",
-      "name": "Who and which group",
-      "type": "core.set",
-      "typeVersion": 1,
-      "position": [1800, 120],
+      },
       "parameters": {
-        "mode": "manual",
-        "includeOtherFields": false,
-        "fields": {
-          "values": [
-            {
-              "name": "identityId",
-              "type": "string",
-              "value": "{{ $('Read the person').first().json.id }}"
-            },
-            {
-              "name": "groupId",
-              "type": "string",
-              "value": "{{ ($json.items ?? [])[0] ? $json.items[0].id : 'missing' }}"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "add",
-      "name": "Add them",
-      "type": "core.httpRequest",
-      "typeVersion": 1,
-      "position": [2100, 120],
-      "parameters": {
-        "method": "POST",
-        "url": "__LANDBRIGHT_API__/api/v1/groups/{{ $json.groupId }}/members",
+        "method": "PUT",
+        "url": "__LANDBRIGHT_API__/api/v1/people/{{ $('Read the person').first().json.id }}/birthright-groups",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "options": {
           "splitArray": false
         },
         "bodyType": "json",
-        "body": "{{ JSON.stringify({ identityId: $json.identityId }) }}"
-      },
-      "credentials": {
-        "oAuth2Api": {
-          "id": "__CRED_LANDBRIGHT__",
-          "name": "Landbright API"
-        }
-      },
-      "onError": "continue"
+        "body": "{{ JSON.stringify({ groups: $json.groups }) }}"
+      }
     },
     {
-      "id": "once",
-      "name": "Once per person",
-      "type": "core.set",
+      "id": "isJoiner",
+      "name": "A joiner?",
+      "type": "core.if",
       "typeVersion": 1,
-      "position": [2400, 120],
-      "executeOnce": true,
+      "position": [1800, 120],
       "parameters": {
-        "mode": "manual",
-        "includeOtherFields": false,
-        "fields": {
-          "values": [
+        "conditions": {
+          "condition": [
             {
-              "name": "personId",
-              "type": "string",
-              "value": "{{ $('Read the person').first().json.id }}"
+              "left": "{{ $('Read the event').first().json.joiner ? 'yes' : 'no' }}",
+              "operator": "equals",
+              "right": "yes"
             }
           ]
-        }
+        },
+        "combinator": "and"
       }
     },
     {
@@ -185,10 +135,10 @@
       "name": "At the first sign-in",
       "type": "core.httpRequest",
       "typeVersion": 1,
-      "position": [2700, 120],
+      "position": [2100, 80],
       "parameters": {
         "method": "POST",
-        "url": "__LANDBRIGHT_API__/api/v1/people/{{ $json.personId }}/required-actions",
+        "url": "__LANDBRIGHT_API__/api/v1/people/{{ $json.person.id }}/required-actions",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "options": {
@@ -209,7 +159,7 @@
       "name": "The welcome email",
       "type": "core.code",
       "typeVersion": 1,
-      "position": [3000, 120],
+      "position": [2400, 80],
       "parameters": {
         "language": "javascript",
         "mode": "each",
@@ -221,7 +171,7 @@
       "name": "Send it",
       "type": "core.httpRequest",
       "typeVersion": 1,
-      "position": [3300, 120],
+      "position": [2700, 80],
       "parameters": {
         "method": "POST",
         "url": "__MAIL_API__",
@@ -268,41 +218,25 @@
       "targetIndex": 0
     },
     {
-      "id": "e_birthright_0_find_0_main",
+      "id": "e_birthright_0_set_0_main",
       "type": "main",
       "source": "birthright",
       "sourceIndex": 0,
-      "target": "find",
+      "target": "set",
       "targetIndex": 0
     },
     {
-      "id": "e_find_0_pair_0_main",
+      "id": "e_set_0_isJoiner_0_main",
       "type": "main",
-      "source": "find",
+      "source": "set",
       "sourceIndex": 0,
-      "target": "pair",
+      "target": "isJoiner",
       "targetIndex": 0
     },
     {
-      "id": "e_pair_0_add_0_main",
+      "id": "e_isJoiner_0_actions_0_main",
       "type": "main",
-      "source": "pair",
-      "sourceIndex": 0,
-      "target": "add",
-      "targetIndex": 0
-    },
-    {
-      "id": "e_add_0_once_0_main",
-      "type": "main",
-      "source": "add",
-      "sourceIndex": 0,
-      "target": "once",
-      "targetIndex": 0
-    },
-    {
-      "id": "e_once_0_actions_0_main",
-      "type": "main",
-      "source": "once",
+      "source": "isJoiner",
       "sourceIndex": 0,
       "target": "actions",
       "targetIndex": 0

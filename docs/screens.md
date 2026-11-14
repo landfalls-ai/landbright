@@ -251,6 +251,8 @@ terminal with a device code (`pnpm screenshots`, [agents.md](agents.md)).
 |---|---|
 | ![A pre-hire from HiBob](screenshots/90-person-from-hr.png) | **90** Noa, created by the Joiner flow from HiBob: a pre-hire who can sign in from her start date, *From HiBob · employee 3332…*, her invite still to come. |
 | ![People with a pre-hire](screenshots/91-people-pre-hire.png) | **91** The People list: Noa's status is *Pre-hire* and her sign-in *Not yet*. |
+| ![Start and last days](screenshots/92-settings-zones.png) | **92** Settings → *Start and last days*: the default zone and a zone per site; start dates begin and last days end there. |
+| ![A last day](screenshots/93-person-last-day.png) | **93** A contractor in Tel Aviv with a last day: *access ends after it*. |
 
 ## In the real Landflow
 

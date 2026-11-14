@@ -1,7 +1,7 @@
 {
-  "name": "Landbright · Joiner from HiBob",
-  "description": "On HiBob's employee.created and employee.joined: read the employee from HiBob and create or update them in Landbright, keyed by their HiBob id. Before their start date they are a pre-hire (no sign-in, no invite); on it they become active and get their invite. Birthright groups follow from the Onboard flow (identity.created). Needs the hris and landbright plugins.",
-  "tags": ["landbright", "lifecycle", "joiner", "hibob"],
+  "name": "Landbright · Joiners and movers from HiBob",
+  "description": "On HiBob's employee.created, employee.joined and employee.updated: read the employee from HiBob and create or update them in Landbright, keyed by their HiBob id. Before their start date they are a pre-hire (no sign-in, no invite); on it they become active and get their invite. A mover's new department, title, manager or site is updated, and the Onboard flow moves their birthright groups. A last day (termination date) is kept: Landbright deactivates them when it ends. Needs the hris and landbright plugins.",
+  "tags": ["landbright", "lifecycle", "joiner", "mover", "hibob"],
   "nodes": [
     {
       "id": "trigger",
@@ -10,11 +10,14 @@
       "typeVersion": 1,
       "position": [0, 200],
       "parameters": {
-        "events": ["employee.created", "employee.joined"],
+        "events": ["employee.created", "employee.joined", "employee.updated"],
         "fetchEmployee": true
       },
       "credentials": {
-        "hibobApi": { "id": "__CRED_HIBOB__", "name": "HiBob" }
+        "hibobApi": {
+          "id": "__CRED_HIBOB__",
+          "name": "HiBob"
+        }
       }
     },
     {
@@ -30,7 +33,10 @@
         "sendInvite": true
       },
       "credentials": {
-        "landbrightApi": { "id": "__CRED_LANDBRIGHT_PLUGIN__", "name": "Landbright (plugin)" }
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
       }
     }
   ],

@@ -23,16 +23,18 @@ import { closeGrantsOf } from '../access/grants';
 import { TenantDb, toDate, uniquely } from '../common/tenant-db';
 import { Mailer } from '../mail/mailer';
 import { displayNameOf, personInclude, type PersonRow, toPerson } from './mapping';
+import { addDays, todayIn, type Zones, zonesOf } from './zones';
 
 export const INVITE_TTL_HOURS = 72;
 
-/** Who invites: a person in the console, a service on the machine API, or Landbright itself (start dates). */
+/** Who acts: a person in the console, a service on the machine API, or Landbright itself (start and end dates). */
 type Inviter = Principal | ServicePrincipal | { kind: 'system'; label: string };
 const auditedInviter = (a: Inviter) => (a.kind === 'system' ? { actorId: null, actorLabel: a.label } : audited(a));
 const inviterName = (a: Inviter) => (a.kind === 'person' ? a.displayName : a.kind === 'service' ? a.name : a.label);
 const START_DATES: Inviter = { kind: 'system', label: 'Start dates' };
+const END_DATES: Inviter = { kind: 'system', label: 'End dates' };
 
-/** Today in UTC, as a date column holds it (start dates are in UTC until the site's time zone is known). */
+/** Today in UTC, as a date column holds it. */
 export const todayUtc = (now = new Date()) => now.toISOString().slice(0, 10);
 const dateOf = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 
@@ -165,7 +167,7 @@ export class PeopleService {
    * Deactivated people can't sign in, and lose every session and token at once: their oidc-provider sessions,
    * grants and refresh tokens are deleted. Agents they sponsor are suspended, since nobody is accountable for them.
    */
-  async deactivate(id: string, actor: Principal | ServicePrincipal, reason?: string): Promise<Person> {
+  async deactivate(id: string, actor: Inviter, reason?: string): Promise<Person> {
     if (actor.kind === 'person' && id === actor.id) throw new BadRequestException('You can’t deactivate yourself.');
     await this.db.tx(async (tx) => {
       const row = await this.find(tx, id);
@@ -200,10 +202,10 @@ export class PeopleService {
         tx,
         this.db.tenantId,
         [id, ...agents.map((a) => a.identityId)],
-        audited(actor),
+        auditedInviter(actor),
       );
       await appendAudit(tx, this.db.tenantId, {
-        ...audited(actor),
+        ...auditedInviter(actor),
         action: 'identity.deactivated',
         targetType: 'identity',
         targetId: id,
@@ -260,10 +262,11 @@ export class PeopleService {
    */
   async upsertFromSource(input: Worker, actor: ServicePrincipal): Promise<UpsertWorkerResult> {
     const tenantId = this.db.tenantId;
-    const today = todayUtc();
+    const now = new Date();
     const values = JSON.parse(JSON.stringify(input)) as Prisma.InputJsonObject;
     const done = await uniquely(
       this.db.tx(async (tx) => {
+        const zones = await this.zones(tx);
         const link = await tx.sourceLink.findUnique({
           where: { tenantId_source_sourceId: { tenantId, source: input.source, sourceId: input.sourceId } },
         });
@@ -281,7 +284,7 @@ export class PeopleService {
         const existingId = link?.identityId ?? byEmail?.id;
 
         if (!existingId) {
-          const status = input.startDate && input.startDate > today ? 'pre_hire' : 'active';
+          const status = input.startDate && input.startDate > todayIn(zones, input.site, now) ? 'pre_hire' : 'active';
           const row = await tx.identity.create({
             data: {
               tenantId,
@@ -321,7 +324,9 @@ export class PeopleService {
               ...(input.startDate && { startDate: input.startDate }),
             },
           });
-          return { id: row.id, created: true, linked: false, changed: [], invite: status === 'active' };
+          // Someone whose last day has already ended (HR told us late) gets no invite: the worker deactivates them.
+          const ended = Boolean(input.endDate && input.endDate < todayIn(zones, input.site, now));
+          return { id: row.id, created: true, linked: false, changed: [], invite: status === 'active' && !ended };
         }
 
         const row = await this.find(tx, existingId);
@@ -368,7 +373,8 @@ export class PeopleService {
         };
         const changed = (Object.keys(next) as Array<keyof typeof next>).filter((k) => next[k] !== before[k]);
         if (next.managerId === row.id) throw new BadRequestException('A person can’t be their own manager.');
-        const activate = row.status === 'pre_hire' && (!next.startDate || next.startDate <= today);
+        const activate =
+          row.status === 'pre_hire' && (!next.startDate || next.startDate <= todayIn(zones, next.site, now));
         if (changed.length || activate) {
           const profile = {
             givenName: next.givenName,
@@ -407,7 +413,8 @@ export class PeopleService {
             data: { startDate: next.startDate, source: input.source },
           });
         const hasPassword = row.credentials.some((c) => c.kind === 'password');
-        return { id: row.id, created: false, linked: !link, changed, invite: activate && !hasPassword };
+        const ended = Boolean(next.endDate && next.endDate < todayIn(zones, next.site, now));
+        return { id: row.id, created: false, linked: !link, changed, invite: activate && !hasPassword && !ended };
       }),
       'Someone else in the directory has that email.',
     );
@@ -416,16 +423,24 @@ export class PeopleService {
   }
 
   /**
-   * Pre-hires whose start date has come (UTC) become active, and get their invite unless they have a password or
-   * their HR record asked for none. Run from the event worker's loop. Answers how many.
+   * Pre-hires whose start date has begun in their zone become active, and get their invite unless they have a password
+   * or their HR record asked for none. Run from the event worker's loop. Answers how many were invited.
    */
   async activateStarters(now = new Date()): Promise<number> {
     const due = await this.db.tx(async (tx) => {
-      const rows = await tx.identity.findMany({
-        where: { kind: 'person', status: 'pre_hire', person: { startDate: { lte: new Date(todayUtc(now)) } } },
+      const zones = await this.zones(tx);
+      // No zone is more than a day ahead of UTC: anyone starting after tomorrow (UTC) hasn't started anywhere.
+      const candidates = await tx.identity.findMany({
+        where: {
+          kind: 'person',
+          status: 'pre_hire',
+          person: { startDate: { lte: new Date(addDays(todayUtc(now), 1)) } },
+        },
         include: { person: true, sources: true, credentials: { where: { kind: 'password' }, select: { id: true } } },
-        take: 100,
+        orderBy: { person: { startDate: 'asc' } },
+        take: 500,
       });
+      const rows = candidates.filter((r) => dateOf(r.person?.startDate)! <= todayIn(zones, r.person?.site, now));
       for (const r of rows) {
         await tx.identity.update({ where: { id: r.id }, data: { status: 'active' } });
         await appendAudit(tx, this.db.tenantId, {
@@ -443,6 +458,68 @@ export class PeopleService {
     });
     for (const id of due) await this.tryInvite(id, START_DATES);
     return due.length;
+  }
+
+  /**
+   * People whose last day has ended in their zone are deactivated (actor *End dates*): everything a console
+   * deactivation does. Pre-hires too (an offer withdrawn). The last administrator isn't, and is logged once.
+   * Run from the event worker's loop. Answers how many.
+   */
+  async deactivateLeavers(now = new Date()): Promise<number> {
+    const due = await this.db.tx(async (tx) => {
+      const zones = await this.zones(tx);
+      // Local today is after the end date only where the end date is at most today in UTC (no zone is a day ahead).
+      const candidates = await tx.identity.findMany({
+        where: {
+          kind: 'person',
+          status: { in: ['active', 'pre_hire', 'suspended'] },
+          person: { endDate: { lte: new Date(todayUtc(now)) } },
+        },
+        select: { id: true, person: { select: { endDate: true, site: true } } },
+        orderBy: { person: { endDate: 'asc' } },
+        take: 200,
+      });
+      return candidates
+        .map((r) => ({ id: r.id, endDate: dateOf(r.person?.endDate)! }))
+        .filter((r, i) => r.endDate < todayIn(zones, candidates[i]!.person?.site, now))
+        .filter((r) => !this.keptLeavers.has(r.id));
+    });
+    let count = 0;
+    for (const { id, endDate } of due) {
+      try {
+        await this.deactivate(id, END_DATES, `Their last day (${endDate}) ended`);
+        count += 1;
+      } catch (error) {
+        // The last administrator: someone must make another administrator first. Said once, not every pass.
+        this.keptLeavers.add(id);
+        this.logger.warn(`end date: ${id} not deactivated: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return count;
+  }
+
+  /** Leavers the worker couldn't deactivate (the last administrator): not tried again until a restart. */
+  private readonly keptLeavers = new Set<string>();
+
+  /** The person an HR record is linked to (`hibob` and the employee id). */
+  async getBySource(source: string, sourceId: string): Promise<Person> {
+    return this.db.tx(async (tx) => {
+      const link = await tx.sourceLink.findUnique({
+        where: { tenantId_source_sourceId: { tenantId: this.db.tenantId, source, sourceId } },
+        select: { identityId: true },
+      });
+      if (!link) throw new NotFoundException(`No one in Landbright is linked to ${source} record ${sourceId}.`);
+      return (await this.withManagers(tx, [await this.find(tx, link.identityId)]))[0]!;
+    });
+  }
+
+  private async zones(tx: Prisma.TransactionClient): Promise<Zones> {
+    return zonesOf(
+      await tx.tenant.findUniqueOrThrow({
+        where: { id: this.db.tenantId },
+        select: { timeZone: true, siteTimeZones: true },
+      }),
+    );
   }
 
   private async tryInvite(id: string, actor: Inviter): Promise<void> {

@@ -82,6 +82,10 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
       await this.people
         .activateStarters()
         .catch((e) => this.logger.warn(`start dates: ${e instanceof Error ? e.message : String(e)}`));
+      // End dates: people whose last day ended are deactivated, so provisioning and logout tokens follow at once.
+      await this.people
+        .deactivateLeavers()
+        .catch((e) => this.logger.warn(`end dates: ${e instanceof Error ? e.message : String(e)}`));
       // Provisioning first: a deactivation reaches the applications before anything else is sent.
       await this.scim
         .tick()

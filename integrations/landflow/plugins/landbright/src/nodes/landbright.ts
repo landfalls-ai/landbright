@@ -6,7 +6,14 @@ import {
   type JsonObject,
   type NodeItem,
 } from '@landflow/sdk';
-import { accessToken, call, DEFAULT_SCOPES, type ApiContext, type LandbrightCredentials } from '../client';
+import {
+  accessToken,
+  call,
+  DEFAULT_SCOPES,
+  LandbrightError,
+  type ApiContext,
+  type LandbrightCredentials,
+} from '../client';
 
 export const ICON = 'file:landbright.svg';
 export const COLOR = '#C2410C';
@@ -56,7 +63,8 @@ export const landbrightApi = defineCredentialType<LandbrightCredentials>({
       displayName: 'Scopes',
       type: 'string',
       default: DEFAULT_SCOPES,
-      description: 'Machine API scopes to ask for, space-separated (the application must have them)',
+      description:
+        'Machine API scopes to ask for, space-separated (the application must have them); the Landbright Trigger needs events:manage too',
     },
   ],
   async test(data, ctx) {
@@ -109,6 +117,9 @@ export function upsertBody(worker: JsonObject, sendInvite: boolean, itemIndex = 
   return body;
 }
 
+/** Returned for an item that outputs nothing (When Not Found: Output Nothing). */
+const SKIP: JsonObject = Object.freeze({}) as JsonObject;
+
 /** Per item, with pairedItem; a failure stops the node unless it continues on fail. */
 async function mapItems(
   ctx: IExecuteContext,
@@ -118,7 +129,8 @@ async function mapItems(
   const items = ctx.getInputData();
   for (let i = 0; i < items.length; i++) {
     try {
-      out.push({ json: await fn(i, items[i]), pairedItem: { item: i } });
+      const json = await fn(i, items[i]);
+      if (json !== SKIP) out.push({ json, pairedItem: { item: i } });
     } catch (error) {
       const e = error as NodeOperationError;
       const failure =
@@ -142,6 +154,48 @@ function required(ctx: IExecuteContext, name: string, label: string, i: number):
   const value = String(ctx.getNodeParameter<unknown>(name, i, '') ?? '').trim();
   if (!value) throw new NodeOperationError(`${label} is required`, { itemIndex: i });
   return value;
+}
+
+/** The person: by their Landbright id, or by the HR record of the input worker (`source` and `sourceId`). */
+async function findPerson(
+  ctx: IExecuteContext,
+  api: ApiContext,
+  credentials: LandbrightCredentials,
+  item: NodeItem,
+  i: number,
+): Promise<string | undefined> {
+  if (ctx.getNodeParameter<string>('findBy', i, 'id') !== 'source') return personId(ctx, i);
+  const source = String(item.json.source ?? '').trim();
+  const sourceId = String(item.json.sourceId ?? '').trim();
+  if (!source || !sourceId)
+    throw new NodeOperationError('The input item has no source and sourceId', {
+      itemIndex: i,
+      description: 'Find By "HR Record" reads the worker of a HiBob Trigger or HiBob node item.',
+    });
+  try {
+    const person = await call(
+      api,
+      credentials,
+      'GET',
+      `/people/by-source/${encodeURIComponent(source)}/${encodeURIComponent(sourceId)}`,
+    );
+    return String(person.id);
+  } catch (error) {
+    if (error instanceof LandbrightError && error.status === 404) {
+      if (ctx.getNodeParameter<string>('notFound', i, 'error') === 'skip') return undefined;
+      throw new NodeOperationError(`No one in Landbright is linked to ${source} record ${sourceId}`, {
+        itemIndex: i,
+        description: 'They were never created from HR, or were created before the record was linked.',
+      });
+    }
+    throw error;
+  }
+}
+
+/** Group names from a list parameter: an array, or text with one name per line or comma-separated. */
+export function namesOf(value: unknown): string[] {
+  const list = Array.isArray(value) ? value.map(String) : String(value ?? '').split(/[\n,]/);
+  return [...new Set(list.map((n) => n.trim()).filter(Boolean))];
 }
 
 function personId(ctx: IExecuteContext, i: number): string {
@@ -182,7 +236,18 @@ export const Landbright = defineNode({
     icon: ICON,
     color: COLOR,
     subtitle: '{{operation}}: {{resource}}',
-    keywords: ['landbright', 'identity', 'idp', 'person', 'group', 'joiner', 'leaver', 'deactivate'],
+    keywords: [
+      'landbright',
+      'identity',
+      'idp',
+      'person',
+      'group',
+      'joiner',
+      'mover',
+      'leaver',
+      'deactivate',
+      'birthright',
+    ],
     usableAsTool: true,
     idempotent: false,
     inputs: [{ type: 'main' }],
@@ -226,6 +291,12 @@ export const Landbright = defineNode({
             value: 'deactivate',
             description: 'Sign them out everywhere and end their grants and agents',
             action: 'Deactivate a person',
+          },
+          {
+            name: 'Set Birthright Groups',
+            value: 'setBirthright',
+            description: "Their HR memberships become exactly these groups (a mover's department changed); others stay",
+            action: "Set a person's birthright groups",
           },
         ],
       },
@@ -294,13 +365,54 @@ export const Landbright = defineNode({
         description: 'Whether a new person gets the invite email when they become active (now, or on their start date)',
       },
       {
+        name: 'findBy',
+        displayName: 'Find By',
+        type: 'options',
+        default: 'id',
+        displayOptions: show('person', ['get', 'deactivate', 'setBirthright']),
+        options: [
+          { name: 'Person ID', value: 'id' },
+          {
+            name: 'HR Record',
+            value: 'source',
+            description: "The input worker's source and sourceId (a HiBob Trigger or HiBob node item)",
+          },
+        ],
+      },
+      {
+        name: 'notFound',
+        displayName: 'When Not Found',
+        type: 'options',
+        default: 'error',
+        displayOptions: {
+          show: { resource: ['person'], operation: ['get', 'deactivate', 'setBirthright'], findBy: ['source'] },
+        },
+        options: [
+          { name: 'Fail', value: 'error' },
+          { name: 'Output Nothing', value: 'skip', description: 'Nobody in Landbright has that record: skip the item' },
+        ],
+      },
+      {
         name: 'personId',
         displayName: 'Person ID',
         type: 'string',
         required: true,
         default: '',
-        displayOptions: { show: { operation: ['get', 'deactivate', 'addMember', 'removeMember'] } },
+        displayOptions: {
+          show: { operation: ['get', 'deactivate', 'setBirthright', 'addMember', 'removeMember'] },
+          hide: { findBy: ['source'] },
+        },
         description: 'The Landbright id of the person (person.id from Create or Update)',
+      },
+      {
+        name: 'groups',
+        displayName: 'Groups',
+        type: 'string',
+        typeOptions: { rows: 3 },
+        default: '',
+        displayOptions: show('person', ['setBirthright']),
+        description:
+          'Group names, one per line or comma-separated (or an expression giving a list). Names with no group are reported as missing',
       },
       {
         name: 'reason',
@@ -356,10 +468,17 @@ export const Landbright = defineNode({
             );
           }
           case 'get':
-            return call(api, credentials, 'GET', `/people/${personId(ctx, i)}`);
-          case 'deactivate': {
+          case 'deactivate':
+          case 'setBirthright': {
+            const id = await findPerson(ctx, api, credentials, item, i);
+            if (!id) return SKIP;
+            if (operation === 'get') return call(api, credentials, 'GET', `/people/${id}`);
+            if (operation === 'setBirthright')
+              return call(api, credentials, 'PUT', `/people/${id}/birthright-groups`, {
+                groups: namesOf(ctx.getNodeParameter<unknown>('groups', i, '')),
+              });
             const reason = String(ctx.getNodeParameter<unknown>('reason', i, '') ?? '').trim();
-            return call(api, credentials, 'POST', `/people/${personId(ctx, i)}/deactivate`, reason ? { reason } : {});
+            return call(api, credentials, 'POST', `/people/${id}/deactivate`, reason ? { reason } : {});
           }
         }
       }
