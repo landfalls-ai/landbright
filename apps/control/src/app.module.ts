@@ -29,6 +29,9 @@ import { HealthController } from './health/health.controller';
 import { HealthService } from './health/health.service';
 import { Mailer } from './mail/mailer';
 import { MachineController } from './machine/machine.controller';
+import { ProvisioningController } from './provisioning/provisioning.controller';
+import { ProvisioningService } from './provisioning/provisioning.service';
+import { ScimSync } from './provisioning/scim-sync';
 import { ServiceTokenMiddleware } from './machine/service-token.middleware';
 import { SettingsController } from './settings/settings.controller';
 
@@ -51,6 +54,7 @@ import { SettingsController } from './settings/settings.controller';
     BundlesController,
     AccessController,
     EventsController,
+    ProvisioningController,
     MachineController,
   ],
   providers: [
@@ -70,6 +74,8 @@ import { SettingsController } from './settings/settings.controller';
     AccessSweeper,
     EventsService,
     EventWorker,
+    ProvisioningService,
+    ScimSync,
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
   ],

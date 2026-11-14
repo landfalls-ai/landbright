@@ -23,6 +23,8 @@ access engine; Landfall signs in with it.
   sign-in an application needs (`acr`).
 - [access.md](access.md): just-in-time access: bundles, policies, requests, decisions, grants and their targets.
 - [events.md](events.md): every audit event out to Landflow, signed with Landbright's key; waking a waiting flow.
+- [provisioning.md](provisioning.md): SCIM to Landflow, Landfall and Clickland: who is pushed, deactivation within
+  seconds, groups and just-in-time access, retries and reconciliation.
 - [agents.md](agents.md): agents' own applications (`private_key_jwt`), token exchange with `act`, CIBA through
   Landflow, the device grant, PAR and DPoP.
 - [landflow-flows.md](landflow-flows.md): the Landflow flows that run the approval conversation, provisioning and the
@@ -39,7 +41,7 @@ access engine; Landfall signs in with it.
 |---|---|---|---|
 | Services, console shell, local stack, health, tracing | [development.md](development.md), [architecture.md](architecture.md) | [001-foundations](../specs/001-foundations/spec.md) | 0 ✓ |
 | People, agents, groups, applications, audit, OIDC sign-in | [sign-in.md](sign-in.md), [directory.md](directory.md) | [002-identity-core](../specs/002-identity-core/spec.md) | 1 (first slice ✓) |
-| SCIM provisioning to Landflow and Landfall | | | 2 |
+| SCIM provisioning to Landflow, Landfall and Clickland | [provisioning.md](provisioning.md) | [006-provisioning-out](../specs/006-provisioning-out/spec.md) | 2 (first slice ✓) |
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | | | 3 |
 | Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (design; first slice built by 004) | 3–4 |
 | Just-in-time access, events out, the machine API, Landflow flows (from the Keycloak and open-source JIT studies) | [access.md](access.md), [events.md](events.md), [landflow-flows.md](landflow-flows.md) | [004-access-and-events](../specs/004-access-and-events/spec.md) | 4 (first slice ✓) |

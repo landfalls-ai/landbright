@@ -64,6 +64,20 @@ export const EVENT_TYPES = [
   'grant.revoke_overdue',
   'tenant.sign_in_changed',
   'signing_key.rotated',
+  'provisioning.target_created',
+  'provisioning.target_updated',
+  'provisioning.target_deleted',
+  'provisioning.target_token_replaced',
+  'provisioning.target_sync_requested',
+  'provisioning.user_created',
+  'provisioning.user_linked',
+  'provisioning.user_updated',
+  'provisioning.user_deactivated',
+  'provisioning.group_created',
+  'provisioning.group_linked',
+  'provisioning.group_updated',
+  'provisioning.group_deleted',
+  'provisioning.push_failed',
 ];
 
 /** Whether an action matches a subscription's patterns: exact, a prefix ending in `*` (`grant.*`), or `*`. */

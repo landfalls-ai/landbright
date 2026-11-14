@@ -75,3 +75,6 @@ They show in the console's Events with the application as owner (`ownerClientId`
 - `grant.*`: activated, expiring, extended, expired, revoked, target_provisioned, target_failed, target_revoked,
   target_revoke_failed, target_verified, target_drift, revoke_overdue
 - `tenant.sign_in_changed`, `signing_key.rotated`
+- `provisioning.*` ([provisioning.md](provisioning.md#in-the-ledger)): user_created, user_linked, user_updated,
+  user_deactivated, group_created, group_linked, group_updated, group_deleted, push_failed, and target_created,
+  target_updated, target_deleted, target_token_replaced, target_sync_requested

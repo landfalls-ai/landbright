@@ -17,7 +17,8 @@ Landbright decides and remembers; Landflow acts.
 - **Signed webhooks** tell Landflow what changed in Landbright (`request.created`, `grant.expiring`,
   `identity.deactivated`, …) through the Landbright trigger (wave 3).
 - **Sign-in**: Landflow and Landfall are OIDC relying parties of Landbright, with group names in the `roles` claim.
-  This is the only edge built today (wave 1); SCIM pushes to both follow in wave 2.
+- **Provisioning** (wave 2): Landbright pushes people and groups over SCIM to Landflow, Landfall and Clickland, so
+  deactivating someone signs them out there within seconds ([provisioning.md](provisioning.md)).
 - **Agents** get Landbright identities with an accountable sponsor; in wave 5 a run started by a person gets a token
   whose subject is the person and whose `act` claim names the agent.
 - **Landfall incidents** (sev1, sev2) start a Landflow flow that grants the responders a pre-approved bundle until the
@@ -60,5 +61,5 @@ back channel. `LANDFLOW_OIDC_DEFAULT_ROLE=none` makes Landflow refuse anyone in 
 
 What the live check showed (wave 1): the administrator arrives as a Landflow admin and Tal as a member, both marked as
 single sign-on users; once Tal is deactivated in Landbright, Landbright refuses the password. A Landflow session that
-already exists stays open until it ends: Landflow hears about deactivation only when SCIM or the webhooks arrive
-(waves 2 and 3).
+already exists stayed open until it ended. Since wave 2 it doesn't: with the throwaway Landflow as a provisioning target
+([provisioning.md](provisioning.md)), Tal's Landflow session ended 1.3 seconds after the deactivation.

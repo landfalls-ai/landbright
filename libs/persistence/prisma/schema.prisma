@@ -260,6 +260,7 @@ model OidcClient {
   updatedAt               DateTime @updatedAt @map("updated_at")
 
   agent Identity? @relation("AgentApplication", fields: [agentId], references: [id], onDelete: Cascade)
+  scimTargets ScimTarget[]
 
   @@index([tenantId])
   @@map("oidc_client")
@@ -542,4 +543,80 @@ model EventDelivery {
   @@unique([subscriptionId, auditEventId])
   @@index([tenantId, status, nextAttemptAt])
   @@map("event_delivery")
+}
+
+// ── Provisioning out (spec 006): Landbright as the SCIM 2.0 client of Landflow, Landfall and Clickland ────────────
+
+/// An application's SCIM server that Landbright keeps in step: the people in the assigned groups, and (groups mode)
+/// the groups themselves. Changes come from the audit log, read from `cursor`.
+model ScimTarget {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  name             String
+  /// The SCIM base, e.g. http://127.0.0.1:57300/scim/v2 (Users and Groups are under it).
+  baseUrl          String    @map("base_url")
+  /// The bearer token, sealed with LANDBRIGHT_SECRET_KEY. Never returned.
+  tokenSealed      String    @map("token_sealed")
+  /// groups: assigned groups are pushed as SCIM Groups with members. user_attribute: each person's assigned groups
+  /// are sent as their `groups` (Landfall, which chooses a role from them and stores no groups).
+  groupsMode       String    @default("groups") @map("groups_mode")
+  /// The Landbright groups assigned: their active members are pushed.
+  groupIds         String[]  @map("group_ids") @db.Uuid
+  /// The OIDC application this server belongs to, if any.
+  clientId         String?   @map("client_id") @db.Uuid
+  disabled         Boolean   @default(false)
+  /// The last audit event read.
+  cursor           BigInt    @default(0)
+  /// When everything was last compared with the application; null: due now.
+  lastReconciledAt DateTime? @map("last_reconciled_at")
+  lastSuccessAt    DateTime? @map("last_success_at")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  client OidcClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  links  ScimLink[]
+  jobs   ScimJob[]
+
+  @@index([tenantId])
+  @@map("scim_target")
+}
+
+/// A person or group as the application knows it: its id there and what Landbright last pushed.
+model ScimLink {
+  tenantId String   @map("tenant_id") @db.Uuid
+  targetId String   @map("target_id") @db.Uuid
+  /// user or group
+  kind     String
+  localId  String   @map("local_id") @db.Uuid
+  remoteId String   @map("remote_id")
+  /// A user: { userName, displayName, active, groups? }. A group: { displayName, members: remote ids }.
+  state    Json
+  syncedAt DateTime @default(now()) @map("synced_at")
+
+  target ScimTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([targetId, kind, localId])
+  @@index([tenantId])
+  @@map("scim_link")
+}
+
+/// A person or group to push: one row however many changes are waiting, deleted once pushed.
+model ScimJob {
+  tenantId      String   @map("tenant_id") @db.Uuid
+  targetId      String   @map("target_id") @db.Uuid
+  kind          String
+  localId       String   @map("local_id") @db.Uuid
+  /// Reconciliation: read the application's copy before deciding.
+  verify        Boolean  @default(false)
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  lastError     String?  @map("last_error")
+  queuedAt      DateTime @default(now()) @map("queued_at")
+
+  target ScimTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([targetId, kind, localId])
+  @@index([tenantId, nextAttemptAt])
+  @@map("scim_job")
 }

@@ -118,6 +118,19 @@ An `Application` says how it signs in (`tokenEndpointAuthMethod`), and an agent'
 | `GET /api/events/subscriptions/:id/deliveries?status=` | The last 100: status, attempts, last HTTP status and error, the receiver's answer. |
 | `POST /api/events/deliveries/:id/resend` | Sends it again. |
 
+### Provisioning (administrators, [provisioning.md](../provisioning.md))
+
+| Route | What |
+|---|---|
+| `GET /api/provisioning/targets` | `{ items: ScimTarget[] }`: each with its groups, state (`in_sync`, `pushing`, `failing`, `disabled`), people active and inactive there, groups there, queued and failing jobs and the newest error. |
+| `POST /api/provisioning/targets` | `{ name, baseUrl, token, groupsMode? (groups\|user_attribute), groupIds?, applicationId?, disabled? }` → 201 `ScimTargetDetail`. The token is sealed and never returned. |
+| `GET /api/provisioning/targets/:id` | `ScimTargetDetail`: the target, everyone and every group pushed (`links`: id there, active, members), and what is queued (`jobs`: tries, next try, last error). |
+| `PATCH /api/provisioning/targets/:id` | Any of `name, baseUrl, groupsMode, groupIds, applicationId, disabled`; everything is compared again. |
+| `PUT /api/provisioning/targets/:id/token` | `{ token }`: replaces it; what was failing is tried at once. |
+| `POST /api/provisioning/targets/:id/sync` | Compare everything with the application now, and retry what is failing. |
+| `POST /api/provisioning/targets/:id/test` | `{ ok, status, detail, patch, filter }`: whether the server answered and took the token. |
+| `DELETE /api/provisioning/targets/:id` | 204. The application keeps what it has. |
+
 ### Machine API (`/api/v1`)
 
 For flows and services: `Authorization: Bearer <access token>` from the identity plane's token endpoint with

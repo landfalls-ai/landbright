@@ -6,6 +6,7 @@ import { type BrowserContext, expect, type Locator, type Page, test } from '@pla
 import { randomUUID } from 'node:crypto';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { Secret, TOTP } from 'otpauth';
+import { FakeScim } from '../test/fake-scim';
 import { LandflowLikeRp } from '../test/landflow-rp';
 import { MAILPIT, type Stack, startStack } from '../test/stack';
 
@@ -15,8 +16,9 @@ import { MAILPIT, type Stack, startStack } from '../test/stack';
  * authenticator, so the page's own script runs the ceremony) and signs in to a Landflow-shaped app with it; Noa sets
  * up an authenticator app; the console then shows what happened; Tom meets required actions, resets a forgotten
  * password, uses their account page and a recovery code, and is asked again by an app that needs a passkey; Lia
- * connects her release bot's key, and approves the bot on Landbright's CIBA page and with a device code. Each screen
- * is captured on the way.
+ * connects her release bot's key, and approves the bot on Landbright's CIBA page and with a device code; Landflow's
+ * SCIM server (a Landflow-shaped fake) is connected, and Maya's deactivation reaches it. Each screen is captured on the
+ * way.
  */
 const flags = (process.env.LANDBRIGHT_INTEGRATION ?? '').split(',');
 test.skip(!flags.includes('browser') && !flags.includes('all'), 'LANDBRIGHT_INTEGRATION=browser runs these');
@@ -741,6 +743,45 @@ test('Lia: her release bot’s key, a CIBA request she approves, and a device co
   expect(tokens.access_token).toBeTruthy();
   expect(agent.id).toBeTruthy();
   await context.close();
+});
+
+test('connects a SCIM server and keeps it in step', async () => {
+  test.setTimeout(90_000);
+  const scim = await new FakeScim('landflow').start();
+  try {
+    await page.goto(`${stack.console}/provisioning`);
+    await expect(page.getByText('No provisioning targets')).toBeVisible();
+    await page.getByRole('button', { name: 'Add target' }).first().click();
+    await page.getByRole('textbox', { name: /^Name/ }).fill('Landflow');
+    await page.getByRole('textbox', { name: /^SCIM base URL/ }).fill(scim.url);
+    await page.getByLabel(/^Bearer token/).fill(scim.token);
+    await page.getByRole('dialog').getByText('Landflow Editors', { exact: true }).click();
+    await page.getByRole('dialog').getByText('Data Team', { exact: true }).click();
+    await shot(page, '86-provisioning-add', { mask: [page.getByLabel(/^Bearer token/)] });
+    await page.getByRole('button', { name: 'Add target' }).last().click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Landflow');
+    await expect(page.getByTestId(`pushed-${people.maya!.email}`)).toContainText('Active', { timeout: 20_000 });
+    await expect(page.getByText('In sync')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Test' }).click();
+    await expect(page.getByTestId('scim-test')).toContainText('took the token');
+    await shot(page, '87-provisioning-target', { fullPage: true });
+
+    // Maya leaves: deactivated in Landbright, inactive (signed out) in Landflow within seconds.
+    const maya = scim.byUserName(people.maya!.email)!;
+    scim.signIn(maya);
+    const mayaId = (await api<{ items: Array<{ id: string; email: string }> }>('/api/people')).items.find(
+      (p) => p.email === people.maya!.email,
+    )!.id;
+    await api(`/api/people/${mayaId}/deactivate`, 'POST');
+    await expect.poll(() => scim.sessions.has(maya.id), { timeout: 10_000 }).toBe(false);
+    await expect(page.getByTestId(`pushed-${people.maya!.email}`)).toContainText('Inactive', { timeout: 10_000 });
+    await page.goto(`${stack.console}/provisioning`);
+    await expect(page.getByTestId('target-Landflow')).toContainText('In sync', { timeout: 20_000 });
+    await shot(page, '88-provisioning');
+    await api(`/api/people/${mayaId}/reactivate`, 'POST');
+  } finally {
+    await scim.stop();
+  }
 });
 
 test('signs out at the identity plane', async () => {

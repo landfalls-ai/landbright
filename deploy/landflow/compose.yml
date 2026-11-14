@@ -7,6 +7,8 @@
 #
 # The env file holds LANDFLOW_OIDC_* (docs/suite.md, "Try it: Landflow signs in through Landbright"): the client id and
 # secret from registering Landflow in the console, and the role map from Landbright's group names.
+# SCIM needs nothing switched on (docs/provisioning.md): Landbright pushes to http://localhost:57300/scim/v2 with a
+# `scim` API key made by the owner; LANDFLOW_SCIM_GROUP_MAP turns the groups it pushes into roles and projects.
 # Host networking (OrbStack): Landbright's issuer is http://localhost:4402, the same URL for the browser and for
 # Landflow's back channel, which a bridged container could not reach. Landflow listens on 127.0.0.1:57300 only.
 
@@ -27,10 +29,14 @@ services:
       LANDFLOW_INTERNAL_URL: http://127.0.0.1:57300
       LANDFLOW_SCAN_ON_START: 'false'
       LANDFLOW_LOG_LEVEL: info
+      # Its image runs with NODE_ENV=production; these are development values (Landflow's own compose does the same).
+      LANDFLOW_PROFILE: development
       # A local owner too, so password sign-in still works next to single sign-on (Landflow's development values).
       LANDFLOW_OWNER_EMAIL: owner@landflow.test
       LANDFLOW_OWNER_PASSWORD: landflow-dev-only
       LANDFLOW_OWNER_NAME: Owner
+      # Landbright's groups, pushed over SCIM (spec 006), as Landflow roles and project memberships.
+      LANDFLOW_SCIM_GROUP_MAP: ${LANDFLOW_SCIM_GROUP_MAP:-Landflow Admins=role:admin,Landflow Editors=role:member,Data Team=project:Data:editor}
     volumes:
       - landflow-data:/data
     healthcheck:

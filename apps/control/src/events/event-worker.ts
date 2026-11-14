@@ -8,6 +8,7 @@ import { AccessSweeper } from '../access/access.sweeper';
 import { KeyRing } from '../common/key-ring';
 import { TenantDb } from '../common/tenant-db';
 import { VALKEY } from '../common/tokens';
+import { ScimSync } from '../provisioning/scim-sync';
 import { matches } from './events.service';
 
 const TICK_MS = 2_000;
@@ -29,8 +30,8 @@ export const backoffMs = (attempts: number) => Math.min(5_000 * 2 ** Math.max(0,
  * credential pointed at Landbright's JWKS, with no shared secret. `Idempotency-Key` is the event id, which Landflow
  * uses to drop a repeat.
  *
- * The same loop, under one Valkey lock per tenant (one replica at a time), runs the access sweeper and wakes Landflow
- * runs waiting on a request (their resume URL, called with nothing in it but a nudge: the flow re-reads).
+ * The same loop, under one Valkey lock per tenant (one replica at a time), runs the access sweeper, pushes to the
+ * provisioning targets (ScimSync, spec 006), and wakes Landflow runs waiting on a request (their resume URL, called with nothing in it but a nudge: the flow re-reads).
  */
 @Injectable()
 export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -44,6 +45,7 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly keys: KeyRing,
     private readonly access: AccessService,
     private readonly sweeper: AccessSweeper,
+    private readonly scim: ScimSync,
     @Inject(VALKEY) private readonly valkey: Redis,
     @Inject(TENANT) private readonly tenant: TenantRef,
   ) {}
@@ -72,6 +74,10 @@ export class EventWorker implements OnApplicationBootstrap, OnApplicationShutdow
       if (!mine) return;
       await this.valkey.pexpire(this.lockKey, LOCK_MS);
       await this.sweeper.sweep();
+      // Provisioning first: a deactivation reaches the applications before anything else is sent.
+      await this.scim
+        .tick()
+        .catch((e) => this.logger.warn(`provisioning: ${e instanceof Error ? e.message : String(e)}`));
       await this.match();
       await this.send();
       await this.wake();
