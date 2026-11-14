@@ -1,0 +1,262 @@
+# Screens
+
+Every screen of wave 1, captured in real Chromium by the Playwright story in
+[`e2e/browser/console.spec.ts`](../e2e/browser/console.spec.ts) against the built services and a throwaway test tenant.
+Run `pnpm screenshots` to capture them again (see [development.md](development.md)). Everyone in them is fictitious.
+
+## Signing in
+
+**The sign-in page (here for the console). A passkey needs no email.**
+
+![The sign-in page (here for the console). A passkey needs no email.](screenshots/01-sign-in.png)
+
+**After the password: an authenticator app, a passkey instead, or *Not now*.**
+
+![After the password: an authenticator app, a passkey instead, or *Not now*.](screenshots/02-second-step-offer.png)
+
+**The invite email (Mailpit).**
+
+![The invite email (Mailpit).](screenshots/13a-invite-email.png)
+
+**Setting a password from the invite.**
+
+![Setting a password from the invite.](screenshots/13-invite.png)
+
+**Password set.**
+
+![Password set.](screenshots/14-password-set.png)
+
+**The second step for someone with a passkey.**
+
+![The second step for someone with a passkey.](screenshots/17-second-step-passkey.png)
+
+**The second step for someone with an authenticator app.**
+
+![The second step for someone with an authenticator app.](screenshots/18-second-step-code.png)
+
+**Signing out at the identity plane.**
+
+![Signing out at the identity plane.](screenshots/25-sign-out.png)
+
+## Arriving in an app
+
+**A Landflow-shaped test app after the callback: password, then a new passkey (`amr` pwd, pop, mfa).**
+
+![A Landflow-shaped test app after the callback: password, then a new passkey (`amr` pwd, pop, mfa).](screenshots/15-landflow-after-passkey-added.png)
+
+**The passkey alone (`amr` pop, mfa).**
+
+![The passkey alone (`amr` pop, mfa).](screenshots/16-landflow-passkey-only.png)
+
+**Password and an authenticator code (`amr` pwd, otp, mfa).**
+
+![Password and an authenticator code (`amr` pwd, otp, mfa).](screenshots/19-landflow-after-code.png)
+
+## The console
+
+**Home.**
+
+![Home.](screenshots/03-console-home.png)
+
+**People.**
+
+![People.](screenshots/06-people.png)
+
+**Adding a person.**
+
+![Adding a person.](screenshots/05-add-person.png)
+
+**A person with a password and a passkey.**
+
+![A person with a password and a passkey.](screenshots/20-person.png)
+
+**Agents and their sponsors.**
+
+![Agents and their sponsors.](screenshots/07-agents.png)
+
+**Groups.**
+
+![Groups.](screenshots/08-groups.png)
+
+**Creating a group.**
+
+![Creating a group.](screenshots/04-new-group.png)
+
+**A group.**
+
+![A group.](screenshots/09-group.png)
+
+**Applications.**
+
+![Applications.](screenshots/12-applications.png)
+
+**Registering Landflow.**
+
+![Registering Landflow.](screenshots/10-register-application.png)
+
+**The client secret, shown once (covered in the picture).**
+
+![The client secret, shown once (covered in the picture).](screenshots/11-application-secret.png)
+
+**The audit log, chain intact.**
+
+![The audit log, chain intact.](screenshots/21-audit.png)
+
+**Settings: require a second step, the sign-in methods, and the signing keys (one signing, one verifying) with Rotate.**
+
+![Settings: require a second step, the sign-in methods, and the signing keys (one signing, one verifying) with Rotate.](screenshots/22-settings.png)
+
+**Health.**
+
+![Health.](screenshots/23-health.png)
+
+**A page of a later wave.**
+
+![A page of a later wave.](screenshots/24-upcoming-sources.png)
+
+**The dark theme.**
+
+![The dark theme.](screenshots/26-people-dark.png)
+
+## Just-in-time access
+
+Ido, who isn't an administrator, asks; the administrator approves and later revokes (`pnpm screenshots`).
+
+**Ido asks: the dialog shows who would decide.**
+
+![Request access, with the preview "Decided by Administrator".](screenshots/40-request-access.png)
+
+**Ido's request, waiting.**
+
+![The request page, waiting.](screenshots/41-request-waiting.png)
+
+**To decide.**
+
+![Requests, To decide, with Ido's request.](screenshots/42-to-decide.png)
+
+**Approving.**
+
+![The approve dialog with a comment.](screenshots/43-approve.png)
+
+**Approved: Landbright gave the group; the Landflow role waits for its flow.**
+
+![The request page after approval, with the grant's two targets.](screenshots/44-request-approved.png)
+
+**Grants.**
+
+![Grants: Ido holds Landflow Editors (JIT).](screenshots/45-grants.png)
+
+**A bundle and its policy.**
+
+![The bundle dialog.](screenshots/46-bundle.png)
+
+**The catalog.**
+
+![The catalog.](screenshots/47-catalog.png)
+
+**Events: a subscription and its deliveries, each answered with the run it started.**
+
+![Events with four delivered events.](screenshots/48-events.png)
+
+The same loop in the real Landflow is in [landflow-flows.md](landflow-flows.md#live-check-2026-11-14) (screens 50–57).
+
+## Your account and what sign-in asks
+
+Tom, a new person, meets the required actions the administrator set, resets a forgotten password, uses the account
+page and a recovery code, and is asked again by an application that needs a passkey (`pnpm screenshots`,
+[account.md](account.md)).
+
+**The administrator asks Tom to choose a new password and accept the terms.**
+
+![The "Ask Tom to…" dialog.](screenshots/70-ask-them-to.png)
+
+**At sign-in: a new password first.**
+
+![Choose a new password, during sign-in.](screenshots/71-required-new-password.png)
+
+**Then the terms.**
+
+![Before you continue: accept the terms.](screenshots/72-accept-terms.png)
+
+**Forgot your password.**
+
+![Forgot your password?](screenshots/73-forgot-password.png)
+
+**The link from the email.**
+
+![Choose a new password, from the reset link.](screenshots/74-reset-password.png)
+
+**The account page: password, second step, recovery codes, sessions.**
+
+![The account page.](screenshots/75-account.png)
+
+**Recovery codes, shown once.**
+
+![Ten recovery codes.](screenshots/76-recovery-codes.png)
+
+**A recovery code instead of the second step.**
+
+![The second step with "Use a recovery code" open.](screenshots/77-second-step-recovery.png)
+
+**An application that needs a passkey.**
+
+![Applications: Sign-in needs, A passkey.](screenshots/79-application-sign-in-needs.png)
+
+**Step-up: signed in with a code, asked again for a passkey.**
+
+![Sign in, "Landflow asks for a passkey."](screenshots/78-step-up.png)
+
+## Agents acting for a person
+
+Lia connects her release bot's key, approves the bot's CIBA request on Landbright's page, and connects it from a
+terminal with a device code (`pnpm screenshots`, [agents.md](agents.md)).
+
+**Connect the agent: paste its public keys.**
+
+![Connect Release bot.](screenshots/80-agent-connect.png)
+
+**Its own application: no secret.**
+
+![Release bot is connected.](screenshots/81-agent-connected.png)
+
+**On Applications, with an Agent badge.**
+
+![The agent's application.](screenshots/82-agent-application.png)
+
+**CIBA: the agent asks; Lia compares the code and approves.**
+
+![Release bot asks to act for you.](screenshots/83-ciba-decide.png)
+
+**The device grant: the code from the terminal.**
+
+![Connect a device: enter the code.](screenshots/84-device-code.png)
+
+**Then what it is, and that it will act for her.**
+
+![Connect Release bot?](screenshots/85-device-confirm.png)
+
+## In the real Landflow
+
+Landflow's own image (`landflow/host:dev`), a throwaway instance from [`deploy/landflow/compose.yml`](../deploy/landflow/compose.yml),
+signing in through the development Landbright ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
+Captured by hand in the wave 1 live check, not by `pnpm screenshots`.
+
+**Landflow's sign-in page with single sign-on configured.**
+
+![Landflow's sign-in page with a "Sign in with Landbright" button.](screenshots/30-real-landflow-sign-in.png)
+
+**Landbright's sign-in page, for Landflow.**
+
+![Landbright's sign-in page, "to continue to Landflow".](screenshots/31-real-landflow-landbright-page.png)
+
+**Tal, in the group Landflow Editors, arrives as a member.**
+
+![Landflow's home page, signed in as Tal Levi, Member.](screenshots/32-real-landflow-member.png)
+
+**The administrator, in Landflow Admins, arrives as an admin.**
+
+![Landflow's home page, signed in as Administrator, Admin.](screenshots/33-real-landflow-admin.png)
+
+**After Tal is deactivated in Landbright, the same password stops at Landbright's sign-in page.**
+
+![Landbright's sign-in page with the alert "That email and password don't match."](screenshots/34-real-landflow-deactivated.png)

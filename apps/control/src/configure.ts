@@ -1,18 +1,50 @@
-import type { INestApplication } from '@nestjs/common';
+import { ForbiddenException, type INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { serviceVersion } from '@landbright/platform';
+import { type Config, serviceVersion } from '@landbright/platform';
+import { CONFIG } from '@landbright/persistence';
+import cookieParser from 'cookie-parser';
+import type { NextFunction, Request, Response } from 'express';
 import { cleanupOpenApiDoc } from 'nestjs-zod';
+import { SessionMiddleware } from './auth/session.middleware';
+import { ServiceTokenMiddleware } from './machine/service-token.middleware';
 
-/** Routes under /api (liveness stays at /healthz), and the OpenAPI 3.1 document at /api/openapi.json. */
+const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Routes under /api (liveness stays at /healthz), the console session, and the OpenAPI 3.1 document at
+ * /api/openapi.json.
+ */
 export function configureControl(app: INestApplication): void {
+  const config = app.get<Config>(CONFIG);
+  const consoleOrigin = new URL(config.LANDBRIGHT_CONSOLE_URL).origin;
+  app.use(cookieParser());
+  // Cross-site request forgery: the session cookie is SameSite=Lax, but other local apps on 127.0.0.1 are the same
+  // site. A browser always sends Origin on a write, so a write from any page but the console's is refused.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (!SAFE.has(req.method) && origin && origin !== consoleOrigin)
+      return next(new ForbiddenException('Cross-origin writes are refused.'));
+    next();
+  });
+  // /api/v1 is the machine API: services with an access token, never a console session. Everything else is the
+  // console's, with the session cookie.
+  const sessions = app.get(SessionMiddleware);
+  const services = app.get(ServiceTokenMiddleware);
+  app.use((req: Request, res: Response, next: NextFunction) =>
+    req.path.startsWith('/api/v1/') ? void services.use(req, res, next) : void sessions.use(req, res, next),
+  );
   app.setGlobalPrefix('api', { exclude: ['healthz'] });
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
       .setTitle('Landbright control API')
-      .setDescription('The console API: directory, catalog, requests, grants. docs/reference/api.md describes it.')
+      .setDescription(
+        'The console API (sign-in, directory, applications, access, events, audit) and the machine API (/api/v1). docs/reference/api.md describes it.',
+      )
       .setVersion(serviceVersion())
       .setOpenAPIVersion('3.1.0')
+      .addCookieAuth('lb_session')
+      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'service')
       .build(),
   );
   SwaggerModule.setup('api/docs', app, cleanupOpenApiDoc(document), { jsonDocumentUrl: 'api/openapi.json' });

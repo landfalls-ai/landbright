@@ -1,0 +1,20 @@
+# A local Keycloak to study (spec 004): the reference identity provider we compare Landbright with.
+# Compose project `landbright-keycloak`. Dev mode, in-memory H2, development credentials only.
+#   docker compose -f deploy/keycloak/compose.yml up -d     # http://127.0.0.1:58180 (admin / keycloak-dev-only)
+#   docker compose -f deploy/keycloak/compose.yml down -v
+name: landbright-keycloak
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command:
+      [
+        'start-dev',
+        '--http-port=8080',
+        '--features=preview,workflows,kubernetes-service-accounts,dynamic-scopes,client-types',
+      ]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: keycloak-dev-only
+      KC_HEALTH_ENABLED: 'true'
+    ports:
+      - '127.0.0.1:58180:8080'

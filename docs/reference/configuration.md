@@ -12,22 +12,37 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_CONSOLE_PORT` | `4400` | console (Vite) |
 | `LANDBRIGHT_CONTROL_PORT` | `4401` | control; the console's `/api` proxy |
 | `LANDBRIGHT_IDP_PORT` | `4402` | idp |
-| `LANDBRIGHT_IDP_URL` | `http://127.0.0.1:4402` | control (health probe). Wave 1: the issuer URL. |
-| `LANDBRIGHT_DATABASE_URL` | `postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright` | control |
-| `LANDBRIGHT_VALKEY_URL` | `redis://127.0.0.1:57379` | control |
-| `LANDBRIGHT_OPENBAO_ADDR` | `http://127.0.0.1:57200` | control (health probe). Wave 1: signing keys. |
-| `LANDBRIGHT_OPENBAO_TOKEN` | `landbright-dev-only` | Wave 1: signing keys |
-| `LANDBRIGHT_MAILPIT_URL` | `http://127.0.0.1:57825` | control (health probe) |
-| `LANDBRIGHT_INTEGRATION` | unset | Tests: comma-separated suites against real services (`infra`, `all`) |
+| `LANDBRIGHT_IDP_URL` | `http://localhost:4402` | The identity plane's public URL. The issuer is `<this>/oidc`; invite links point here. Its host is the passkeys' relying-party id, so it must be a domain (`localhost` works over http): with an IP address, passkeys are switched off. |
+| `LANDBRIGHT_CONSOLE_URL` | `http://127.0.0.1:4400` | Where console sign-in returns (`/api/auth/callback`), the only origin allowed to write to control, and the console client's redirect (set when `pnpm db:setup` creates it). |
+| `LANDBRIGHT_DATABASE_URL` | `postgres://landbright_app:landbright-app-dev-only@127.0.0.1:57432/landbright` | idp, control. The app role, under row-level security. |
+| `LANDBRIGHT_DATABASE_ADMIN_URL` | `postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright` | Migrations and the bootstrap only (a superuser bypasses row-level security). |
+| `LANDBRIGHT_TENANT_SLUG` / `_NAME` | `local` / `Local` | The tenant this deployment serves. The services refuse to start until it exists (`pnpm db:setup`). |
+| `LANDBRIGHT_ID_TOKEN_TTL_SECONDS` | `3600` | How long an ID token lives. A signing-key rotation keeps the replaced key published at least this long after it stops signing. The end-to-end tests use 15 to rotate twice in one run. |
+| `LANDBRIGHT_TRUST_PROXY` | `false` | Behind a TLS-terminating proxy: trust its `X-Forwarded-*` headers (secure cookies, `https` URLs, the client address for lockout and audit). Only with a proxy in front; the conformance run sets it. |
+| `LANDBRIGHT_PKCE_OPTIONAL_CLIENTS` | empty | Client ids that may skip PKCE, comma-separated. Every other client needs PKCE. Only the conformance run sets it, for its own clients. |
+| `LANDBRIGHT_SECRET_KEY` | a development value | Seals signing keys; derives client secrets and the identity plane's cookie keys. 32+ characters. Changing it ends every session, changes every client secret, and replaces the signing key. |
+| `LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL` | `admin@landbright.test` | The first administrator, created by `pnpm db:setup` if missing. |
+| `LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD` | `landbright-dev-only` | Their password (12+ characters). Used only when creating them. |
+| `LANDBRIGHT_SMTP_URL` | `smtp://127.0.0.1:57025` | control: invite mail (Mailpit). |
+| `LANDBRIGHT_MAIL_FROM` | `Landbright <no-reply@landbright.test>` | control and idp: the From of invite, required-action and password-reset mail. |
+| `LANDBRIGHT_TERMS_URL` | empty | idp: the terms of use linked from the accept_terms required action. |
+| `LANDBRIGHT_VALKEY_URL` | `redis://127.0.0.1:57379` | idp (sign-in lockout), control (console sessions) |
+| `LANDBRIGHT_OPENBAO_ADDR` | `http://127.0.0.1:57200` | control (health probe) |
+| `LANDBRIGHT_OPENBAO_TOKEN` | `landbright-dev-only` | Not used yet (signing keys are in Postgres; docs/limitations.md) |
+| `LANDBRIGHT_MAILPIT_URL` | `http://127.0.0.1:57825` | control (health probe); the e2e test reads invites from it |
+| `LANDBRIGHT_WORKER` | on | control: `off` stops the background worker (access sweeper, event deliveries, wake-ups). One replica runs it at a time anyway, under a Valkey lock. |
+| `LANDBRIGHT_INTEGRATION` | unset | Tests: comma-separated suites against real services (`infra`, `db`, `e2e`, or `all`) |
+| `LANDBRIGHT_TEST_DB_HOST` | `127.0.0.1:57432` | Tests: where `landbright_test` is |
 
 ## OpenTelemetry
 
-Tracing is off unless one of the first two is set. The standard `OTEL_*` variables apply.
+Traces, metrics and logs are off unless one of these is set. The standard `OTEL_*` variables apply.
 
 | Variable | Effect |
 |---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Export spans over OTLP/HTTP, e.g. `http://127.0.0.1:4318`. |
-| `OTEL_TRACES_EXPORTER` | `console` prints spans to stdout. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Export traces, metrics and logs over OTLP/HTTP, e.g. Clickland's collector `http://127.0.0.1:24318`. |
+| `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER` | `otlp` (the default with an endpoint), `console` (stdout), or `none` to switch one signal off. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Milliseconds between metric exports (60000). |
 | `OTEL_SERVICE_NAME` | Overrides `landbright-idp` / `landbright-control`. |
 
 ## Infrastructure (`deploy/.env`)

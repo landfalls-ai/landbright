@@ -1,0 +1,26 @@
+{
+  "name": "@landbright/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "End to end: the built identity plane and control plane as real processes, driven over HTTP like a browser and a relying party, and in real Chromium (Playwright) with the built console.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:integration": "LANDBRIGHT_INTEGRATION=${LANDBRIGHT_INTEGRATION:-e2e} vitest run",
+    "test:browser": "LANDBRIGHT_INTEGRATION=${LANDBRIGHT_INTEGRATION:-browser} playwright test",
+    "screenshots": "LANDBRIGHT_SCREENSHOTS=1 LANDBRIGHT_INTEGRATION=browser playwright test",
+    "conformance": "node conformance/run.ts"
+  },
+  "devDependencies": {
+    "@landbright/console": "workspace:*",
+    "@landbright/contracts": "workspace:*",
+    "@landbright/control": "workspace:*",
+    "@landbright/idp": "workspace:*",
+    "@landbright/persistence": "workspace:*",
+    "@landbright/platform": "workspace:*",
+    "@playwright/test": "1.62.0",
+    "jose": "^6.2.17",
+    "otpauth": "^9.6.0",
+    "vitest": "^5.0.5"
+  }
+}

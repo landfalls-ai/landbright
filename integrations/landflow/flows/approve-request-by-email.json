@@ -1,0 +1,376 @@
+{
+  "name": "Landbright · Approve a request (email)",
+  "description": "On request.created from Landbright: email each approver the policy named a link to Landbright’s decision page, wait until Landbright wakes the run (or the deadline), re-read the request and tell the requester. The decision is never made here: Landbright decides, the flow only talks.",
+  "tags": ["landbright", "access"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Landbright event",
+      "type": "core.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "path": "landbright-requests",
+        "method": "POST",
+        "authentication": "jwtAuth",
+        "respond": "immediately"
+      },
+      "credentials": {
+        "jwtAuth": {
+          "id": "__CRED_JWT__",
+          "name": "Landbright events"
+        }
+      }
+    },
+    {
+      "id": "event",
+      "name": "Read the event",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "// The Webhook's JWT Auth checked this token against Landbright's JWKS: trust jwtPayload, not the body.\nconst e = $json.jwtPayload.event;\nreturn { type: e.type, requestId: e.target.id };"
+      }
+    },
+    {
+      "id": "created",
+      "name": "Request created?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.type }}",
+              "operator": "equals",
+              "right": "request.created"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "read",
+      "name": "Re-read the request",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 120],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/requests/{{ $json.requestId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "pending",
+      "name": "Still pending?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [1200, 120],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.status }}",
+              "operator": "equals",
+              "right": "pending"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "emails",
+      "name": "One email per approver",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [1500, 40],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "const r = $input.first().json;\nconst mins = r.durationMinutes;\nreturn r.waitingOn.filter((a) => a.email).map((a) => ({\n  requestId: r.id,\n  deadline: r.deadline,\n  to: a.email,\n  toName: a.displayName,\n  subject: `${r.requester.displayName} asks for ${r.bundle.name} (${r.ref})`,\n  text: [\n    `${r.requester.displayName} asks for ${r.bundle.name} for ${mins} minutes${r.subject.id !== r.requester.id ? ` for ${r.subject.displayName}` : ''}.`,\n    `Reason: ${r.reason ?? '(none)'}`,\n    '',\n    `Decide by ${new Date(r.deadline).toUTCString()}:`,\n    r.decisionUrl,\n    '',\n    'You sign in to Landbright to decide. This email only tells you; it can’t approve anything.',\n  ].join('\\n'),\n}));"
+      }
+    },
+    {
+      "id": "send",
+      "name": "Send the email",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1800, 40],
+      "parameters": {
+        "method": "POST",
+        "url": "__MAIL_API__",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ From: { Email: 'landflow@landflow.test', Name: 'Landflow' }, To: [{ Email: $json.to, Name: $json.toName }], Subject: $json.subject, Text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    },
+    {
+      "id": "once",
+      "name": "Once per request",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [2100, 40],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "fields": {
+          "values": [
+            {
+              "name": "requestId",
+              "type": "string",
+              "value": "{{ $('One email per approver').first().json.requestId }}"
+            },
+            {
+              "name": "deadline",
+              "type": "string",
+              "value": "{{ $('One email per approver').first().json.deadline }}"
+            }
+          ]
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "attach",
+      "name": "Ask Landbright to wake this run",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2400, 40],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/requests/{{ $('Once per request').first().json.requestId }}/waits",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ resumeUrl: $execution.resumeUrl }) }}",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "wait",
+      "name": "Wait for a decision",
+      "type": "core.wait",
+      "typeVersion": 2,
+      "position": [2700, 40],
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "limitWaitTime": true,
+        "limitType": "atSpecifiedTime",
+        "maxDateAndTime": "{{ new Date(new Date($('Once per request').first().json.deadline).getTime() + 120000).toISOString() }}"
+      }
+    },
+    {
+      "id": "reread",
+      "name": "Re-read it (the wake-up carries nothing)",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [3000, 40],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/requests/{{ $('Once per request').first().json.requestId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "decided",
+      "name": "Decided?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [3300, 40],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.status }}",
+              "operator": "notEquals",
+              "right": "pending"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "notice",
+      "name": "Tell the requester",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [3600, 0],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "const r = $json;\nconst who = r.votes.filter((v) => v.outcome === (r.status === 'approved' ? 'approve' : 'deny')).map((v) => v.decider.displayName).join(', ');\nconst what = { approved: `approved${who ? ` by ${who}` : ''}`, denied: `denied${who ? ` by ${who}` : ''}`, expired: 'not decided in time', cancelled: 'cancelled', superseded: 'replaced by a newer request' }[r.status] ?? r.status;\nconst until = r.grant ? ` You have it until ${new Date(r.grant.expiresAt).toUTCString()}.` : '';\nreturn { to: r.requester.email, toName: r.requester.displayName, subject: `${r.ref}: ${r.bundle.name} ${r.status}`, text: `Your request for ${r.bundle.name} was ${what}.${until}\\n\\n${r.decisionUrl}` };"
+      }
+    },
+    {
+      "id": "tell",
+      "name": "Send it",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [3900, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "__MAIL_API__",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ From: { Email: 'landflow@landflow.test', Name: 'Landflow' }, To: [{ Email: $json.to, Name: $json.toName }], Subject: $json.subject, Text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_event_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "event",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_event_0_created_0_main",
+      "type": "main",
+      "source": "event",
+      "sourceIndex": 0,
+      "target": "created",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_created_0_read_0_main",
+      "type": "main",
+      "source": "created",
+      "sourceIndex": 0,
+      "target": "read",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_read_0_pending_0_main",
+      "type": "main",
+      "source": "read",
+      "sourceIndex": 0,
+      "target": "pending",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_pending_0_emails_0_main",
+      "type": "main",
+      "source": "pending",
+      "sourceIndex": 0,
+      "target": "emails",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_emails_0_send_0_main",
+      "type": "main",
+      "source": "emails",
+      "sourceIndex": 0,
+      "target": "send",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_send_0_once_0_main",
+      "type": "main",
+      "source": "send",
+      "sourceIndex": 0,
+      "target": "once",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_once_0_attach_0_main",
+      "type": "main",
+      "source": "once",
+      "sourceIndex": 0,
+      "target": "attach",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_attach_0_wait_0_main",
+      "type": "main",
+      "source": "attach",
+      "sourceIndex": 0,
+      "target": "wait",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_wait_0_reread_0_main",
+      "type": "main",
+      "source": "wait",
+      "sourceIndex": 0,
+      "target": "reread",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_reread_0_decided_0_main",
+      "type": "main",
+      "source": "reread",
+      "sourceIndex": 0,
+      "target": "decided",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_decided_0_notice_0_main",
+      "type": "main",
+      "source": "decided",
+      "sourceIndex": 0,
+      "target": "notice",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_notice_0_tell_0_main",
+      "type": "main",
+      "source": "notice",
+      "sourceIndex": 0,
+      "target": "tell",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_decided_1_attach_0_main",
+      "type": "main",
+      "source": "decided",
+      "sourceIndex": 1,
+      "target": "attach",
+      "targetIndex": 0
+    }
+  ]
+}

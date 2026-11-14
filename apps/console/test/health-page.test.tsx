@@ -49,6 +49,6 @@ describe('Health page', () => {
   it('says how to start control when it does not answer', async () => {
     renderAt('/health', 'unreachable');
     expect(await screen.findByText('Can’t reach the control API')).toBeInTheDocument();
-    expect(screen.getByTestId('health-line')).toHaveTextContent('Control unreachable');
+    expect(screen.getByText('pnpm serve')).toBeInTheDocument();
   });
 });

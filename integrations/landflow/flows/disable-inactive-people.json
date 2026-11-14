@@ -1,0 +1,236 @@
+{
+  "name": "Landbright · Disable inactive people",
+  "description": "Keycloak’s ‘disable inactive users’ workflow, as a Landflow flow: every morning, find people who haven’t signed in for 90 days, warn their manager, wait 7 days, re-check, and deactivate those still inactive through Landbright’s machine API.",
+  "tags": ["landbright", "lifecycle"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Every morning",
+      "type": "core.schedule",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "unit": "rules",
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "since",
+      "name": "90 days ago",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "return { since: new Date(Date.now() - 90 * 86400000).toISOString(), graceDays: 7 };"
+      }
+    },
+    {
+      "id": "find",
+      "name": "Who hasn’t signed in",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/people?inactiveSince={{ $json.since }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "each",
+      "name": "One per person (not administrators)",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "const { items: people } = $input.first().json;\nreturn people.filter((p) => !p.admin && p.email).map((p) => ({ ...p,\n  to: p.manager?.email ?? p.email, toName: p.manager?.displayName ?? p.displayName,\n  subject: `${p.displayName} hasn’t signed in since ${p.lastSignInAt ? new Date(p.lastSignInAt).toDateString() : 'their account was made'}`,\n  text: `${p.displayName} (${p.email}) hasn’t used Landbright for 90 days. Unless they sign in within 7 days, Landbright deactivates them: sessions end, access is revoked, and agents they sponsor are suspended.` }));"
+      }
+    },
+    {
+      "id": "warn",
+      "name": "Warn their manager",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1200, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "__MAIL_API__",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ From: { Email: 'landflow@landflow.test', Name: 'Landflow' }, To: [{ Email: $json.to, Name: $json.toName }], Subject: $json.subject, Text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    },
+    {
+      "id": "wait",
+      "name": "Grace period",
+      "type": "core.wait",
+      "typeVersion": 2,
+      "position": [1500, 200],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 7,
+        "unit": "days"
+      }
+    },
+    {
+      "id": "again",
+      "name": "Re-check",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1800, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/people?inactiveSince={{ $('90 days ago').first().json.since }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "still",
+      "name": "Still inactive",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [2100, 200],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "splitArray": "people",
+        "fields": {
+          "values": [
+            {
+              "name": "people",
+              "type": "json",
+              "value": "{{ JSON.stringify($('One per person (not administrators)').all().map((i) => i.json).filter((p) => ($json.items ?? []).some((q) => q.id === p.id))) }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "off",
+      "name": "Deactivate",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2400, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/people/{{ $json.id }}/deactivate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ reason: `No sign-in since ${$json.lastSignInAt ?? $json.createdAt} (Landflow: Disable inactive people)` }) }}",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_since_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "since",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_since_0_find_0_main",
+      "type": "main",
+      "source": "since",
+      "sourceIndex": 0,
+      "target": "find",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_find_0_each_0_main",
+      "type": "main",
+      "source": "find",
+      "sourceIndex": 0,
+      "target": "each",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_each_0_warn_0_main",
+      "type": "main",
+      "source": "each",
+      "sourceIndex": 0,
+      "target": "warn",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_warn_0_wait_0_main",
+      "type": "main",
+      "source": "warn",
+      "sourceIndex": 0,
+      "target": "wait",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_wait_0_again_0_main",
+      "type": "main",
+      "source": "wait",
+      "sourceIndex": 0,
+      "target": "again",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_again_0_still_0_main",
+      "type": "main",
+      "source": "again",
+      "sourceIndex": 0,
+      "target": "still",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_still_0_off_0_main",
+      "type": "main",
+      "source": "still",
+      "sourceIndex": 0,
+      "target": "off",
+      "targetIndex": 0
+    }
+  ]
+}

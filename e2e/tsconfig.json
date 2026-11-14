@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "module": "esnext", "moduleResolution": "bundler", "noEmit": true },
+  "include": ["test", "browser", "conformance", "vitest.config.mts", "playwright.config.ts"]
+}

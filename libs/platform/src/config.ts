@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
@@ -11,14 +12,84 @@ export const ConfigSchema = z.object({
   LANDBRIGHT_ENV: z.string().default('local'),
   LANDBRIGHT_CONTROL_PORT: z.coerce.number().int().positive().default(4401),
   LANDBRIGHT_IDP_PORT: z.coerce.number().int().positive().default(4402),
-  LANDBRIGHT_IDP_URL: z.url().default('http://127.0.0.1:4402'),
-  LANDBRIGHT_DATABASE_URL: z.url().default('postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright'),
+  /** A domain, not an IP address: it is the passkeys' relying-party id, and WebAuthn refuses IP addresses. */
+  LANDBRIGHT_IDP_URL: z.url().default('http://localhost:4402'),
+  LANDBRIGHT_CONSOLE_URL: z.url().default('http://127.0.0.1:4400'),
+  /** The services' connection: the landbright_app role, under row-level security. */
+  LANDBRIGHT_DATABASE_URL: z
+    .url()
+    .default('postgres://landbright_app:landbright-app-dev-only@127.0.0.1:57432/landbright'),
+  /** The owner's connection: migrations and the bootstrap only. */
+  LANDBRIGHT_DATABASE_ADMIN_URL: z
+    .url()
+    .default('postgres://landbright:landbright-dev-only@127.0.0.1:57432/landbright'),
+  /** The tenant this deployment serves (one per deployment for now; the boundary is in every table). */
+  LANDBRIGHT_TENANT_SLUG: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .default('local'),
+  LANDBRIGHT_TENANT_NAME: z.string().default('Local'),
+  /**
+   * Seals signing keys and derives client secrets and cookie keys. At least 32 characters. Changing it invalidates
+   * every client secret and session, and makes sealed keys unreadable (new ones are generated).
+   */
+  LANDBRIGHT_SECRET_KEY: z.string().min(32).default('landbright-dev-only-secret-key-do-not-use-anywhere-real'),
+  /**
+   * How long an ID token lives. A signing-key rotation keeps the replaced key published at least this long, so tokens
+   * it signed still verify; the end-to-end tests shorten it to rotate twice in one run.
+   */
+  LANDBRIGHT_ID_TOKEN_TTL_SECONDS: z.coerce.number().int().min(5).max(86_400).default(3600),
+  /**
+   * Behind a TLS-terminating proxy: trust its X-Forwarded-Proto and X-Forwarded-For, so the identity plane knows it is
+   * served over https (secure cookies, correct URLs). Off by default; never on without a proxy in front.
+   */
+  LANDBRIGHT_TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /**
+   * Client ids that may skip PKCE, comma-separated. Empty by default: every client needs PKCE (OAuth 2.1). Only the
+   * OpenID conformance run sets it, for its own two clients, because the OIDC Core test plans send no code_challenge.
+   */
+  LANDBRIGHT_PKCE_OPTIONAL_CLIENTS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  LANDBRIGHT_SMTP_URL: z.string().default('smtp://127.0.0.1:57025'),
+  LANDBRIGHT_MAIL_FROM: z.string().default('Landbright <no-reply@landbright.test>'),
+  /** The organization's terms of use, linked from the accept_terms required action. Empty: no link. */
+  LANDBRIGHT_TERMS_URL: z.union([z.url(), z.literal('')]).default(''),
+  /** The first administrator, created by the bootstrap (pnpm db:seed) if missing. */
+  LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL: z.email().default('admin@landbright.test'),
+  LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).default('landbright-dev-only'),
   LANDBRIGHT_VALKEY_URL: z.url().default('redis://127.0.0.1:57379'),
   LANDBRIGHT_OPENBAO_ADDR: z.url().default('http://127.0.0.1:57200'),
   LANDBRIGHT_OPENBAO_TOKEN: z.string().min(1).default('landbright-dev-only'),
   LANDBRIGHT_MAILPIT_URL: z.url().default('http://127.0.0.1:57825'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
+
+/** The issuer URL tokens carry: the identity plane's OIDC mount. */
+export function issuerOf(config: Pick<Config, 'LANDBRIGHT_IDP_URL'>): string {
+  return new URL('/oidc', config.LANDBRIGHT_IDP_URL).href;
+}
+
+/**
+ * The passkeys' relying party: the identity plane's host and origin. Undefined when the host is an IP address, which
+ * WebAuthn refuses; passkeys are then off and the pages don't offer them.
+ */
+export function passkeyRelyingParty(
+  config: Pick<Config, 'LANDBRIGHT_IDP_URL'>,
+): { id: string; origin: string } | undefined {
+  const url = new URL(config.LANDBRIGHT_IDP_URL);
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  return isIP(host) ? undefined : { id: host, origin: url.origin };
+}
 
 /** Parses the environment, failing fast with every invalid variable named. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {

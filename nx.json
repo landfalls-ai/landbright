@@ -13,10 +13,36 @@
       "outputs": ["{projectRoot}/dist"],
       "cache": true
     },
-    "typecheck": { "dependsOn": ["^build"], "inputs": ["default", "^production"], "cache": true },
-    "test": { "dependsOn": ["^build"], "inputs": ["default", "^production"], "cache": true },
-    "test:integration": { "dependsOn": ["^build"], "inputs": ["default", "^production"] },
-    "serve": { "dependsOn": ["^build"], "continuous": true }
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
+      "cache": true
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"]
+    },
+    "test:browser": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"]
+    },
+    "screenshots": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"]
+    },
+    "serve": {
+      "dependsOn": ["^build"],
+      "continuous": true
+    },
+    "conformance": {
+      "dependsOn": ["^build"],
+      "cache": false
+    }
   },
   "defaultBase": "main"
 }

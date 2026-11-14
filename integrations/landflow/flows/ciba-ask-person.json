@@ -1,0 +1,120 @@
+{
+  "name": "Landbright · Ask a person for an agent (CIBA)",
+  "description": "On ciba.requested from Landbright (an agent asked a person to let it act for them, OpenID CIBA): email the person the link to Landbright's decision page, with the agent's name, its sponsor's rules and the code the agent shows. The person decides on Landbright, signed in; this flow only carries the link and can't decide.",
+  "tags": ["landbright", "agents", "ciba"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Landbright event",
+      "type": "core.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "path": "landbright-ciba",
+        "method": "POST",
+        "authentication": "jwtAuth",
+        "respond": "immediately"
+      },
+      "credentials": {
+        "jwtAuth": {
+          "id": "__CRED_JWT__",
+          "name": "Landbright events"
+        }
+      }
+    },
+    {
+      "id": "event",
+      "name": "Read the event",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "// The Webhook's JWT Auth checked this token against Landbright's JWKS: trust jwtPayload, not the body.\nconst e = $json.jwtPayload.event;\nconst d = e.data ?? {};\nreturn { type: e.type, agent: d.agent, email: d.person?.email, name: d.person?.name, link: d.link, code: d.bindingMessage, scope: d.scope, expiresAt: d.expiresAt };"
+      }
+    },
+    {
+      "id": "asked",
+      "name": "An agent asks?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.type === 'ciba.requested' && $json.email ? 'yes' : 'no' }}",
+              "operator": "equals",
+              "right": "yes"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "message",
+      "name": "The email",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [900, 120],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "const r = $json;\nconst minutes = Math.max(1, Math.round((Date.parse(r.expiresAt) - Date.now()) / 60000));\nconst first = String(r.name ?? '').split(' ')[0] || 'there';\nreturn {\n  to: r.email,\n  toName: r.name ?? r.email,\n  subject: `${r.agent} asks to act for you`,\n  text: [\n    `Hi ${first},`,\n    '',\n    `${r.agent} asks Landbright for a token that says it acts for you.`,\n    r.code ? `It shows the code ${r.code}: check it matches before you approve.` : '',\n    '',\n    `Approve or deny (you sign in to Landbright; the link works for ${minutes} min):`,\n    r.link,\n    '',\n    'If you didn\\'t start this, deny it.',\n  ].filter((l, i, all) => l !== '' || all[i - 1] !== '').join('\\n'),\n};"
+      }
+    },
+    {
+      "id": "send",
+      "name": "Send it",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1200, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__MAIL_API__",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ From: { Email: 'landflow@landflow.test', Name: 'Landflow' }, To: [{ Email: $json.to, Name: $json.toName }], Subject: $json.subject, Text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_event_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "event",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_event_0_asked_0_main",
+      "type": "main",
+      "source": "event",
+      "sourceIndex": 0,
+      "target": "asked",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_asked_0_message_0_main",
+      "type": "main",
+      "source": "asked",
+      "sourceIndex": 0,
+      "target": "message",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_message_0_send_0_main",
+      "type": "main",
+      "source": "message",
+      "sourceIndex": 0,
+      "target": "send",
+      "targetIndex": 0
+    }
+  ]
+}

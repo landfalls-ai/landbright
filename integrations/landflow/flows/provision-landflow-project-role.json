@@ -1,0 +1,339 @@
+{
+  "name": "Landbright · Provision and revoke a Landflow project role",
+  "description": "On grant.activated, grant.expired, grant.revoked and grant.revoke_overdue from Landbright: re-read the grant, then add the person to (or remove them from) the Landflow project its target names, and report each target back. Landbright removes its own side at expiry whatever this flow does, and says grant.revoke_overdue if a target isn’t reported revoked.",
+  "tags": ["landbright", "access"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Landbright event",
+      "type": "core.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "path": "landbright-grants",
+        "method": "POST",
+        "authentication": "jwtAuth",
+        "respond": "immediately"
+      },
+      "credentials": {
+        "jwtAuth": {
+          "id": "__CRED_JWT__",
+          "name": "Landbright events"
+        }
+      }
+    },
+    {
+      "id": "event",
+      "name": "Read the event",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "const e = $json.jwtPayload.event;\nreturn { type: e.type, grantId: e.target.id };"
+      }
+    },
+    {
+      "id": "read",
+      "name": "Re-read the grant",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/grants/{{ $json.grantId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "work",
+      "name": "What to do, per target",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "// Landbright's state decides, not the event: provision a live grant's pending targets, revoke an ended grant's.\nconst g = $input.first().json;\nconst live = g.status === 'active';\nconst ended = g.status === 'expired' || g.status === 'revoked';\nconst todo = g.targets.filter((t) => t.type === 'landflow-project-role' && (\n  (live && ['pending', 'failed'].includes(t.status)) ||\n  (ended && ['provisioned', 'verified', 'revoke_failed', 'drift'].includes(t.status))));\nreturn todo.map((t) => ({ grantId: g.id, key: t.key, action: live ? 'provision' : 'revoke', project: t.config.project, role: t.config.role ?? 'editor', email: g.subject.email, name: g.subject.displayName }));"
+      }
+    },
+    {
+      "id": "users",
+      "name": "Landflow users",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1200, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDFLOW_API__/api/users",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__CRED_LANDFLOW__",
+          "name": "Landflow API"
+        }
+      }
+    },
+    {
+      "id": "project",
+      "name": "The project",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1500, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDFLOW_API__/api/projects/{{ $('What to do, per target').item.json.project }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__CRED_LANDFLOW__",
+          "name": "Landflow API"
+        }
+      }
+    },
+    {
+      "id": "gather",
+      "name": "Gather",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [1720, 200],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "fields": {
+          "values": [
+            {
+              "name": "w",
+              "type": "json",
+              "value": "{{ JSON.stringify($('What to do, per target').item.json) }}"
+            },
+            {
+              "name": "users",
+              "type": "json",
+              "value": "{{ JSON.stringify($('Landflow users').item.json.users ?? []) }}"
+            },
+            {
+              "name": "members",
+              "type": "json",
+              "value": "{{ JSON.stringify(($json.project ?? $json).members ?? []) }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "members",
+      "name": "New member list",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [2020, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "// Gather brought the target (w), Landflow's users and the project's members together: Code reads only its own item.\nconst w = $json.w;\nconst user = $json.users.find((u) => (u.email ?? '').toLowerCase() === (w.email ?? '').toLowerCase());\nconst members = $json.members.map((m) => ({ userId: m.userId ?? m.id, role: m.role }));\nif (!user) return { ...w, ok: false, detail: `No Landflow user for ${w.email}: they sign in to Landflow once with Landbright first.` };\nconst others = members.filter((m) => m.userId !== user.id);\nconst next = w.action === 'provision' ? [...others, { userId: user.id, role: w.role }] : others;\nreturn { ...w, ok: true, userId: user.id, members: next };"
+      }
+    },
+    {
+      "id": "ok",
+      "name": "Found them?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [2320, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.ok }}",
+              "operator": "equals",
+              "right": "true"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "put",
+      "name": "Set the members",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2620, 120],
+      "parameters": {
+        "method": "PUT",
+        "url": "__LANDFLOW_API__/api/projects/{{ $json.project }}/members",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ members: $json.members }) }}",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__CRED_LANDFLOW__",
+          "name": "Landflow API"
+        }
+      }
+    },
+    {
+      "id": "done",
+      "name": "Tell Landbright",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2920, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/grants/{{ $('New member list').item.json.grantId }}/targets/{{ $('New member list').item.json.key }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ status: $('New member list').item.json.action === 'provision' ? 'provisioned' : 'revoked', externalRef: `landflow:${$('New member list').item.json.project}:${$('New member list').item.json.userId}` }) }}",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "failed",
+      "name": "Tell Landbright it failed",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2620, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/grants/{{ $json.grantId }}/targets/{{ $json.key }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ status: $json.action === 'provision' ? 'failed' : 'revoke_failed', detail: $json.detail }) }}",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_event_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "event",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_event_0_read_0_main",
+      "type": "main",
+      "source": "event",
+      "sourceIndex": 0,
+      "target": "read",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_read_0_work_0_main",
+      "type": "main",
+      "source": "read",
+      "sourceIndex": 0,
+      "target": "work",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_work_0_users_0_main",
+      "type": "main",
+      "source": "work",
+      "sourceIndex": 0,
+      "target": "users",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_users_0_project_0_main",
+      "type": "main",
+      "source": "users",
+      "sourceIndex": 0,
+      "target": "project",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_project_0_members_0_main",
+      "type": "main",
+      "source": "project",
+      "sourceIndex": 0,
+      "target": "gather",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_members_0_ok_0_main",
+      "type": "main",
+      "source": "members",
+      "sourceIndex": 0,
+      "target": "ok",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_ok_0_put_0_main",
+      "type": "main",
+      "source": "ok",
+      "sourceIndex": 0,
+      "target": "put",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_put_0_done_0_main",
+      "type": "main",
+      "source": "put",
+      "sourceIndex": 0,
+      "target": "done",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_ok_1_failed_0_main",
+      "type": "main",
+      "source": "ok",
+      "sourceIndex": 1,
+      "target": "failed",
+      "targetIndex": 0
+    },
+    {
+      "id": "gather-members",
+      "type": "main",
+      "source": "gather",
+      "sourceIndex": 0,
+      "target": "members",
+      "targetIndex": 0
+    }
+  ]
+}

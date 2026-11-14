@@ -33,12 +33,17 @@ and plugins in TypeScript, Python and Go.
 | App webhook triggers | A trigger registers its own webhook at the service when the workflow is published (`checkExists` / `create` / `delete`), verifies the signature over the raw body, returns items + an idempotency key | `landflow/docs/protocol.md` §12 |
 | Polling triggers | Poll state per node, baseline on first poll | `landflow/docs/protocol.md` §8 |
 | Wait node | Interval, date, webhook resume (`$execution.resumeUrl`), form; long waits suspend the run durably | `landflow/docs/features/engine.md` |
-| Approvals | Only for **AI tool calls**: editor, Slack buttons, Teams cards, signed email links (`POST /api/executions/:id/approvals`) | `landflow/docs/features/ai.md`, `landflow/docs/agents.md` |
+| Approvals | Only for **AI tool calls**: editor, Slack buttons, signed email links (`POST /api/executions/:id/approvals`); Teams cards only for standalone agents | `landflow/docs/features/ai.md`, `landflow/docs/agents.md` |
+| Pausing a run | Only host (in-process) nodes can call `ctx.putExecutionToWait`; a remote plugin node can't wait | `landflow/docs/protocol.md` §10 |
+| Signature helpers | GitHub, Stripe, Slack, plain HMAC-SHA256; no Standard Webhooks helper | `landflow/packages/sdk/src/signatures.ts` |
 | Team templates | A team, its agents and its flow saved and recreated with fresh ids and credentials | `landflow/docs/templates.md` |
 | Integration plugins | messaging (Slack, Teams…), productivity, google-workspace, databases, github, browser, landfall, triage | `landflow/docs/features/integrations.md` |
 
-**Gap:** there is no approval step for a plain workflow, only for an AI Agent's tool calls. A JIT flow needs one (plan
-L1). Until then a Wait node on `$execution.resumeUrl`, called by Landbright's approval inbox, works.
+**Gap:** there is no approval step for a plain workflow, only for an AI Agent's tool calls (Landflow's own roadmap
+lists it as remaining). A JIT flow needs one (plan L1), and it must be a host node, because remote plugins can't pause
+a run. Until then a Wait node on `$execution.resumeUrl` works, but that URL is public and unauthenticated, so Landbright
+only nudges it and the flow re-reads the decision ([spec 003 plan](../specs/003-access-requests-and-approvals/plan.md),
+checked against the source on 12 November 2026).
 
 ### 1.3 Agents
 

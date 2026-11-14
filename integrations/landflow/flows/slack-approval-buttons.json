@@ -1,0 +1,160 @@
+{
+  "name": "Landbright · Slack approval buttons",
+  "description": "The Slack app’s Interactivity Request URL. A click on Approve or Deny relays that approver’s vote to Landbright with the ticket the button carries, then answers in the same message. The ticket, issued by Landbright for that approver, request and step, is what makes the vote theirs; a click without one changes nothing.",
+  "tags": ["landbright", "access", "slack"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Slack click",
+      "type": "core.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "path": "landbright-slack-actions",
+        "method": "POST",
+        "authentication": "none",
+        "respond": "immediately"
+      }
+    },
+    {
+      "id": "parse",
+      "name": "Read the click",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "// Slack posts a form with one field, payload (JSON).\nconst raw = $json.body?.payload ?? $json.payload;\nconst p = typeof raw === 'string' ? JSON.parse(raw) : raw;\nconst action = (p?.actions ?? []).find((a) => a.action_id === 'landbright_approve' || a.action_id === 'landbright_deny');\nif (!action) return { skip: true };\nconst [requestId, ticket] = String(action.value).split('|');\nreturn { skip: false, requestId, ticket, outcome: action.action_id === 'landbright_approve' ? 'approve' : 'deny', slackUser: p.user?.id ?? '', team: p.team?.id ?? '', responseUrl: p.response_url ?? '' };"
+      }
+    },
+    {
+      "id": "isvote",
+      "name": "A vote?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.skip ? 'no' : 'yes' }}",
+              "operator": "equals",
+              "right": "yes"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "relay",
+      "name": "Relay the vote to Landbright",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/requests/{{ $json.requestId }}/decisions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        },
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ ticket: $json.ticket, outcome: $json.outcome, channel: 'chat:slack', evidence: { slackUser: $json.slackUser, team: $json.team } }) }}"
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      },
+      "onError": "continue"
+    },
+    {
+      "id": "reply",
+      "name": "What to say",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [1200, 120],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "fields": {
+          "values": [
+            {
+              "name": "responseUrl",
+              "type": "string",
+              "value": "{{ $('Read the click').item.json.responseUrl }}"
+            },
+            {
+              "name": "text",
+              "type": "string",
+              "value": "{{ (() => { const click = $('Read the click').item.json; if ($json.error) return `Landbright didn’t take that vote: ${String($json.error.description ?? $json.error.message ?? $json.error).slice(0, 300)}`; const r = $json; const what = r.status === 'approved' ? 'approved: access is on' : r.status === 'denied' ? 'denied' : `recorded (${r.steps[r.currentStep].name} next)`; return `${click.outcome === 'approve' ? 'You approved' : 'You denied'} ${r.ref}, ${r.bundle.name} for ${r.subject.displayName}. The request is ${what}.`; })() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "answer",
+      "name": "Answer in the message",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1500, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $json.responseUrl }}",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ replace_original: true, text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_parse_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "parse",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_parse_0_isvote_0_main",
+      "type": "main",
+      "source": "parse",
+      "sourceIndex": 0,
+      "target": "isvote",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_isvote_0_relay_0_main",
+      "type": "main",
+      "source": "isvote",
+      "sourceIndex": 0,
+      "target": "relay",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_relay_0_reply_0_main",
+      "type": "main",
+      "source": "relay",
+      "sourceIndex": 0,
+      "target": "reply",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_reply_0_answer_0_main",
+      "type": "main",
+      "source": "reply",
+      "sourceIndex": 0,
+      "target": "answer",
+      "targetIndex": 0
+    }
+  ]
+}

@@ -1,0 +1,254 @@
+{
+  "name": "Landbright · Approve a request (Slack)",
+  "description": "On request.created from Landbright: when the request’s current step lets approvers vote from chat, ask Landbright for one ticket per approver and send each a direct message in Slack with Approve and Deny buttons (and a link to Landbright’s decision page). The buttons carry that approver’s ticket; the companion flow relays the click. Landbright decides; the flow only talks.",
+  "tags": ["landbright", "access", "slack"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Landbright event",
+      "type": "core.webhook",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "path": "landbright-requests-slack",
+        "method": "POST",
+        "authentication": "jwtAuth",
+        "respond": "immediately"
+      },
+      "credentials": {
+        "jwtAuth": {
+          "id": "__CRED_JWT__",
+          "name": "Landbright events"
+        }
+      }
+    },
+    {
+      "id": "event",
+      "name": "Read the event",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "each",
+        "codeEach": "// The Webhook's JWT Auth checked this token against Landbright's JWKS: trust jwtPayload, not the body.\nconst e = $json.jwtPayload.event;\nreturn { type: e.type, requestId: e.target.id };"
+      }
+    },
+    {
+      "id": "read",
+      "name": "Re-read the request",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "__LANDBRIGHT_API__/api/v1/requests/{{ $json.requestId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "relayable",
+      "name": "Pending, and chat votes allowed?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.status === 'pending' && $json.steps[$json.currentStep].allowRelayed ? 'yes' : 'no' }}",
+              "operator": "equals",
+              "right": "yes"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "tickets",
+      "name": "A ticket per approver",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1200, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__LANDBRIGHT_API__/api/v1/requests/{{ $json.id }}/relay-tickets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "oAuth2Api": {
+          "id": "__CRED_LANDBRIGHT__",
+          "name": "Landbright API"
+        }
+      }
+    },
+    {
+      "id": "each",
+      "name": "One per approver",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [1500, 120],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "splitArray": "approvers",
+        "fields": {
+          "values": [
+            {
+              "name": "approvers",
+              "type": "json",
+              "value": "{{ JSON.stringify(($json.items ?? []).filter((t) => t.decider.email).map((t) => ({ ticket: t.ticket, email: t.decider.email, name: t.decider.displayName, request: $('Re-read the request').first().json }))) }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "lookup",
+      "name": "Find them in Slack",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1800, 120],
+      "parameters": {
+        "method": "GET",
+        "url": "__SLACK_API__/users.lookupByEmail?email={{ encodeURIComponent($json.email) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "splitArray": false
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__CRED_SLACK__",
+          "name": "Slack bot token"
+        }
+      }
+    },
+    {
+      "id": "message",
+      "name": "The message",
+      "type": "core.set",
+      "typeVersion": 1,
+      "position": [2100, 120],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "fields": {
+          "values": [
+            {
+              "name": "body",
+              "type": "string",
+              "value": "{{ (() => { const a = $('One per approver').item.json; const r = a.request; const value = `${r.id}|${a.ticket}`; const text = `${r.requester.displayName} asks for *${r.bundle.name}* for ${r.durationMinutes} minutes (${r.ref}).`; return JSON.stringify({ channel: $json.user.id, text, blocks: [ { type: 'section', text: { type: 'mrkdwn', text: `${text}\\n>${r.reason ?? '(no reason given)'}` } }, { type: 'context', elements: [{ type: 'mrkdwn', text: `Step: ${r.steps[r.currentStep].name} · decide by ${new Date(r.deadline).toUTCString()}` }] }, { type: 'actions', block_id: 'landbright', elements: [ { type: 'button', style: 'primary', text: { type: 'plain_text', text: 'Approve' }, action_id: 'landbright_approve', value }, { type: 'button', style: 'danger', text: { type: 'plain_text', text: 'Deny' }, action_id: 'landbright_deny', value }, { type: 'button', text: { type: 'plain_text', text: 'Open in Landbright' }, action_id: 'landbright_open', url: r.decisionUrl } ] } ] }); })() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "post",
+      "name": "Send the direct message",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [2400, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__SLACK_API__/chat.postMessage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "splitArray": false
+        },
+        "bodyType": "json",
+        "body": "{{ $json.body }}"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__CRED_SLACK__",
+          "name": "Slack bot token"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_event_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "event",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_event_0_read_0_main",
+      "type": "main",
+      "source": "event",
+      "sourceIndex": 0,
+      "target": "read",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_read_0_relayable_0_main",
+      "type": "main",
+      "source": "read",
+      "sourceIndex": 0,
+      "target": "relayable",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_relayable_0_tickets_0_main",
+      "type": "main",
+      "source": "relayable",
+      "sourceIndex": 0,
+      "target": "tickets",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_tickets_0_each_0_main",
+      "type": "main",
+      "source": "tickets",
+      "sourceIndex": 0,
+      "target": "each",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_each_0_lookup_0_main",
+      "type": "main",
+      "source": "each",
+      "sourceIndex": 0,
+      "target": "lookup",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_lookup_0_message_0_main",
+      "type": "main",
+      "source": "lookup",
+      "sourceIndex": 0,
+      "target": "message",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_message_0_post_0_main",
+      "type": "main",
+      "source": "message",
+      "sourceIndex": 0,
+      "target": "post",
+      "targetIndex": 0
+    }
+  ]
+}

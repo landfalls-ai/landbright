@@ -8,7 +8,6 @@ import {
   Inbox,
   KeyRound,
   type LucideIcon,
-  Scale,
   ScrollText,
   Settings,
   Users,
@@ -23,10 +22,16 @@ export interface NavItem {
   /** The wave that builds the page (docs/roadmap.md). Pages of later waves show what they will do. */
   wave: number;
   summary: string;
+  /** Comes later in its wave: still a placeholder while the wave is current. */
+  later?: boolean;
+  /** Built ahead of its wave (spec 004 brought access and events forward). */
+  ready?: boolean;
+  /** Shown to every signed-in person, not only administrators. */
+  everyone?: boolean;
 }
 
 /** The current wave: pages with a higher wave are placeholders. */
-export const CURRENT_WAVE = 0;
+export const CURRENT_WAVE = 1;
 
 /** The sidebar, after Landflow's grouped shell (plan §6.2). */
 export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
@@ -74,6 +79,8 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         label: 'Requests',
         icon: Inbox,
         wave: 4,
+        ready: true,
+        everyone: true,
         summary:
           'Your requests and the ones waiting for your decision, whether they came from the portal, Slack, an agent or a Landfall incident.',
       },
@@ -82,21 +89,17 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         label: 'Grants',
         icon: KeyRound,
         wave: 4,
-        summary: 'Who holds what, until when: active and expiring grants, and a timeline of every grant.',
+        ready: true,
+        summary: 'Who holds what, until when: active and expiring grants, and what each Landflow flow provisioned.',
       },
       {
         href: '/catalog',
         label: 'Catalog',
         icon: Boxes,
         wave: 4,
-        summary: 'Targets, their entitlements, and the bundles people and agents can request.',
-      },
-      {
-        href: '/policies',
-        label: 'Policies',
-        icon: Scale,
-        wave: 4,
-        summary: 'Who may request each bundle, for how long, who approves, and when approval is automatic.',
+        ready: true,
+        summary:
+          'The bundles people and agents can request, each with its policy: who may ask, for how long, who approves, and when approval is automatic.',
       },
     ],
   },
@@ -119,11 +122,13 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
           'The OIDC clients that sign in with Landbright (Landflow, Landfall) and the SCIM targets it provisions.',
       },
       {
-        href: '/webhooks',
-        label: 'Webhooks',
+        href: '/events',
+        label: 'Events',
         icon: Webhook,
         wave: 3,
-        summary: 'Signed event subscriptions. The Landflow plugin registers its own when a flow is published.',
+        ready: true,
+        summary:
+          'Signed event subscriptions: every audit event, delivered to Landflow Webhook triggers as a JWT Landflow checks against Landbright’s keys.',
       },
     ],
   },
@@ -158,3 +163,6 @@ export const SETTINGS: NavItem = {
 };
 
 export const ALL_PAGES: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), SETTINGS];
+
+/** Whether the page is still a placeholder. */
+export const isUpcoming = (item: NavItem): boolean => !item.ready && (item.wave > CURRENT_WAVE || Boolean(item.later));
