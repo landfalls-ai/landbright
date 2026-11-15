@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { Boxes, Plus, Trash2, Workflow } from 'lucide-react';
-import { AccessPolicy, ApprovalStep, AutoApproveRule, Bundle, BundleTarget, TimeWindow } from '@landbright/contracts';
+import { Boxes, Coins, Plus, Trash2, Workflow } from 'lucide-react';
+import {
+  AccessPolicy,
+  ApprovalStep,
+  AutoApproveRule,
+  Bundle,
+  BundleTarget,
+  EXTERNAL_STEP_DEADLINE_MINUTES,
+  TimeWindow,
+} from '@landbright/contracts';
 import { minutes } from '@/components/access/bits';
 import { ListState } from '@/components/directory/bits';
 import { PageBody, PageHeader } from '@/components/shell/page-header';
@@ -10,7 +18,7 @@ import { Dialog, FormError } from '@/components/ui/dialog';
 import { Field, Input, PickMany, Select, Switch, Textarea } from '@/components/ui/inputs';
 import { SectionLabel } from '@/components/ui/section-label';
 import { Cell, Row, Table } from '@/components/ui/table';
-import { send, useBundles, useGroups, useMe, usePeople, useWrite } from '@/lib/api';
+import { send, useApplications, useBundles, useGroups, useMe, usePeople, useWrite } from '@/lib/api';
 
 /**
  * The catalog: bundles people and agents can request. A bundle gives group memberships (Landbright does that) and
@@ -59,6 +67,13 @@ export function CatalogPage() {
                         <Workflow className="size-3" /> {t.label}
                       </Badge>
                     ))}
+                    {b.targets
+                      .filter((t) => t.cost)
+                      .map((t) => (
+                        <Badge key={`cost:${t.key}`} tone="warning" title="A grant of it costs a seat">
+                          <Coins className="size-3" /> seat · {t.cost!.landbrightApp}
+                        </Badge>
+                      ))}
                   </div>
                 </Cell>
                 <Cell className="text-[12px] text-t2">
@@ -118,6 +133,7 @@ function BundleDialog({ bundle, onClose }: { bundle?: Bundle; onClose: () => voi
   const me = useMe();
   const groups = useGroups();
   const people = usePeople();
+  const apps = useApplications();
   const [f, setF] = useState({
     name: bundle?.name ?? '',
     description: bundle?.description ?? '',
@@ -130,6 +146,11 @@ function BundleDialog({ bundle, onClose }: { bundle?: Bundle; onClose: () => voi
   const [targetError, setTargetError] = useState<string>();
   const groupOptions: Option[] = (groups.data?.items ?? []).map((g) => ({ value: g.id, label: g.name }));
   const peopleOptions: Option[] = (people.data?.items ?? []).map((x) => ({ value: x.id, label: x.displayName }));
+  // A gate is settled by an application acting as itself; never an agent's (agents never decide) or the console.
+  const appOptions: Option[] = (apps.data?.items ?? [])
+    .filter((a) => !a.agentId && !a.system)
+    .map((a) => ({ value: a.clientId, label: a.name }));
+  const gated = p.steps[0]?.kind === 'external';
   const set = <K extends keyof AccessPolicy>(key: K, value: AccessPolicy[K]) => setP({ ...p, [key]: value });
   const setStep = (i: number, step: ApprovalStep) =>
     set(
@@ -284,27 +305,42 @@ function BundleDialog({ bundle, onClose }: { bundle?: Bundle; onClose: () => voi
           Steps run in order; each needs its number of approvals. Nobody approves their own request, and a membership a
           grant gave doesn’t make anyone an approver.
         </p>
-        {p.steps.map((step, i) => (
-          <StepEditor
-            key={i}
-            index={i}
-            step={step}
-            groups={groupOptions}
-            people={peopleOptions}
-            onChange={(s) => setStep(i, s)}
-            onRemove={
-              p.steps.length > 1
-                ? () =>
-                    set(
-                      'steps',
-                      p.steps.filter((_, j) => j !== i),
-                    )
-                : undefined
-            }
-          />
-        ))}
+        {p.steps.map((step, i) =>
+          step.kind === 'external' ? (
+            <GateEditor
+              key={i}
+              step={step}
+              apps={appOptions}
+              onChange={(s) => setStep(i, s)}
+              onRemove={() =>
+                set(
+                  'steps',
+                  p.steps.filter((_, j) => j !== i),
+                )
+              }
+            />
+          ) : (
+            <StepEditor
+              key={i}
+              index={i}
+              step={step}
+              groups={groupOptions}
+              people={peopleOptions}
+              onChange={(s) => setStep(i, s)}
+              onRemove={
+                p.steps.filter((s) => s.kind !== 'external').length > 1
+                  ? () =>
+                      set(
+                        'steps',
+                        p.steps.filter((_, j) => j !== i),
+                      )
+                  : undefined
+              }
+            />
+          ),
+        )}
         {p.steps.length < 3 && (
-          <div>
+          <div className="flex gap-2">
             <Button
               type="button"
               size="sm"
@@ -314,6 +350,28 @@ function BundleDialog({ bundle, onClose }: { bundle?: Bundle; onClose: () => voi
             >
               <Plus className="size-3.5" /> Add a step
             </Button>
+            {!gated && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                data-testid="add-gate"
+                onClick={() =>
+                  set('steps', [
+                    ApprovalStep.parse({
+                      kind: 'external',
+                      name: 'Cost',
+                      system: 'Landledger',
+                      settledBy: appOptions[0]?.value,
+                      deadlineMinutes: EXTERNAL_STEP_DEADLINE_MINUTES,
+                    }),
+                    ...p.steps,
+                  ])
+                }
+              >
+                <Coins className="size-3.5" /> Add a cost gate
+              </Button>
+            )}
           </div>
         )}
         <Toggle
@@ -502,6 +560,74 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
     <label className="flex items-center gap-2 text-[13px] text-t2">
       <Switch checked={checked} onChange={onChange} label={label} /> {label}
     </label>
+  );
+}
+
+/**
+ * A step a system settles (spec 008): always first, before the people. The application named answers it on the machine
+ * API with `steps:settle`; it can let the request through to the people, or end it.
+ */
+function GateEditor({
+  step,
+  apps,
+  onChange,
+  onRemove,
+}: {
+  step: ApprovalStep;
+  apps: Option[];
+  onChange: (s: ApprovalStep) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-hair px-3 py-2.5" data-testid="gate">
+      <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
+        <Field label="Cost gate">
+          <Input value={step.name} onChange={(e) => onChange({ ...step, name: e.target.value })} required />
+        </Field>
+        <Field label="System">
+          <Input
+            value={step.system ?? ''}
+            onChange={(e) => onChange({ ...step, system: e.target.value })}
+            placeholder="Landledger"
+            required
+          />
+        </Field>
+        <Button type="button" size="sm" variant="ghost" onClick={onRemove} aria-label="Remove the cost gate">
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+      <div className="grid grid-cols-[1fr_160px] gap-3">
+        <Field label="Settled by" hint="The application that answers it, with the steps:settle scope.">
+          <Select
+            value={step.settledBy ?? ''}
+            onChange={(e) => onChange({ ...step, settledBy: e.target.value })}
+            required
+          >
+            <option value="" disabled>
+              Choose an application
+            </option>
+            {apps.map((a) => (
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Waits at most (hours)">
+          <Input
+            type="number"
+            min={1}
+            max={2160}
+            value={Math.round((step.deadlineMinutes ?? EXTERNAL_STEP_DEADLINE_MINUTES) / 60)}
+            onChange={(e) => onChange({ ...step, deadlineMinutes: Math.max(1, Number(e.target.value)) * 60 })}
+          />
+        </Field>
+      </div>
+      <p className="text-[12px] text-t3">
+        Comes first. It can only end a request or pass it on: the steps after it decide access. Break-glass skips it; an
+        auto-approve rule waits for it.
+      </p>
+    </div>
   );
 }
 

@@ -7,9 +7,9 @@ canvas, and need no Landflow change; the three HR flows (*Joiners and movers fro
 
 | Flow | Starts on | Does |
 |---|---|---|
-| **Approve a request (email)** | `request.created` | Re-reads the request. While it's pending: emails each approver the decision link, registers its resume URL with Landbright, and waits until the deadline. Wakes on Landbright's nudge, re-reads, and tells the requester the outcome |
+| **Approve a request (email)** | `request.created`, `request.step_started` | Re-reads the request. While it's pending: emails each approver of the current step the decision link (nobody while a system settles it, such as a [cost gate](access.md#a-cost-gate-seats-landledger-pays-for)), registers its resume URL with Landbright, and waits until the deadline. Wakes on Landbright's nudge and re-reads: decided, it tells the requester the outcome (a gate's denial names the system and its reference); moved on to another step, it ends, as the run for that step carries on |
 | **Provision and revoke a Landflow project role** | `grant.activated`, `grant.expired`, `grant.revoked`, `grant.revoke_overdue` | Re-reads the grant. For each `landflow-project-role` target (`config: { project, role }`): adds the person to the project's members when the grant is live, removes them when it ended, and reports `provisioned` / `revoked` (or `failed` / `revoke_failed`) to Landbright |
-| **Approve a request (Slack)** | `request.created` | When the current step allows chat votes: gets one ticket per approver, finds each in Slack by email, and sends a direct message with Approve and Deny (carrying the ticket) and *Open in Landbright* |
+| **Approve a request (Slack)** | `request.created`, `request.step_started` | When the current step allows chat votes: gets one ticket per approver, finds each in Slack by email, and sends a direct message with Approve and Deny (carrying the ticket) and *Open in Landbright* |
 | **Slack approval buttons** | The Slack app's Interactivity URL | Relays the click with its ticket to `POST /api/v1/requests/:id/decisions`, then replaces the message with the outcome (or why Landbright refused) |
 | **Onboard a new person** | `identity.created`, and `identity.updated` with `department` among the fields | For a joiner: re-reads them, sets their birthright groups (*Everyone*, and their department's: Engineering gets *Engineers* and *Landflow Editors*, Finance *Finance*) as source `hr` with one call (`PUT /api/v1/people/:id/birthright-groups`), asks them to set up a second step and accept the terms at their first sign-in ([account.md](account.md#required-actions)), and emails a welcome (for a pre-hire, saying the invite comes on their start date). For a mover (a new department, from HR or the console): sets their birthright groups again, so they leave the old department's and join the new one's; memberships given by hand or by a grant stay. Keycloak's onboarding, as a flow; the map of groups is the *Birthright groups* Code node, the one place for joiners and movers |
 | **Ask a person for an agent (CIBA)** | `ciba.requested` | Emails the person the agent asks to act for: the agent's name, the code it shows, the link to Landbright's decision page and how long it works. The person decides there, signed in; the flow only carries the link ([agents.md](agents.md#asking-a-person-ciba-with-landflow-as-the-channel)) |
@@ -38,8 +38,9 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
 **In Landbright**, through the console API, as the bootstrap administrator, the installer:
 
 - gives the Landflow application client credentials and the scopes `requests:read grants:record annotations:write
-  directory:read directory:write decisions:relay`;
-- subscribes `…/api/webhook/landbright-requests` to `request.created`, `…/landbright-grants` to `grant.activated`,
+  directory:read directory:write decisions:relay events:manage steps:settle` (the last for Landledger's flow, which settles
+  a [cost gate](access.md#a-cost-gate-seats-landledger-pays-for) as this application);
+- subscribes `…/api/webhook/landbright-requests` to `request.created` and `request.step_started`, `…/landbright-grants` to `grant.activated`,
   `expired`, `revoked` and `revoke_overdue`, and `…/landbright-people` to `identity.created` and `identity.updated`, with audience
   `http://localhost:57300`;
 - creates the bundle *Landflow Editors (JIT)*: the group *Landflow Editors*, plus the target *Landflow project Payments,
@@ -63,7 +64,7 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
 Run it again to update: it finds everything by name first.
 
 **The Slack flows** are installed when `SLACK_BOT_TOKEN` is set (a bot token with `users:read.email` and `chat:write`).
-They subscribe `…/landbright-requests-slack` to `request.created`. Set the Slack app's Interactivity Request URL to
+They subscribe `…/landbright-requests-slack` to `request.created` and `request.step_started`. Set the Slack app's Interactivity Request URL to
 `…/api/webhook/landbright-slack-actions` (a Slack app has one, so use an app of its own, not the one Landflow's agents
 use). `SLACK_API_URL` points them at another Web API; the live check used a local stand-in:
 

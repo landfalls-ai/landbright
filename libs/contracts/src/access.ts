@@ -15,9 +15,21 @@ const Minutes = z
   .max(60 * 24 * 90);
 const Ids = z.array(z.uuid()).max(50).default([]);
 
-/** Who approves one step. Everyone named here may vote; `approvalsRequired` distinct people must approve. */
+/**
+ * Who approves one step. Everyone named here may vote; `approvalsRequired` distinct people must approve.
+ *
+ * An `external` step (spec 008) is settled by a system, not by people: the application `settledBy` names answers it on
+ * the machine API (`steps:settle`). It is a gate only: it comes first, and a people step must follow it.
+ */
 export const ApprovalStep = z.object({
+  kind: z.enum(['people', 'external']).default('people'),
   name: z.string().trim().min(1).max(80).default('Approval'),
+  /** External: the application (its client id) that settles the step. */
+  settledBy: z.string().trim().min(1).max(200).optional(),
+  /** External: the system's name as people read it ("Landledger"). */
+  system: z.string().trim().min(1).max(60).optional(),
+  /** External: how long the step may wait; when it runs out, the request expires. */
+  deadlineMinutes: Minutes.optional(),
   approvers: z
     .object({
       /** Standing members of these groups (a membership a grant gave doesn't count). */
@@ -38,6 +50,7 @@ export const ApprovalStep = z.object({
   allowRelayed: z.boolean().default(false),
 });
 export type ApprovalStep = z.infer<typeof ApprovalStep>;
+export const EXTERNAL_STEP_DEADLINE_MINUTES = 1440;
 
 const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM');
 
@@ -171,6 +184,19 @@ export const BundleTarget = z.object({
   type: z.string().trim().min(1).max(60),
   label: z.string().trim().min(1).max(120),
   config: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * What a grant of it costs (spec 008): a seat on the contract Landledger holds for `landbrightApp` (the key the
+   * contract names, such as `linear`). Landbright holds no price.
+   */
+  cost: z
+    .object({
+      kind: z.literal('seat'),
+      landbrightApp: z
+        .string()
+        .trim()
+        .regex(/^[a-z0-9][a-z0-9._-]{0,79}$/, 'Lowercase letters, digits and . _ - only'),
+    })
+    .optional(),
 });
 export type BundleTarget = z.infer<typeof BundleTarget>;
 
@@ -308,6 +334,32 @@ export const GrantView = z.object({
 });
 export type GrantView = z.infer<typeof GrantView>;
 
+export const StepReference = z.object({
+  /** The system's name ("Landledger"). */
+  system: z.string().trim().min(1).max(60),
+  /** Its id for the decision there (its request id). */
+  id: z.string().trim().min(1).max(200),
+  url: z.url().optional(),
+});
+
+/** How a system settled an external step. */
+export const StepSettlement = z.object({
+  outcome: z.enum(['approve', 'deny']),
+  reference: StepReference,
+  reason: z.string().nullable(),
+  /** The application that settled it. */
+  by: z.string(),
+  at: z.iso.datetime(),
+});
+export type StepSettlement = z.infer<typeof StepSettlement>;
+
+export const RequestCost = z.object({
+  target: z.string(),
+  label: z.string(),
+  kind: z.literal('seat'),
+  landbrightApp: z.string(),
+});
+
 export const AccessRequestView = z.object({
   id: z.uuid(),
   number: z.number().int(),
@@ -331,16 +383,25 @@ export const AccessRequestView = z.object({
   currentStep: z.number().int(),
   steps: z.array(
     z.object({
+      kind: z.enum(['people', 'external']),
       name: z.string(),
       approvalsRequired: z.number().int(),
       approvals: z.number().int(),
       approvers: z.array(IdentityRef),
       allowRelayed: z.boolean(),
+      /** External: the system and the application that settles it. */
+      system: z.string().nullable(),
+      settledBy: z.string().nullable(),
+      settlement: StepSettlement.nullable(),
     }),
   ),
   votes: z.array(Vote),
   /** People named by the current step who haven't voted. */
   waitingOn: z.array(IdentityRef),
+  /** The system the current step waits on (an external step), or null. */
+  waitingOnSystem: z.string().nullable(),
+  /** What the bundle's targets cost (spec 008). */
+  costs: z.array(RequestCost),
   autoApproval: z.unknown().nullable(),
   breakGlass: z.unknown().nullable(),
   grant: GrantView.nullable(),
@@ -396,6 +457,17 @@ export const RelayDecision = z.object({
   evidence: z.record(z.string(), z.string().max(200)).optional(),
 });
 export type RelayDecision = z.infer<typeof RelayDecision>;
+
+/**
+ * A system's answer to an external step (`steps:settle`, only the application the step names). Approve passes the
+ * request on to its people; deny ends it.
+ */
+export const SettleStep = z.object({
+  outcome: z.enum(['approve', 'deny']),
+  reference: StepReference,
+  reason: z.string().trim().max(1000).optional(),
+});
+export type SettleStep = z.infer<typeof SettleStep>;
 
 /** What a flow reports for one target of a grant. */
 export const ReportTarget = z.object({

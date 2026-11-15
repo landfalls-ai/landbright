@@ -54,6 +54,8 @@ export const EVENT_TYPES = [
   'request.break_glass',
   'request.decided',
   'request.relay_tickets_issued',
+  'request.step_settled',
+  'request.step_started',
   'grant.activated',
   'grant.extended',
   'grant.expiring',

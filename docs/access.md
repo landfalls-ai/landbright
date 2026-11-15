@@ -15,7 +15,9 @@ A bundle (console **Catalog**, `POST /api/bundles`) gives:
 - **Groups**: Landbright adds the holder to them for the grant, with `source: grant` and the grant's end, and removes
   them at the end. Applications see the group in the `roles` claim as usual.
 - **Targets**: anything else, such as a Landflow project role or a GitHub team. Each has a `key`, a `type`, a `label`
-  and a `config` the flow reads. A Landflow flow subscribed to `grant.*` provisions each one and reports back.
+  and a `config` the flow reads. A Landflow flow subscribed to `grant.*` provisions each one and reports back. A target
+  can also say what a grant of it costs: `cost: { kind: "seat", landbrightApp: "linear" }`, a seat on the contract
+  Landledger holds for that app ([a cost gate](#a-cost-gate-seats-landledger-pays-for)).
 
 Its **policy**:
 
@@ -23,7 +25,7 @@ Its **policy**:
 |---|---|
 | `eligibleGroupIds` | Who may ask: standing members of these groups (empty: every active person) |
 | `agentsAllowed`, `agentMaxDurationMinutes` | Whether a sponsor may ask for one of their agents, and how long an agent gets at most (15 min by default) |
-| `steps[]` (1–3) | In order. Each names approvers (`groupIds`, `identityIds`, `manager`, `bundleOwner`, `sponsor`) and `approvalsRequired`, and whether its approvers may also vote from a chat (`allowRelayed`, off by default) |
+| `steps[]` (1–3) | In order. Each names approvers (`groupIds`, `identityIds`, `manager`, `bundleOwner`, `sponsor`) and `approvalsRequired`, and whether its approvers may also vote from a chat (`allowRelayed`, off by default). The first may instead be `kind: "external"`, settled by a system ([a cost gate](#a-cost-gate-seats-landledger-pays-for)) |
 | `approverFallback` | When a step names nobody but the requester: `bundleOwner`, then `admins`. Still nobody: the request is refused when it's made |
 | `defaultDurationMinutes`, `maxDurationMinutes` | How long, and at most; the duration is clamped again at approval |
 | `decisionDeadlineMinutes` | An undecided request expires (`request.decided`, outcome `expired`) |
@@ -61,6 +63,39 @@ without opening the console. Its limit: whoever holds the flow's token and a tic
 step turns it on, and the decision page stays the stronger path.
 
 ![A vote cast in Slack and relayed by the Landflow flow: chat:slack, via Landflow.](screenshots/60-live-slack-vote.png)
+
+## A cost gate: seats Landledger pays for
+
+A paid seat is spend ([spec 008](../specs/008-seat-costs/spec.md)). Landbright decides the access and Landledger (the
+finance team's cost subledger) decides the cost; a Landflow flow carries the conversation between them. Neither decision
+leaves its system.
+
+- **The gate** is a policy step of `kind: "external"`: `settledBy` (the client id of the application that answers it),
+  `system` (*Landledger*), `deadlineMinutes` (default 24 hours). It comes first, there is one at most, and a people step
+  must follow it. An agent's application or the console can't be named. In the console: Catalog → a bundle → *Add a
+  cost gate*.
+- **Nobody votes on it.** That application settles it on the machine API, with `steps:settle`:
+  `POST /api/v1/requests/:id/steps/0/settle { outcome: "approve" | "deny", reference: { system, id, url? }, reason? }`.
+  Approve passes the request on: the people's step starts (`request.step_started`) with the policy's whole decision time
+  from then. Deny ends it (`denied`, closing reason `step_denied`). Either way `request.step_settled` keeps the
+  reference. The same answer again is 200 (a retried flow), a different one 409.
+- **Its own clock.** While the gate waits, the request's deadline is the gate's, and when it runs out the request
+  expires (`request.decided`, `waitedOn: Landledger`). Escalation never adds people to it, and counts from when the
+  people's step started.
+- **Auto-approval waits for it**: a rule that matches approves once the gate is passed (`autoApproval.after`).
+  **Break-glass skips it**: the grant is made at once, and settling then answers 409 (*…was skipped*), so the flow raises
+  the cost afterwards. **An extension** goes through it too; the flow knows whether it rides on the first cost request
+  (and settles at once, citing it) or needs a new one.
+- **What the flow reads**: `request.created` carries `costs` (the `landbrightApp`s) and `waitsOn`; the request has
+  `costs`, `waitingOnSystem` and, per step, `kind`, `system`, `settledBy` and `settlement`. The request page shows the
+  gate as *Waiting on Landledger*, then *Approved by Landledger* with the reference, never as a vote.
+
+Landledger's side (its flow from `request.created` to the settle route, its seat reservations) is described in
+Landledger's `docs/integrations.md` (*Tool or seat*).
+
+![A bundle with a cost gate: Landledger, settled by the Landflow flows application, at most 24 hours.](screenshots/94-bundle-cost-gate.png)
+
+![The gate approved by Landledger, with its reference; the tool owner decides next.](screenshots/96-request-cost-approved.png)
 
 ## Asking for more time
 

@@ -130,7 +130,21 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   credential, so they work without the plugins; the Landbright Trigger fetches the JWKS itself (cached ten minutes,
   refetched for an unknown key at most every 30 seconds).
 
+## Seat costs (spec 008)
+
+- **One gate, first, one system.** A policy has at most one step a system settles, before the people; a gate after
+  them, or two systems, isn't possible.
+- **No seat count in Landbright.** Seats used (grants, and standing members through a SCIM group) aren't reported yet
+  (`GET /api/v1/seats`, slice 2): Landledger reads them from the contract it imports.
+- **Landbright doesn't know a contract's renewal date**, so it can't tell whether an extension costs anew; the flow
+  decides, and settles the extension's gate.
+- **Landledger's flow isn't in this repository**: the Clickland session builds it in Landflow. Without it, a gated
+  request waits for its gate and expires.
+
 ## Lifted
+
+- Spec 008: only a request's first step was asked by the approval flows (they started on `request.created` only); now
+  every step is, on `request.step_started`.
 
 - Spec 007, slice 2: joiners only (no movers, no leavers from HR); start dates in UTC; no Landbright Trigger; a last day
   did nothing.

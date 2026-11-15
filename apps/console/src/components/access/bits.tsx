@@ -58,6 +58,7 @@ export function relative(iso: string, now = Date.now()): string {
 /** Where a request stands, in a few words. */
 export function standing(r: AccessRequestView): string {
   if (r.status === 'pending') {
+    if (r.waitingOnSystem) return `Waiting on ${r.waitingOnSystem}`;
     const names = r.waitingOn.map((p) => p.displayName);
     return names.length
       ? `Waiting on ${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2}` : ''}`
