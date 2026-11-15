@@ -11,6 +11,37 @@ export const SigningKey = z.object({
 });
 export type SigningKey = z.infer<typeof SigningKey>;
 
+/** An IANA time zone (`Asia/Jerusalem`, `Europe/London`, `UTC`). */
+export const TimeZone = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine(
+    (zone) => {
+      try {
+        new Intl.DateTimeFormat('en', { timeZone: zone });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Not a time zone: use an IANA name, like Europe/London or Asia/Jerusalem.' },
+  );
+
+/**
+ * When start and last days begin and end (spec 007): a person's zone is their site's, else `timeZone`. A pre-hire
+ * becomes active when their start date begins there; someone with an end date is deactivated when it ends there.
+ */
+export const PeopleSettings = z.object({
+  timeZone: TimeZone,
+  /** Site name (as the person's `site`) → zone. */
+  siteTimeZones: z
+    .record(z.string().trim().min(1).max(200), TimeZone)
+    .refine((sites) => Object.keys(sites).length <= 200, { message: 'At most 200 sites.' }),
+});
+export type PeopleSettings = z.infer<typeof PeopleSettings>;
+
 export const Settings = z.object({
   tenant: z.object({ slug: z.string(), name: z.string() }),
   issuer: z.url(),
@@ -24,6 +55,7 @@ export const Settings = z.object({
   idTokenTtlSeconds: z.number().int().positive(),
   /** When the next rotation may happen (the previous key still verifies tokens until then); null for now. */
   rotateAfter: z.iso.datetime().nullable(),
+  people: PeopleSettings,
 });
 export type Settings = z.infer<typeof Settings>;
 

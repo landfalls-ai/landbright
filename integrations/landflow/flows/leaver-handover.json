@@ -1,0 +1,124 @@
+{
+  "name": "Landbright · Hand over a leaver's agents",
+  "description": "On identity.deactivated from the Landbright Trigger, when agents were suspended with the person (they sponsored them): email the person's manager that those agents wait for a new sponsor (a Landbright administrator gives them one and resumes them, in Agents). An agent needs an accountable person; until someone takes it over it stays suspended. Needs the landbright plugin.",
+  "tags": ["landbright", "lifecycle", "leaver", "agents"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Someone was deactivated",
+      "type": "landbright.landbrightTrigger",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "events": "identity.deactivated"
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    },
+    {
+      "id": "withAgents",
+      "name": "Did they sponsor agents?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ ($json.data.agentsSuspended ?? []).length > 0 ? 'yes' : 'no' }}",
+              "operator": "equals",
+              "right": "yes"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "read",
+      "name": "Read the person",
+      "type": "landbright.landbright",
+      "typeVersion": 1,
+      "position": [600, 120],
+      "parameters": {
+        "resource": "person",
+        "operation": "get",
+        "findBy": "id",
+        "personId": "{{ $json.target.id }}"
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    },
+    {
+      "id": "compose",
+      "name": "The email to their manager",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [900, 120],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "// One email per leaver with a manager; someone without a manager is left to the administrators (the agents show as\n// suspended in Landbright → Agents).\nconst event = $('Someone was deactivated').first().json;\nconst agents = event.data.agentsSuspended ?? [];\nreturn $input.all()\n  .map((item) => item.json)\n  .filter((p) => p.manager && p.manager.email)\n  .map((p) => ({\n    to: p.manager.email,\n    toName: p.manager.displayName,\n    subject: `${p.displayName}'s agents need a new sponsor`,\n    text: [\n      `Hi ${p.manager.displayName.split(' ')[0]},`,\n      '',\n      `${p.displayName} was deactivated in Landbright${event.data.reason ? ` (${event.data.reason})` : ''}.`,\n      `${agents.length === 1 ? 'An agent they sponsored is' : `${agents.length} agents they sponsored are`} suspended until someone takes ${agents.length === 1 ? 'it' : 'them'} over:`,\n      'a Landbright administrator gives it a new sponsor and resumes it (Agents). Until then it gets no tokens.',\n      '',\n      `Agent ids: ${agents.join(', ')}`,\n    ].join('\\n'),\n  }));"
+      }
+    },
+    {
+      "id": "send",
+      "name": "Send it",
+      "type": "core.httpRequest",
+      "typeVersion": 1,
+      "position": [1200, 120],
+      "parameters": {
+        "method": "POST",
+        "url": "__MAIL_API__",
+        "authentication": "none",
+        "bodyType": "json",
+        "body": "{{ JSON.stringify({ From: { Email: 'landflow@landflow.test', Name: 'Landflow' }, To: [{ Email: $json.to, Name: $json.toName }], Subject: $json.subject, Text: $json.text }) }}",
+        "options": {
+          "splitArray": false
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_withAgents_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "withAgents",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_withAgents_0_read_0_main",
+      "type": "main",
+      "source": "withAgents",
+      "sourceIndex": 0,
+      "target": "read",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_read_0_compose_0_main",
+      "type": "main",
+      "source": "read",
+      "sourceIndex": 0,
+      "target": "compose",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_compose_0_send_0_main",
+      "type": "main",
+      "source": "compose",
+      "sourceIndex": 0,
+      "target": "send",
+      "targetIndex": 0
+    }
+  ]
+}

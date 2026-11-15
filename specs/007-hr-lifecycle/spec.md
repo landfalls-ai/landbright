@@ -47,8 +47,8 @@ groups map to.
 ## Second slice
 
 - **Mover** (`employee.updated` on department, title, manager or site: update the person, move birthright groups) and
-  **leaver** (`employee.left` / `employee.inactivated` at the end of the last day; `employee.access.revoked.immediately`
-  now: deactivate).
+  **leaver** (`employee.left` after the last day, `employee.access.revoked.immediately` now: deactivate; a last day from
+  any source deactivates when it ends; not `employee.inactivated`, which Bob also sends for a leave: see the plan).
 - **Landbright Trigger** in the landbright plugin: it registers its own subscription (`/api/v1/subscriptions`) when the
   workflow is published and verifies each delivery's JWT, so flows need no Webhook node with a JWT credential.
 - Start dates in the site's time zone, not UTC.

@@ -20,6 +20,10 @@ model Tenant {
   name        String
   /// Whether everyone must use a second step (TOTP) at sign-in. Set from the console's Settings.
   mfaRequired Boolean  @default(false) @map("mfa_required")
+  /// The zone start and last days are read in (IANA), for people whose site has none (spec 007).
+  timeZone      String   @default("UTC") @map("time_zone")
+  /// Site name → IANA zone: a person's start and last days are read in their site's zone.
+  siteTimeZones Json     @default("{}") @map("site_time_zones")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("tenant")

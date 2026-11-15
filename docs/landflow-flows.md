@@ -1,9 +1,9 @@
 # The Landflow flows
 
-Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Eight flows
-ship in [`integrations/landflow/flows/`](../integrations/landflow/flows/). Each is plain Landflow workflow JSON. All but one are built
+Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Ten flows
+ship in [`integrations/landflow/flows/`](../integrations/landflow/flows/). Each is plain Landflow workflow JSON. Seven are built
 from core nodes (Webhook, Code, If, HTTP Request, Set, Wait, Schedule), so they import into any Landflow, edit on the
-canvas, and need no Landflow change; the *Joiner from HiBob* uses this repository's two Landflow plugins ([hr.md](hr.md)).
+canvas, and need no Landflow change; the three HR flows (*Joiners and movers from HiBob*, *Leavers from HiBob*, *Hand over a leaver's agents*) use this repository's two Landflow plugins ([hr.md](hr.md)).
 
 | Flow | Starts on | Does |
 |---|---|---|
@@ -11,9 +11,11 @@ canvas, and need no Landflow change; the *Joiner from HiBob* uses this repositor
 | **Provision and revoke a Landflow project role** | `grant.activated`, `grant.expired`, `grant.revoked`, `grant.revoke_overdue` | Re-reads the grant. For each `landflow-project-role` target (`config: { project, role }`): adds the person to the project's members when the grant is live, removes them when it ended, and reports `provisioned` / `revoked` (or `failed` / `revoke_failed`) to Landbright |
 | **Approve a request (Slack)** | `request.created` | When the current step allows chat votes: gets one ticket per approver, finds each in Slack by email, and sends a direct message with Approve and Deny (carrying the ticket) and *Open in Landbright* |
 | **Slack approval buttons** | The Slack app's Interactivity URL | Relays the click with its ticket to `POST /api/v1/requests/:id/decisions`, then replaces the message with the outcome (or why Landbright refused) |
-| **Onboard a new person** | `identity.created` | For a person: re-reads them, adds them to their birthright groups (*Everyone*, and their department's: Engineering gets *Engineers* and *Landflow Editors*) as source `hr`, asks them to set up a second step and accept the terms at their first sign-in ([account.md](account.md#required-actions)), and emails a welcome (for a pre-hire, saying the invite comes on their start date). Keycloak's onboarding, as a flow; the map of groups is the *Birthright groups* Code node |
+| **Onboard a new person** | `identity.created`, and `identity.updated` with `department` among the fields | For a joiner: re-reads them, sets their birthright groups (*Everyone*, and their department's: Engineering gets *Engineers* and *Landflow Editors*, Finance *Finance*) as source `hr` with one call (`PUT /api/v1/people/:id/birthright-groups`), asks them to set up a second step and accept the terms at their first sign-in ([account.md](account.md#required-actions)), and emails a welcome (for a pre-hire, saying the invite comes on their start date). For a mover (a new department, from HR or the console): sets their birthright groups again, so they leave the old department's and join the new one's; memberships given by hand or by a grant stay. Keycloak's onboarding, as a flow; the map of groups is the *Birthright groups* Code node, the one place for joiners and movers |
 | **Ask a person for an agent (CIBA)** | `ciba.requested` | Emails the person the agent asks to act for: the agent's name, the code it shows, the link to Landbright's decision page and how long it works. The person decides there, signed in; the flow only carries the link ([agents.md](agents.md#asking-a-person-ciba-with-landflow-as-the-channel)) |
-| **Joiner from HiBob** | HiBob's `employee.created` and `employee.joined` (the hris plugin's HiBob Trigger; Bob-Signature checked) | Reads the employee from HiBob and creates or updates them in Landbright (the landbright plugin's Person → Create or Update): a pre-hire until their start date, then active with their invite. The *Onboard* flow follows on `identity.created` ([hr.md](hr.md)) |
+| **Joiners and movers from HiBob** | HiBob's `employee.created`, `employee.joined` and `employee.updated` (the hris plugin's HiBob Trigger; Bob-Signature checked) | Reads the employee from HiBob and creates or updates them in Landbright (the landbright plugin's Person → Create or Update): a pre-hire until their start date, then active with their invite; a mover's new department, title, manager or site; a last day, after which Landbright deactivates them. The *Onboard* flow follows on `identity.created` and `identity.updated` ([hr.md](hr.md)) |
+| **Leavers from HiBob** | HiBob's `employee.left` (after the last day, at midnight in the site's zone) and `employee.access.revoked.immediately` | Deactivates them in Landbright, found by their HiBob id (Person → Deactivate, *Find By: HR Record*); someone Landbright doesn't have is skipped. Not `employee.inactivated`: Bob sends it for a leave too |
+| **Hand over a leaver's agents** | `identity.deactivated` (the landbright plugin's **Landbright Trigger**, which subscribes itself) | When agents were suspended with the person: emails their manager that the agents wait for a new sponsor |
 | **Disable inactive people** | Every day at 9:00 | Finds people who haven't signed in for 90 days (administrators excepted), emails their manager, waits 7 days, checks again, and deactivates who is still inactive. Keycloak's *disable inactive users* workflow, as a flow |
 
 Each flow reaches Landbright only through the [machine API](reference/api.md#machine-api-apiv1), with the scopes its
@@ -38,7 +40,7 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
 - gives the Landflow application client credentials and the scopes `requests:read grants:record annotations:write
   directory:read directory:write decisions:relay`;
 - subscribes `…/api/webhook/landbright-requests` to `request.created`, `…/landbright-grants` to `grant.activated`,
-  `expired`, `revoked` and `revoke_overdue`, and `…/landbright-people` to `identity.created`, with audience
+  `expired`, `revoked` and `revoke_overdue`, and `…/landbright-people` to `identity.created` and `identity.updated`, with audience
   `http://localhost:57300`;
 - creates the bundle *Landflow Editors (JIT)*: the group *Landflow Editors*, plus the target *Landflow project Payments,
   editor*, approved by *Landflow Admins*;
@@ -53,8 +55,10 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
   - *Landflow API*: an API key for the flows to call Landflow itself;
 - with the hris and landbright plugins online, creates *HiBob* (`HIBOB_BASE_URL`, `HIBOB_SERVICE_USER_ID`,
   `HIBOB_TOKEN`, `HIBOB_WEBHOOK_SECRET`; the fake Bob's values by default) and *Landbright (plugin)* (the same
-  application's client credentials); without them, the Joiner flow is skipped;
-- imports and publishes the flows, and prints the URL to give HiBob for the Joiner flow.
+  application's client credentials, with `events:manage` for the Landbright Trigger); without them, the three HR flows
+  are skipped;
+- imports and publishes the flows (publishing *Hand over a leaver's agents* makes its Landbright Trigger subscribe itself),
+  and prints the URLs to give HiBob for the two HiBob flows.
 
 Run it again to update: it finds everything by name first.
 

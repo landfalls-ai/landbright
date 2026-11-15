@@ -125,7 +125,7 @@ export async function accessToken(api: ApiContext, credentials: LandbrightCreden
 
 const HINTS: Record<number, string> = {
   401: "The token was refused: check the credential's issuer and that control trusts it.",
-  403: 'The application lacks a machine API scope this needs (directory:read or directory:write).',
+  403: 'The application lacks a machine API scope this needs (directory:read, directory:write; events:manage for the Landbright Trigger).',
   409: 'Landbright refused the change because of what it already holds (the message says what).',
 };
 

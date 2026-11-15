@@ -97,8 +97,9 @@ export const UpsertWorker = z.object({
   site: z.string().trim().max(200).nullable().optional(),
   /** Their manager, found by email among active people; null clears it, an unknown one is left out. */
   managerEmail: Email.nullable().optional(),
-  /** After today (UTC): a pre-hire, who can't sign in until then. */
+  /** After today in their zone (their site's, else the tenant's): a pre-hire, who can't sign in until then. */
   startDate: IsoDate.nullable().optional(),
+  /** Their last day: they are deactivated when it ends in their zone. */
   endDate: IsoDate.nullable().optional(),
   /** Email the invite when they become active (now, or on their start date). */
   sendInvite: z.boolean().default(true),
@@ -115,6 +116,23 @@ export const UpsertWorkerResult = z.object({
   changed: z.array(z.string()),
 });
 export type UpsertWorkerResult = z.infer<typeof UpsertWorkerResult>;
+
+/** `PUT /api/v1/people/:id/birthright-groups`: the person's `hr` memberships become exactly these groups (by name). */
+export const SetBirthrightGroups = z.object({
+  groups: z.array(z.string().trim().min(1).max(200)).max(50),
+});
+export type SetBirthrightGroups = z.input<typeof SetBirthrightGroups>;
+
+export const BirthrightResult = z.object({
+  person: Person,
+  /** Groups they were added to now (source `hr`). */
+  added: z.array(z.string()),
+  /** `hr` memberships removed because their group isn't in the list any more. */
+  removed: z.array(z.string()),
+  /** Names with no group in Landbright: skipped. */
+  missing: z.array(z.string()),
+});
+export type BirthrightResult = z.infer<typeof BirthrightResult>;
 
 export const UpdatePerson = z.object({
   givenName: Name.optional(),

@@ -1,0 +1,54 @@
+{
+  "name": "Landbright · Leavers from HiBob",
+  "description": "On HiBob's employee.left (sent once their last day has ended, at midnight in their site's zone) and employee.access.revoked.immediately: deactivate them in Landbright, found by their HiBob id. Deactivation signs them out everywhere, ends their tokens and grants, suspends the agents they sponsor, and reaches the provisioned applications within seconds. Someone HiBob has but Landbright doesn't is skipped. employee.inactivated is left out on purpose: Bob sends it for a leave of absence too. Needs the hris and landbright plugins.",
+  "tags": ["landbright", "lifecycle", "leaver", "hibob"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "HiBob leaver event",
+      "type": "hris.hibobTrigger",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "events": ["employee.left", "employee.access.revoked.immediately"],
+        "fetchEmployee": false
+      },
+      "credentials": {
+        "hibobApi": {
+          "id": "__CRED_HIBOB__",
+          "name": "HiBob"
+        }
+      }
+    },
+    {
+      "id": "deactivate",
+      "name": "Deactivate them",
+      "type": "landbright.landbright",
+      "typeVersion": 1,
+      "position": [320, 200],
+      "parameters": {
+        "resource": "person",
+        "operation": "deactivate",
+        "findBy": "source",
+        "notFound": "skip",
+        "reason": "HiBob: {{ $json.event }}"
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_deactivate_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "deactivate",
+      "targetIndex": 0
+    }
+  ]
+}

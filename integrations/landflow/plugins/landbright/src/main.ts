@@ -1,5 +1,5 @@
 /**
- * landbright: Landbright's people and groups for Landflow flows (the joiner, mover and leaver flows' actions).
+ * landbright: Landbright's people and groups for Landflow flows (the joiner, mover and leaver flows' actions) and its events (the Landbright Trigger).
  *
  *   pnpm --filter @landbright/plugin-landbright start
  *
@@ -9,6 +9,7 @@
 import { definePlugin } from '@landflow/sdk';
 import { serve } from '@landflow/sdk/serve';
 import { Landbright, landbrightApi } from './nodes/landbright';
+import { LandbrightTrigger } from './nodes/landbright-trigger';
 
 export const plugin = definePlugin({
   info: {
@@ -16,12 +17,12 @@ export const plugin = definePlugin({
     name: 'Landbright',
     version: '0.1.0',
     description:
-      'Landbright, the identity provider: create or update people from HR workers, read and deactivate them, manage group members',
+      'Landbright, the identity provider: its events as a trigger; create or update people from HR workers, read and deactivate them, set birthright groups, manage group members',
     icon: 'file:landbright.svg',
     color: '#C2410C',
     author: 'Landbright',
   },
-  nodes: [Landbright],
+  nodes: [Landbright, LandbrightTrigger],
   credentialTypes: [landbrightApi],
   iconDir: new URL('../icons/', import.meta.url),
 });

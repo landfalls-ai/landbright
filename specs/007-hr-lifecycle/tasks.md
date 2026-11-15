@@ -19,7 +19,9 @@
 
 ## Slice 2: movers, leavers and the Landbright Trigger
 
-- [ ] T011 Mover and leaver flows; `PATCH`-like updates through the same upsert; deactivation at the end of the last
-      day, or now.
-- [ ] T012 Landbright Trigger (subscription on publish, JWT checked).
-- [ ] T013 Start dates in the site's time zone.
+- [x] T011 Movers and leavers: end dates deactivate in the worker; `GET /api/v1/people/by-source/…`; `PUT
+      /api/v1/people/:id/birthright-groups`; the node's find-by-HR-record and *Set Birthright Groups*; flows
+      `joiner-hibob` (+ updated), `leaver-hibob`, `onboard-new-person` (movers).
+- [x] T012 Landbright Trigger (subscription on publish, JWT checked against the JWKS); `leaver-handover` flow.
+- [x] T013 Start and end dates in the site's time zone (tenant settings, console card).
+- [x] T014 Tests (plugin units, control units, e2e `hr-movers-leavers`), screens, docs, live check.

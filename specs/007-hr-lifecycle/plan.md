@@ -90,6 +90,78 @@ update. Birthright groups stay with the *Onboard* flow (`identity.created`), so 
 creates the two credentials when the plugins are online (`HIBOB_*` variables; the live check points them at the fake
 Bob) and skips the flow otherwise.
 
+## Second slice (2026-11-15)
+
+### Time zones (T013)
+
+HiBob documents no time zone field for an employee or a site (its docs say only that lifecycle events fire at midnight
+"according to the site's timezone"; `work.siteId` and the work-locations search carry no zone). So Landbright keeps
+the zones itself, as tenant settings:
+
+- `tenant.time_zone` (IANA, default `UTC`) and `tenant.site_time_zones` (json: site name → IANA zone). Migration
+  `hr_time_zones`. A person's zone is their site's, else the tenant's.
+- `GET /api/settings` gains `people: { timeZone, siteTimeZones }`; `PATCH /api/settings/people` sets them
+  (`tenant.people_settings_changed`); zones are checked with `Intl` (an unknown one is a 400). The console's Settings
+  gets a *Start and last days* card.
+- **Start dates:** a pre-hire becomes active when their start date has begun in their zone. The worker reads pre-hires
+  whose start date is at most tomorrow (UTC: no zone is more than a day ahead) and keeps those whose local date has
+  come. The upsert decides `pre_hire` the same way.
+
+### Last days (T011, leavers)
+
+- **End dates:** the event worker deactivates people whose **end date has ended** in their zone (local today is after
+  it), with the actor *End dates* and the reason *Their last day (date) ended*: the same deactivation as the console's
+  (sessions, tokens, grants, agents suspended, SCIM and logout tokens). That covers any HR system and a contractor's end
+  date set in the console. A pre-hire whose end date passed (an offer withdrawn) is deactivated too. The last
+  administrator isn't (logged).
+- **Bob's events:** `employee.left` fires once the last day has ended (midnight after it, the site's zone): the
+  *Leaver* flow deactivates at once. `employee.access.revoked.immediately`: the same, now. `employee.inactivated` is
+  **not** in the leaver flow: Bob sends it for a leave of absence too, and someone on parental leave keeps their
+  account. (A change from the spec, which listed it.)
+- `GET /api/v1/people/by-source/:source/:sourceId` (`directory:read`): the person an HR record is linked to, 404 if
+  none. The landbright node's *Get* and *Deactivate* find the person by id **or by the input worker's HR record**.
+- Rehires: a deactivated person still isn't brought back by HR (409); the console reactivates.
+
+### Movers (T011)
+
+- `employee.updated` joins the Joiner flow's events (now *Joiners and movers*): the upsert already updates what moved.
+- **Birthright groups move with the department.** `PUT /api/v1/people/:id/birthright-groups { groups: [names] }`
+  (`directory:write`) makes the person's `hr` memberships exactly those groups: adds the missing ones (source `hr`),
+  removes `hr` memberships not listed, leaves manual and grant memberships alone, skips groups that don't exist
+  (`missing`), and refuses the administrators' group. Answers `{ person, added, removed, missing }`. Audited as
+  `group.member_added` / `group.member_removed` as before.
+- The *Onboard* flow keeps the one map: on `identity.created` it sets the birthright groups (now with that one call),
+  the required actions and the welcome; on `identity.updated` with `department` among the fields it only sets the
+  birthright groups again. The landbright node gets Person → *Set Birthright Groups* too.
+
+### The Landbright Trigger (T012)
+
+`landbright.landbrightTrigger` (`triggerSource: appWebhook`), credential *Landbright API* with `events:manage` added
+to its scopes:
+
+- `create`: `POST /api/v1/subscriptions { url: the webhook URL, events, description: "Landflow workflow <id>",
+  audience: the URL's origin }`, keeping `{ subscriptionId, url, events, audience }`. `checkExists`: the subscription
+  is still listed with that URL and those events. `delete`: `DELETE /api/v1/subscriptions/:id` (404 is fine).
+- `webhook`: `Authorization: Bearer` must be a JWT signed by a key in `<issuer>/jwks` (RS256, `typ: secevent+jwt`,
+  `iss` the credential's issuer, `aud` the kept audience, not expired; `jose`, the JWKS cached and refetched for an
+  unknown `kid`), else 401. The item is the token's `event` (not the body), and the run's idempotency key is its `jti`
+  (the `Idempotency-Key`), so a redelivery starts nothing new. *Events*: patterns, default `identity.*`.
+- Used by a new flow, **Hand over a leaver's agents**: on `identity.deactivated`, when agents were suspended with them,
+  their manager gets an email asking them to take the agents over (Landbright → Agents). Agents need an accountable
+  sponsor (principle III); until one takes over they stay suspended.
+
+### The flows
+
+| Flow | Trigger | Does |
+|---|---|---|
+| `joiner-hibob.json` (*Joiners and movers from HiBob*) | HiBob: created, joined, updated | Landbright: Person → Create or update |
+| `leaver-hibob.json` (*Leavers from HiBob*) | HiBob: left, access revoked immediately | Landbright: Person → Deactivate (by the HR record; reason names the event) |
+| `onboard-new-person.json` | Landbright events (Webhook, JWT) | joiner: birthright groups, actions, welcome; mover: birthright groups |
+| `leaver-handover.json` | Landbright Trigger (`identity.deactivated`) | email the manager about suspended agents |
+
+The installer adds `events:manage` to the Landflow application's scopes and to the plugin credential, and subscribes
+the Onboard path to `identity.updated` too.
+
 ## Design review: the claims, against the source (2026-11-14)
 
 | Claim | Checked | Where |
@@ -103,6 +175,11 @@ Bob) and skips the flow otherwise.
 | The machine API can't create a person yet | ✓ | `machine.controller.ts` |
 | Bob: `Bob-Signature` = base64 HMAC-SHA512 of the body; a ping `{"text":"Ping test"}` wants 200; v2 payload `{companyId, type, triggeredBy, triggeredAt, version, data: {employeeId}}`; `fieldUpdates` / `fieldUpdatesIds` (both in the docs); `POST /v1/people/{id or email}` and `/v1/people/search` answer `{ employees: [...] }`, machine format with `/root/…` keys and `value`; Basic auth with a service user; retries for 3 days, 10 s timeout | ✓ (docs, re-read today) | apidocs.hibob.com: getting-started-webhooks, employee-events-v2, post_people-identifier, post_people-search, authorization |
 | Bob fires lifecycle events at midnight in the site's time zone on the effective date | From research.md | same pages (re-read in wave 3's research) |
+| Slice 2: Bob documents no time zone field; `employee.left` fires at midnight after the effective date (site's zone), for termination or garden leave; `employee.inactivated` also for a leave; `access.revoked.immediately` is separate | ✓ (docs, 2026-11-15) | apidocs.hibob.com: employee-events-v2, post_webhook_employee-left, fields-metadata, work-locations search |
+| Slice 2: an application can add and remove its own subscriptions, only at its redirect URIs' origins | ✓ | `machine.controller.ts` (subscriptions, `events:manage`), `events.service.ts` `create` |
+| Slice 2: Landflow's app webhook URL is `{publicUrl}/api/webhook/app/<workflow>/<node>`, and the Landflow application's redirect URI is on that origin | ✓ | Landflow `packages/sdk/src/webhooks.ts` (`getWebhookUrl`); `deploy/landflow` (`LANDFLOW_PUBLIC_URL`, the OIDC callback) |
+| Slice 2: deliveries are RS256 SETs (`typ: secevent+jwt`, `aud` = the subscription's audience, 5 minutes) with the event as a claim and the event id as `Idempotency-Key` | ✓ | `event-worker.ts` (`keys.sign`, headers) |
+| Slice 2: deactivation already ends sessions, tokens, grants and sponsored agents, and is a no-op when already deactivated | ✓ | `people.service.ts` `deactivate` |
 
 ## Constitution Check
 

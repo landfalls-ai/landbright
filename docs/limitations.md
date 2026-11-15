@@ -27,8 +27,8 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   tenant named by `LANDBRIGHT_TENANT_SLUG`, and client ids are global.
 - **Revocation reaches the applications Landbright provisions** ([provisioning.md](provisioning.md)): deactivating a
   person sets them inactive in each SCIM target within seconds, and an application with a back-channel logout URI is
-  posted a logout token. An application that is neither keeps its own session until it ends. None of Landflow,
-  Landfall or Clickland takes logout tokens yet (SCIM covers them).
+  posted a logout token. An application that is neither keeps its own session until it ends. Landledger takes logout
+  tokens; Landflow, Landfall and Clickland don't yet (SCIM covers them).
 - **Landflow in a bridged container can't use `localhost:4402`.** Landflow takes every endpoint from the discovery
   document, so the issuer must be reachable from both the browser and the container. Run Landflow on the host, or in a
   container with host networking as `deploy/landflow/compose.yml` does ([suite.md](suite.md#try-it-landflow-signs-in-through-landbright)).
@@ -67,8 +67,9 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   next token drops the group.
 - **The flows' email** goes through Mailpit's HTTP API, because the throwaway Landflow has only core nodes; with
   Landflow's messaging plugin, use its Send Email or Slack nodes.
-- **The *Onboard* flow's groups are a map in its Code node** (by department). Changing a department later doesn't
-  move anyone: a *mover* flow is next. Birthright memberships are ordinary memberships with source `hr`.
+- **The *Onboard* flow's groups are a map in its Code node** (by department), for joiners and movers alike. Birthright
+  memberships are ordinary memberships with source `hr`; the map isn't a Landbright rule, so a group made birthright in
+  the console gives nobody anything until the map names it.
 
 ## Agents (spec 005, slice 3)
 
@@ -112,17 +113,27 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 - **HiBob only, and checked against its documentation, not a tenant.** There is no HiBob account here: the fake Bob
   answers as the docs say (the machine format, `humanReadable: "APPEND"`, `Bob-Signature`). Shapes waits for its schema
   (plan §11); Workday and others aren't planned.
-- **Joiners only.** A changed department, title, manager or site updates the person when an event reaches the upsert,
-  but the flow listens only to `employee.created` and `employee.joined`; birthright groups aren't moved for a mover, and
-  leavers aren't deactivated from HR (slice 2). Nothing is written back to HiBob.
-- **Start dates in UTC.** Someone starting in Tel Aviv becomes active at 02:00 local time (Bob's own `employee.joined`
-  comes at local midnight and activates them then). The site's time zone is slice 2.
+- **Nothing is written back to HiBob**, and a rehire isn't automatic: HR never reactivates someone deactivated (409);
+  an administrator does, in the console.
+- **Zones by site name.** Bob documents no zone field, so the sites and their zones are typed in Settings by the names
+  HR uses; a site HR renames falls back to the default zone until Settings follows. One zone per site, no daylight-saving
+  rules of Landbright's own (the zone's, from `Intl`).
+- **`employee.inactivated` isn't a leaver** (Bob sends it for a leave of absence too), and nothing suspends someone on
+  leave; garden leave, which Bob reports as `employee.left`, deactivates.
+- **A birthright membership over a grant's.** When a grant already put someone in a group their new department gives
+  them, the grant's membership is left as it is, and it ends with the grant; the next birthright call adds it back.
+- **The handover email lists agents by id** (the machine API has no agent read), and only when the leaver has a
+  manager; giving an agent a new sponsor is an administrator's console action.
 - **No HR for agents**, and no pre-hire state for anyone created in the console (administrators create active people).
 - **The plugins need the Landflow checkout next to this one** (`@landflow/sdk` is private and linked from it), and run
-  as separate processes (`pnpm plugins:start`); the Landbright Trigger (a plugin trigger that subscribes itself) is slice
-  2, so the Onboard flow still uses a Webhook trigger with a JWT credential.
+  as separate processes (`pnpm plugins:start`). The core flows (*Onboard* among them) keep the Webhook trigger with a JWT
+  credential, so they work without the plugins; the Landbright Trigger fetches the JWKS itself (cached ten minutes,
+  refetched for an unknown key at most every 30 seconds).
 
 ## Lifted
+
+- Spec 007, slice 2: joiners only (no movers, no leavers from HR); start dates in UTC; no Landbright Trigger; a last day
+  did nothing.
 
 - Spec 007, slice 1: no way in from HR; `pre_hire` and start dates existed but nothing used them; the machine API couldn't
   create a person.

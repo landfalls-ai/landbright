@@ -875,6 +875,47 @@ test('a joiner from HR: a pre-hire with their start date and where they came fro
   await shot(page, '91-people-pre-hire');
 });
 
+test('start and last days: the zones, and someone whose last day is set', async () => {
+  // Spec 007, slice 2: the zones start and last days are read in, from the Settings page.
+  await page.goto(`${stack.console}/settings`);
+  const card = page.getByTestId('people-zones');
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: 'Add a site' }).click();
+  await card.getByLabel('Site', { exact: true }).last().fill('Tel Aviv');
+  await card.getByLabel('Zone', { exact: true }).last().fill('Asia/Jerusalem');
+  await card.getByRole('button', { name: 'Add a site' }).click();
+  await card.getByLabel('Site', { exact: true }).last().fill('London');
+  await card.getByLabel('Zone', { exact: true }).last().fill('Europe/London');
+  await card.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Zones saved')).toBeVisible();
+  await page.reload();
+  // Sorted by site: London, then Tel Aviv.
+  await expect(page.getByTestId('people-zones').getByLabel('Zone', { exact: true }).first()).toHaveValue(
+    'Europe/London',
+  );
+  await expect(page.getByTestId('people-zones').getByLabel('Zone', { exact: true }).last()).toHaveValue(
+    'Asia/Jerusalem',
+  );
+  await card.scrollIntoViewIfNeeded();
+  await shot(page, '92-settings-zones');
+
+  // A contractor whose last day is in two weeks: shown with it, and deactivated when it ends.
+  const contractor = await api<{ id: string }>('/api/people', 'POST', {
+    email: `dana.levi@${stack.slug}.test`,
+    givenName: 'Dana',
+    familyName: 'Levi',
+    department: 'Security',
+    title: 'Contractor',
+    site: 'Tel Aviv',
+    sendInvite: false,
+  });
+  const last = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+  await api(`/api/people/${contractor.id}`, 'PATCH', { endDate: last });
+  await page.goto(`${stack.console}/people/${contractor.id}`);
+  await expect(page.getByTestId('last-day')).toBeVisible();
+  await shot(page, '93-person-last-day');
+});
+
 test('signs out at the identity plane', async () => {
   const { redirect } = await api<{ redirect: string }>('/api/auth/logout', 'POST');
   await page.goto(redirect);

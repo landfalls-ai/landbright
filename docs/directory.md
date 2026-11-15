@@ -8,7 +8,9 @@ it is for administrators (members of *Landbright Admins*).
 A person has an email (unique, lowercased), a name, and HR attributes: department, title, site, manager, start and end
 dates. Administrators add people in the console; HR adds them through Landflow ([hr.md](hr.md)): created from a
 HiBob record, a person is a **pre-hire** until their start date (no sign-in, no SCIM push, no invite; the list says
-*Pre-hire* and *Not yet*), and their page says where they came from (*From HiBob · employee …*).
+*Pre-hire* and *Not yet*), and their page says where they came from (*From HiBob · employee …*). Someone with an end
+date (their **last day**, from HR or set in *Edit*) is deactivated when it ends. Both dates are read in the person's
+zone: their site's, else the default (Settings → *Start and last days*).
 
 - **Add person** creates them active, in the chosen groups, and by default emails an invite to set a password
   ([sign-in.md](sign-in.md#passwords)). The list shows *Invited* until they do.

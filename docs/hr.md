@@ -1,17 +1,27 @@
 # People from HR
 
-Wave 3, first slice ([spec 007](../specs/007-hr-lifecycle/spec.md), [plan](../specs/007-hr-lifecycle/plan.md)).
-HiBob says someone was hired; Landflow runs the *Joiner* flow; Landbright creates them as a **pre-hire** with their
-department, title, site, manager and start date. They can't sign in, aren't pushed to applications and get no invite
-until their start date. On it they become active, the invite email goes, and SCIM puts them in Landflow (and the other
-targets) with the groups the *Onboard* flow gave them.
+Wave 3 ([spec 007](../specs/007-hr-lifecycle/spec.md), [plan](../specs/007-hr-lifecycle/plan.md)): joiners, movers
+and leavers from HiBob.
+
+- **Joiners.** HiBob says someone was hired; Landflow runs the *Joiners and movers* flow; Landbright creates them as a
+  **pre-hire** with their department, title, site, manager and start date. They can't sign in, aren't pushed to
+  applications and get no invite until their start date begins in their zone. Then they become active, the invite email
+  goes, and SCIM puts them in Landflow (and the other targets) with the groups the *Onboard* flow gave them.
+- **Movers.** A new department, title, manager or site in Bob updates the person; a new department moves their
+  birthright groups (the *Onboard* flow's map), and SCIM follows.
+- **Leavers.** Bob's `employee.left` (after the last day) or `employee.access.revoked.immediately` deactivates them at
+  once through the *Leavers* flow. Independently, a person whose **last day** (`endDate`, from HR or the console) has
+  ended in their zone is deactivated by Landbright itself. When agents they sponsored are suspended with them, their
+  manager is emailed (*Hand over a leaver's agents*, on the **Landbright Trigger**).
 
 ```
 HiBob ──signed event──▶ Landflow: HiBob Trigger (hris plugin) ──worker──▶ Landbright node (landbright plugin)
-                                                                              │ POST /api/v1/people
+                                                                              │ POST /api/v1/people, or deactivate
                                                                               ▼
-                        Landflow: Onboard flow ◀── identity.created ── Landbright: pre-hire ── start date ──▶ active,
-                        (birthright groups)                                                      invite, SCIM push
+       Landflow: Onboard flow ◀── identity.created / .updated ── Landbright ── start date ──▶ active, invite, SCIM
+       (birthright groups: PUT …/birthright-groups)                         └─ last day ended ──▶ deactivated, SCIM,
+                                                                                                  logout tokens
+       Landflow: Hand over a leaver's agents ◀── identity.deactivated (Landbright Trigger, signed SET)
 ```
 
 ## In Landbright
@@ -25,7 +35,8 @@ employee id). See [reference/api.md](reference/api.md#machine-api-apiv1) for the
    else has it: 409).
 2. **Else someone with that email:** linked to the record, then updated (`identity.linked_to_source`). An agent or a
    service with that email is a 409.
-3. **Else created:** `pre_hire` when `startDate` is after today (UTC), otherwise `active` with the invite.
+3. **Else created:** `pre_hire` when `startDate` is after today in their zone, otherwise `active` with the invite (no
+   invite when their `endDate` has already ended: HR told Landbright late, and the worker deactivates them).
 4. **A deactivated person isn't brought back** (409): reactivating is a person's decision, in the console.
 5. **A pre-hire whose start date has come** is activated at once (`identity.activated`), with the invite.
 
@@ -34,19 +45,44 @@ moved, so a redelivery answers `changed: []` and records nothing but the time it
 among active people; an unknown one is left out. Every change is in the ledger with the application as actor and
 `source` in the data.
 
-### Start dates
+### Start and last days, in the person's zone
 
-The event worker (every 2 seconds, one replica per tenant) activates pre-hires whose start date is today or past (UTC):
+HiBob documents no time zone for an employee or a site (it only says its lifecycle events fire at midnight in the
+site's zone), so Landbright keeps them: **Settings → Start and last days** ([screen 92](screens.md)), or
+`PATCH /api/settings/people`: a default zone (`UTC` unless set) and a zone per site, named as HR names the site. A
+person's zone is their site's, else the default.
+
+The event worker (every 2 seconds, one replica per tenant) activates pre-hires whose start date has begun in their zone:
 status `active`, `identity.activated` (actor *Start dates*), and the invite email when they have no password and the
 record didn't say `sendInvite: false`. `identity.*` events already queue SCIM pushes, so the applications hear of them
 then, not before.
 
+It also **deactivates people whose last day has ended** in their zone (actor *End dates*, reason *Their last day
+(date) ended*): everything a console deactivation does (sessions, tokens, grants, sponsored agents suspended, SCIM and
+logout tokens). That covers any HR system, and a contractor's last day set in the console ([screen 93](screens.md)). A
+pre-hire whose last day passed (an offer withdrawn) is deactivated too. The last administrator isn't (logged once).
+
 A pre-hire can be given required actions (the *Onboard* flow asks for a second step and the terms at the first sign-in),
 but not emailed about them before they start (`notify` is a 409 for a pre-hire).
 
+### Movers: birthright groups
+
+`PUT /api/v1/people/:id/birthright-groups { groups: [names] }` (`directory:write`) makes the person's `hr` memberships
+exactly those groups: adds the missing ones, removes `hr` memberships not listed, leaves memberships given by hand or by a
+grant alone, and reports names with no group as `missing`. The administrators' group is refused. The *Onboard* flow calls
+it for a joiner and again for a mover (`identity.updated` with `department` among the fields), so its map is the one
+place birthright groups are decided.
+
+### Leavers: found by their HR record
+
+`GET /api/v1/people/by-source/hibob/<employee id>` (`directory:read`) answers the person an HR record is linked to. The
+Landbright node's *Get*, *Deactivate* and *Set Birthright Groups* use it with *Find By: HR Record*, so a leaver event
+that carries only Bob's employee id is enough.
+
 ### The console
 
-The person's page shows the start date, with *can sign in from then* for a pre-hire, and **From**: *HiBob · employee
+The person's page shows the site, the start date, with *can sign in from then* for a pre-hire, the **last day** with
+*access ends after it*, and **From**: *HiBob · employee
 3332…* ([screen 90](screens.md)). The People list says *Pre-hire* in the status column ([screen 91](screens.md)).
 
 ## In Landflow: two plugins
@@ -78,17 +114,36 @@ fields come as names) and the nested one.
 ### landbright (HTTP :7142, gRPC :7242)
 
 - **Landbright API** credential: control's URL, the issuer, an application's client id and secret, and the scopes to
-  ask for (default `directory:read directory:write`; Landbright grants only the scopes asked for). Tokens come from
+  ask for (default `directory:read directory:write`; add `events:manage` for the Landbright Trigger; Landbright grants only the scopes asked for). Tokens come from
   `{issuer}/token` with `resource=urn:landbright:api` and are kept until a minute before they expire.
 - **Landbright** (action): Person → *Create or Update* (the input item as the worker, or fields; *Send Invite*), *Get*,
-  *Deactivate* (`reason`); Group → *Add Member* (optionally until a time), *Remove Member*, *Get by Name*. Errors carry
-  Landbright's message; *Continue on fail* as everywhere.
+  *Deactivate* (`reason`), *Set Birthright Groups* (names, one per line); the last three find the person by id or by the
+  input worker's HR record (*When Not Found*: fail or output nothing). Group → *Add Member* (optionally until a time),
+  *Remove Member*, *Get by Name*. Errors carry Landbright's message; *Continue on fail* as everywhere.
 
-### The Joiner flow
+### The Landbright Trigger
 
-`integrations/landflow/flows/joiner-hibob.json`: HiBob Trigger (`employee.created`, `employee.joined`) → Landbright:
-Person → Create or Update. The birthright groups stay with the *Onboard* flow (on `identity.created`), so the map is in
-one place. See [landflow-flows.md](landflow-flows.md#the-flows).
+An app webhook trigger on Landbright's events (*Events*: types or prefixes, default `identity.*`). Publishing the
+workflow subscribes the node's URL through the machine API (`POST /api/v1/subscriptions`, `events:manage` in the
+credential's scopes, and Landflow's origin among the application's redirect URIs); unpublishing deletes the
+subscription; changing the events replaces it. Each delivery's `Authorization: Bearer` token must verify against
+`{issuer}/jwks` (RS256, `typ: secevent+jwt`, the issuer, the audience it subscribed with, not expired), else 401; the
+item is the **event inside the token**, not the body, and the run's idempotency key is the event id, so Landbright's
+retries start one run. No secret is shared. It is what the *Webhook + JWT Auth credential* pair does for the core flows,
+in one node.
+
+### The HR flows
+
+- `joiner-hibob.json`, **Joiners and movers from HiBob**: HiBob Trigger (`employee.created`, `employee.joined`,
+  `employee.updated`) → Landbright: Person → Create or Update.
+- `leaver-hibob.json`, **Leavers from HiBob**: HiBob Trigger (`employee.left`, `employee.access.revoked.immediately`;
+  no read from Bob) → Landbright: Person → Deactivate, *Find By: HR Record*, *When Not Found: Output Nothing*, reason
+  `HiBob: <event>`. Not `employee.inactivated`: Bob sends it for a leave of absence too.
+- `leaver-handover.json`, **Hand over a leaver's agents**: Landbright Trigger (`identity.deactivated`) → if agents
+  were suspended → Landbright: Person → Get → an email to their manager. An agent needs an accountable sponsor
+  (principle III); it stays suspended until an administrator gives it one.
+- The birthright groups stay with the *Onboard* flow, which now handles movers too. See
+  [landflow-flows.md](landflow-flows.md#the-flows).
 
 ## Run it locally
 
@@ -100,26 +155,37 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=… node landflow/install.ts
 
 The installer creates the *HiBob* and *Landbright (plugin)* credentials when both plugins are online (the HiBob values
 default to the fake Bob: `HIBOB_BASE_URL`, `HIBOB_SERVICE_USER_ID`, `HIBOB_TOKEN`, `HIBOB_WEBHOOK_SECRET`), publishes
-the Joiner flow and prints the URL to give Bob. The fake Bob sends signed events itself:
+the three HR flows and prints the URLs to give Bob. The fake Bob sends signed events itself:
 
 ```bash
 curl -X POST http://127.0.0.1:57994/_fake/deliver -H 'content-type: application/json' \
   -d '{"url":"http://localhost:57300/api/webhook/app/<workflow id>/trigger","type":"employee.created","employeeId":"3332883884017713238"}'
 ```
 
-`POST /_fake/employees` adds or changes an employee (a start date of today, then `employee.joined`, is their first day).
+`POST /_fake/employees` adds or changes an employee (a start date of today, then `employee.joined`, is their first day;
+a new `department`, then `employee.updated`, a mover; a `terminationDate`, a last day).
 
 ## Tests
 
 - `integrations/landflow/plugins/hris/test` (24): the worker in both shapes, the credential, the HiBob node (429 retries,
   continue on fail), the trigger (ping, signatures, event filter, fetch, 503 for Bob to retry, idempotency key).
-- `integrations/landflow/plugins/landbright/test` (8): against a fake Landbright: the token (one per lifetime), upsert
-  from an item or fields, get, deactivate, groups by name.
+- `integrations/landflow/plugins/landbright/test` (14): against a fake Landbright: the token (one per lifetime), upsert
+  from an item or fields, get, deactivate, by HR record (not found: fail or nothing), birthright groups, groups by name;
+  the Landbright Trigger: subscribe, check, replace and remove; a signed event starts a run keyed by its id; no token, a
+  bad one, another key, another audience, another `typ` or an expired one is a 401; an event it didn't ask for is
+  ignored.
+- `apps/control/test/zones.test.ts` (4): dates in a zone, the site's or the default; the day-either-side bound the
+  worker relies on; IANA zones only in the settings.
 - `e2e/test/hr-joiner.test.ts` (7): the two plugins' nodes against the built stack: a signed delivery makes a pre-hire
   with no invite; a redelivery changes nothing; `employee.joined` activates with the invite; the worker activates a
   start date that came, audited by *Start dates*; linking by email; a deactivated person stays so; a forged delivery is
   refused.
-- Screens 90 and 91.
+- `e2e/test/hr-movers-leavers.test.ts` (6), against the built stack, with the zones furthest ahead of UTC
+  (Kiritimati) and behind it (Pago Pago) so the hour doesn't matter: the settings (a bad zone is a 400); start dates in
+  the site's zone, at the upsert and in the worker; a termination date from Bob deactivates when the day has ended there
+  (*End dates*, no invite) and not before; a mover's birthright groups move and a membership by hand stays; a leaver
+  found by their HiBob id; the Landbright Trigger subscribing, verifying a real delivery's token and unsubscribing.
+- Screens 90–93; the console's zones card in `console.test.tsx`.
 
 ## Live check (2026-11-14)
 
@@ -137,3 +203,23 @@ The throwaway Landflow (`deploy/landflow`) with both plugins announced and the f
 
 Bug found and fixed: the *Onboard* flow failed for a pre-hire (*Only active people can be asked to do something*);
 required actions are now accepted for pre-hires, without the email.
+
+## Live check, second slice (2026-11-15)
+
+The throwaway Landflow with both plugins (restarted with the new code) and the fake Bob; the installer republished the
+flows (*Joiners and movers* in place of *Joiner*) and publishing *Hand over a leaver's agents* made its Landbright Trigger
+subscribe itself (owner `landflow-local`, `identity.deactivated`). Zones: Tel Aviv → Asia/Jerusalem, London →
+Europe/London; a *Finance* birthright group created for the Onboard map.
+
+- **Mover:** Noa Barak (fictitious) moved from Engineering to Finance in Bob, `employee.updated`: Landbright updated her
+  department and title, and the *Onboard* flow set her birthright groups (Engineers and Landflow Editors out, Finance in,
+  Everyone kept) about two seconds later. Out of every group assigned to the Landflow target, SCIM deactivated her in
+  Landflow two seconds after that.
+- **Leaver:** with a fictitious agent she sponsored, Bob's `employee.left`: deactivated 60 ms after the delivery (*HiBob:
+  employee.left*; four sessions and tokens revoked, the agent suspended), and the Landbright Trigger's signed delivery
+  started *Hand over a leaver's agents*: Maya, her manager, had the email two seconds later.
+- **Last day:** Gal Peretz (fictitious, London), whose termination date was yesterday there, arrived from Bob and was
+  deactivated by *End dates* two seconds later.
+
+Bug found and fixed: Gal got an invite email, though their last day had already ended; someone created after their last
+day now gets none.

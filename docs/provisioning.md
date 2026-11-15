@@ -117,6 +117,10 @@ The token is a JWT signed with the issuer's key (`typ: logout+jwt`, RS256), with
 ID token, and ends the session whose `sid` its ID token carried (the ID token carries `sid` for an application with a
 URI). Discovery says `backchannel_logout_supported` and `backchannel_logout_session_supported`.
 
+Each try is signed when it is sent, with a new `jti` and `iat`: a retry is a new token, and so is each new logout for
+the same person. An application should treat any valid token as *end these sessions*, which is the same however often it
+comes, rather than count on a repeated `jti`.
+
 The logouts are queued in the same transaction as what ended the sessions (`logout_delivery`), and the event worker's
 loop sends them: 200 or 204 is delivered; anything else is tried again after 5 seconds, then 10, 20 … ten tries in all
 (about 85 minutes), then given up. Each delivery is in the ledger, `session.logout_sent` (with `reason`: `signed_out`,
@@ -152,6 +156,13 @@ own sign-out sends its logout tokens through the same queue, not inline.
 - Live, the same day, Landledger's server (the finance team's cost subledger, built by the Clickland session): in
   sync at once with eight people and its six role groups (*Landledger Auditors* still empty); Eden Tzur deactivated in
   Landbright was inactive there 1.2 seconds later, and active again 1.9 seconds after reactivation.
+- Live, 2026-11-15, Landledger's back-channel logout endpoint (`/api/auth/backchannel-logout`, built by the Clickland
+  session; it ends every session of the token's `sub`): registered on `landledger-local`; Tal signed in to Landledger,
+  then signed out at Landbright alone, and the logout token was taken on the first try (23 ms); her Landledger session
+  was gone 1.2 seconds after she signed out. Landledger is the first of the land applications to take logout tokens.
+  Since Landledger's 4cf871f, a token whose `jti` it already processed is still verified in full and answered 200
+  (audited there as a replay); Landbright's own retries carry a new `jti`, which Landledger handles as ending the
+  same sessions again.
 - Live, the same day, back-channel logout on the dev Landbright with a stand-in application (none of Landflow, Landfall
   or Clickland takes logout tokens yet): Tal signed in to it and signed out at Landbright, and **its logout token
   arrived 369 ms later** for that session; signed in again, then *Sign out everywhere else* on the account page: the

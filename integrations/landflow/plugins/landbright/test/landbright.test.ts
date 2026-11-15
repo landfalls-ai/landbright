@@ -3,7 +3,7 @@ import { runTestCredentials, type ExecuteResponse, type JsonObject } from '@land
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { clearTokens } from '../src/client';
 import { plugin } from '../src/main';
-import { upsertBody } from '../src/nodes/landbright';
+import { namesOf, upsertBody } from '../src/nodes/landbright';
 import { runLandbright } from './helpers';
 import { CLIENT, startFakeLandbright, type FakeLandbright } from './fake-landbright';
 
@@ -140,6 +140,52 @@ describe('Person', () => {
     expect((await run({ resource: 'person', operation: 'get', personId: 'not-an-id' })).error?.message).toMatch(
       /not a Landbright id/,
     );
+  });
+
+  it("finds the person by the input worker's HR record: get, deactivate; not found fails or outputs nothing", async () => {
+    const worker = { ...WORKER, sourceId: 'hr-1', email: 'hr1@landbright.test' };
+    const [created] = jsonOf(await run({ resource: 'person', operation: 'upsert' }, [worker]));
+    const id = (created.person as JsonObject).id as string;
+    const byRecord = { resource: 'person', findBy: 'source' };
+    expect(jsonOf(await run({ ...byRecord, operation: 'get' }, [worker]))[0]).toMatchObject({ id });
+    // A leaver event's item may carry only the record (Bob couldn't be read): that is enough.
+    expect(
+      jsonOf(
+        await run({ ...byRecord, operation: 'deactivate', reason: 'HiBob: employee.left' }, [
+          { source: 'hibob', sourceId: 'hr-1', event: 'employee.left' },
+        ]),
+      )[0],
+    ).toEqual({ id, status: 'deactivated' });
+    expect(fake.requests.at(-1)).toMatchObject({ path: `/api/v1/people/${id}/deactivate` });
+    const unknown = [{ source: 'hibob', sourceId: 'never-seen' }];
+    expect((await run({ ...byRecord, operation: 'deactivate' }, unknown)).error?.message).toMatch(
+      /No one in Landbright is linked to hibob record never-seen/,
+    );
+    const skipped = await run({ ...byRecord, operation: 'deactivate', notFound: 'skip' }, unknown);
+    expect(skipped.error).toBeUndefined();
+    expect(jsonOf(skipped)).toEqual([]);
+    expect((await run({ ...byRecord, operation: 'get' }, [{ email: 'x@y.test' }])).error?.message).toMatch(
+      /no source and sourceId/,
+    );
+  });
+
+  it('sets birthright groups from a list or text; names Landbright lacks come back as missing', async () => {
+    const [created] = jsonOf(
+      await run({ resource: 'person', operation: 'upsert' }, [
+        { ...WORKER, sourceId: 'b-1', email: 'b1@landbright.test' },
+      ]),
+    );
+    const id = (created.person as JsonObject).id as string;
+    const set = (groups: unknown) =>
+      run({ resource: 'person', operation: 'setBirthright', personId: id, groups } as JsonObject);
+    expect(jsonOf(await set('Engineers, Nope\nEngineers'))[0]).toMatchObject({
+      added: ['Engineers'],
+      removed: [],
+      missing: ['Nope'],
+    });
+    expect(fake.requests.at(-1)).toMatchObject({ method: 'PUT', body: { groups: ['Engineers', 'Nope'] } });
+    expect(jsonOf(await set([]))[0]).toMatchObject({ added: [], removed: ['Engineers'] });
+    expect(namesOf(' A ,B\n\nA')).toEqual(['A', 'B']);
   });
 
   it('continues on fail', async () => {
