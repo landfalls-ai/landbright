@@ -27,12 +27,18 @@ export class AccessSweeper {
           where: { id: r.id },
           data: { status: 'expired', decidedAt: now, closingReason: 'deadline' },
         });
+        // A gate that ran out (spec 008) says so: the system never answered.
+        const step = (r.approvers as unknown as Array<{ kind?: string; name: string; system?: string }>)[r.currentStep];
         await appendAudit(tx, tenantId, {
           ...SYSTEM,
           action: 'request.decided',
           targetType: 'request',
           targetId: r.id,
-          data: { ref: refOf(r.number), outcome: 'expired' },
+          data: {
+            ref: refOf(r.number),
+            outcome: 'expired',
+            ...(step?.kind === 'external' && { step: step.name, waitedOn: step.system }),
+          },
         });
       }
       await this.escalate(tx, tenantId, now);
@@ -86,16 +92,29 @@ export class AccessSweeper {
     });
   }
 
-  /** A pending request older than its policy's escalation time gets the escalation groups' people as approvers. */
+  /**
+   * A step undecided for longer than its policy's escalation time gets the escalation groups' people as approvers. The
+   * time counts from when the step started; a step a system settles (spec 008) is never escalated.
+   */
   private async escalate(tx: Prisma.TransactionClient, tenantId: string, now: Date) {
-    const pending = await tx.accessRequest.findMany({ where: { status: 'pending' } });
-    for (const r of pending) {
+    const pending = await tx.accessRequest.findMany({ where: { status: 'pending' }, select: { id: true } });
+    for (const { id } of pending) {
+      // Under the request's lock, as votes and settlements are: they rewrite the same steps.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`request:${id}`}, 0))`;
+      const r = await tx.accessRequest.findFirst({ where: { id, status: 'pending' } });
+      if (!r) continue;
       const policy = AccessPolicy.parse(r.policySnapshot ?? {});
       if (!policy.escalation) continue;
-      if (now.getTime() - r.createdAt.getTime() < policy.escalation.afterMinutes * MINUTE) continue;
-      const steps = r.approvers as unknown as Array<{ approvers: NamedApprover[]; escalatedAt?: string }>;
+      const steps = r.approvers as unknown as Array<{
+        kind?: string;
+        approvers: NamedApprover[];
+        startedAt?: string;
+        escalatedAt?: string;
+      }>;
       const step = steps[r.currentStep];
-      if (!step || step.escalatedAt) continue;
+      if (!step || step.kind === 'external' || step.escalatedAt) continue;
+      const since = step.startedAt ? new Date(step.startedAt).getTime() : r.createdAt.getTime();
+      if (now.getTime() - since < policy.escalation.afterMinutes * MINUTE) continue;
       const excluded = new Set([r.requesterId, r.subjectId, r.actingForId].filter(Boolean));
       const members = await tx.membership.findMany({
         where: {

@@ -39,6 +39,8 @@ const SCOPES = [
   'decisions:relay',
   // The Landbright Trigger subscribes itself (spec 007).
   'events:manage',
+  // Landledger's flow, in this Landflow, settles a bundle's cost gate (spec 008).
+  'steps:settle',
 ];
 /**
  * The Slack flows are installed only with a bot token (`SLACK_BOT_TOKEN`). `SLACK_API_URL` points them at another Slack
@@ -131,9 +133,18 @@ const subscribe = async (path: string, events: string[], description: string) =>
     });
   console.log(`Landbright: ${events.join(', ')} → ${url}`);
 };
-await subscribe('landbright-requests', ['request.created'], 'Landflow: Approve a request (email)');
+// A request's next step (after enough approvals, or a cost gate) asks its approvers as a new request does (spec 008).
+await subscribe(
+  'landbright-requests',
+  ['request.created', 'request.step_started'],
+  'Landflow: Approve a request (email)',
+);
 if (SLACK_TOKEN)
-  await subscribe('landbright-requests-slack', ['request.created'], 'Landflow: Approve a request (Slack)');
+  await subscribe(
+    'landbright-requests-slack',
+    ['request.created', 'request.step_started'],
+    'Landflow: Approve a request (Slack)',
+  );
 await subscribe(
   'landbright-people',
   ['identity.created', 'identity.updated'],

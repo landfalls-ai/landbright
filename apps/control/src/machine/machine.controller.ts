@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Post,
   Put,
@@ -27,6 +28,7 @@ import {
   RelayTicketListDto,
   ReportTargetDto,
   ServiceCreateRequestDto,
+  SettleStepDto,
   SubscriptionDto,
   SubscriptionListDto,
 } from '../access/access.dto';
@@ -93,6 +95,22 @@ export class MachineController {
     @Service('decisions:relay') service: ServicePrincipal,
   ) {
     return this.access.relayDecision(service, id, body);
+  }
+
+  /**
+   * A system's answer to a step it settles (spec 008: a cost gate), from the application the step names. Approve passes
+   * the request on to its people; deny ends it. The same answer again is 200; a different one, 409.
+   */
+  @Post('requests/:id/steps/:step/settle')
+  @HttpCode(200)
+  @ZodResponse({ type: AccessRequestDto })
+  settle(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('step', ParseIntPipe) step: number,
+    @Body() body: SettleStepDto,
+    @Service('steps:settle') service: ServicePrincipal,
+  ) {
+    return this.access.settle(service, id, step, body);
   }
 
   @Get('requests/:id')

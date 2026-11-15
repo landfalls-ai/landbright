@@ -916,6 +916,85 @@ test('start and last days: the zones, and someone whose last day is set', async 
   await shot(page, '93-person-last-day');
 });
 
+test('a seat that costs: the cost gate in the catalog, and a request waiting on Landledger', async () => {
+  // Spec 008: Landledger's flow, running as an application with steps:settle, settles the gate before people decide.
+  const flows = await api<{ application: { clientId: string }; clientSecret: string }>('/api/applications', 'POST', {
+    name: 'Landflow flows',
+    clientId: `landflow-flows-${stack.slug}`,
+    redirectUris: ['http://127.0.0.1:3000/api/auth/oidc/callback'],
+    grantTypes: ['client_credentials'],
+    apiScopes: ['requests:read', 'steps:settle'],
+  });
+  const everyone = (await api<{ items: Array<{ id: string; givenName: string | null }> }>('/api/people')).items;
+  const lior = everyone.find((p) => p.givenName === 'Lior')!;
+  const linear = await api<{ id: string }>('/api/bundles', 'POST', {
+    name: 'Linear seat',
+    description: 'A Linear seat, paid for on Landledger’s Linear contract.',
+    targets: [
+      {
+        key: 'linear:seat',
+        type: 'linear-seat',
+        label: 'Linear',
+        cost: { kind: 'seat', landbrightApp: 'linear' },
+      },
+    ],
+    policy: {
+      steps: [
+        {
+          kind: 'external',
+          name: 'Cost',
+          system: 'Landledger',
+          settledBy: flows.application.clientId,
+          deadlineMinutes: 1440,
+        },
+        { name: 'Tool owner', approvers: { identityIds: [lior.id] } },
+      ],
+      defaultDurationMinutes: 480,
+      maxDurationMinutes: 1440,
+    },
+  });
+
+  await page.goto(`${stack.console}/catalog`);
+  await expect(page.getByText('seat · linear')).toBeVisible();
+  await page.getByTestId('bundle-Linear seat').click();
+  await expect(page.getByTestId('gate')).toBeVisible();
+  await page.getByTestId('gate').scrollIntoViewIfNeeded();
+  await shot(page, '94-bundle-cost-gate');
+  await page.keyboard.press('Escape');
+
+  const request = await api<{ id: string; ref: string }>('/api/access/requests', 'POST', {
+    bundleId: linear.id,
+    reason: 'Plan the Payments roadmap with the product team',
+  });
+  await page.goto(`${stack.console}/access/requests/${request.ref}`);
+  await expect(page.getByTestId('gate')).toContainText('Waiting on Landledger');
+  await expect(page.getByTestId('costs')).toContainText('linear');
+  await shot(page, '95-request-waiting-on-landledger', { fullPage: true });
+
+  const token = await fetch(`${stack.issuer}/token`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      authorization: `Basic ${Buffer.from(`${flows.application.clientId}:${flows.clientSecret}`).toString('base64')}`,
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'requests:read steps:settle' }),
+  });
+  const { access_token } = (await token.json()) as { access_token: string };
+  const settled = await fetch(`${stack.control}/api/v1/requests/${request.id}/steps/0/settle`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      outcome: 'approve',
+      reference: { system: 'Landledger', id: 'REQ-0042', url: 'http://127.0.0.1:57700/requests/REQ-0042' },
+    }),
+  });
+  expect(settled.status).toBe(200);
+  await page.reload();
+  await expect(page.getByTestId('gate')).toContainText('Approved by Landledger');
+  await expect(page.getByTestId('gate')).toContainText('REQ-0042');
+  await shot(page, '96-request-cost-approved', { fullPage: true });
+});
+
 test('signs out at the identity plane', async () => {
   const { redirect } = await api<{ redirect: string }>('/api/auth/logout', 'POST');
   await page.goto(redirect);

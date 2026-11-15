@@ -24,6 +24,7 @@ import {
   SubscriptionList,
   UpdateBundle,
   UpdateSubscription,
+  SettleStep,
 } from '@landbright/contracts';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
@@ -52,5 +53,6 @@ export class DeliveryListDto extends createZodDto(DeliveryList) {}
 export class ExtendGrantDto extends createZodDto(ExtendGrant) {}
 export class ServiceCreateRequestDto extends createZodDto(ServiceCreateRequest) {}
 export class RelayDecisionDto extends createZodDto(RelayDecision) {}
+export class SettleStepDto extends createZodDto(SettleStep) {}
 export class RelayTicketListDto extends createZodDto(RelayTicketList) {}
 export class DeactivateDto extends createZodDto(z.object({ reason: z.string().trim().max(500).optional() })) {}

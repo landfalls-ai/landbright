@@ -1,6 +1,6 @@
 {
   "name": "Landbright · Approve a request (email)",
-  "description": "On request.created from Landbright: email each approver the policy named a link to Landbright’s decision page, wait until Landbright wakes the run (or the deadline), re-read the request and tell the requester. The decision is never made here: Landbright decides, the flow only talks.",
+  "description": "On request.created, and on request.step_started when a request moves to its next step, from Landbright: email each approver the current step names a link to Landbright’s decision page (none while a system settles the step, such as a cost gate), wait until Landbright wakes the run (or the deadline), re-read the request and tell the requester. A run whose request moved on to another step ends: the run for that step carries on. The decision is never made here: Landbright decides, the flow only talks.",
   "tags": ["landbright", "access"],
   "nodes": [
     {
@@ -36,7 +36,7 @@
     },
     {
       "id": "created",
-      "name": "Request created?",
+      "name": "Request created, or a new step?",
       "type": "core.if",
       "typeVersion": 1,
       "position": [600, 200],
@@ -44,9 +44,9 @@
         "conditions": {
           "condition": [
             {
-              "left": "{{ $json.type }}",
+              "left": "{{ ['request.created', 'request.step_started'].includes($json.type) ? 'yes' : 'no' }}",
               "operator": "equals",
-              "right": "request.created"
+              "right": "yes"
             }
           ]
         },
@@ -88,6 +88,25 @@
               "left": "{{ $json.status }}",
               "operator": "equals",
               "right": "pending"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "gated",
+      "name": "Waiting on a system?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [1500, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.waitingOnSystem ? 'yes' : 'no' }}",
+              "operator": "equals",
+              "right": "yes"
             }
           ]
         },
@@ -137,12 +156,17 @@
             {
               "name": "requestId",
               "type": "string",
-              "value": "{{ $('One email per approver').first().json.requestId }}"
+              "value": "{{ $('Re-read the request').first().json.id }}"
             },
             {
               "name": "deadline",
               "type": "string",
-              "value": "{{ $('One email per approver').first().json.deadline }}"
+              "value": "{{ $('Re-read the request').first().json.deadline }}"
+            },
+            {
+              "name": "step",
+              "type": "number",
+              "value": "{{ $('Re-read the request').first().json.currentStep }}"
             }
           ]
         }
@@ -230,6 +254,25 @@
       }
     },
     {
+      "id": "same",
+      "name": "Still at this run's step?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [3600, 120],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.currentStep }}",
+              "operator": "equals",
+              "right": "{{ $('Once per request').first().json.step }}"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
       "id": "notice",
       "name": "Tell the requester",
       "type": "core.code",
@@ -238,7 +281,7 @@
       "parameters": {
         "language": "javascript",
         "mode": "each",
-        "codeEach": "const r = $json;\nconst who = r.votes.filter((v) => v.outcome === (r.status === 'approved' ? 'approve' : 'deny')).map((v) => v.decider.displayName).join(', ');\nconst what = { approved: `approved${who ? ` by ${who}` : ''}`, denied: `denied${who ? ` by ${who}` : ''}`, expired: 'not decided in time', cancelled: 'cancelled', superseded: 'replaced by a newer request' }[r.status] ?? r.status;\nconst until = r.grant ? ` You have it until ${new Date(r.grant.expiresAt).toUTCString()}.` : '';\nreturn { to: r.requester.email, toName: r.requester.displayName, subject: `${r.ref}: ${r.bundle.name} ${r.status}`, text: `Your request for ${r.bundle.name} was ${what}.${until}\\n\\n${r.decisionUrl}` };"
+        "codeEach": "const r = $json;\nconst who = r.votes.filter((v) => v.outcome === (r.status === 'approved' ? 'approve' : 'deny')).map((v) => v.decider.displayName).join(', ');\n// A system that settled a step (a cost gate, spec 008) can deny it too.\nconst gate = r.steps.find((s) => s.settlement?.outcome === 'deny');\nconst deniedBy = gate ? `${gate.system} (${gate.settlement.reference.id})` : who;\nconst what = { approved: `approved${who ? ` by ${who}` : ''}`, denied: `denied${deniedBy ? ` by ${deniedBy}` : ''}`, expired: 'not decided in time', cancelled: 'cancelled', superseded: 'replaced by a newer request' }[r.status] ?? r.status;\nconst until = r.grant ? ` You have it until ${new Date(r.grant.expiresAt).toUTCString()}.` : '';\nreturn { to: r.requester.email, toName: r.requester.displayName, subject: `${r.ref}: ${r.bundle.name} ${r.status}`, text: `Your request for ${r.bundle.name} was ${what}.${until}\\n\\n${r.decisionUrl}` };"
       }
     },
     {
@@ -293,10 +336,26 @@
       "targetIndex": 0
     },
     {
-      "id": "e_pending_0_emails_0_main",
+      "id": "e_pending_0_gated_0_main",
       "type": "main",
       "source": "pending",
       "sourceIndex": 0,
+      "target": "gated",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_gated_0_once_0_main",
+      "type": "main",
+      "source": "gated",
+      "sourceIndex": 0,
+      "target": "once",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_gated_1_emails_0_main",
+      "type": "main",
+      "source": "gated",
+      "sourceIndex": 1,
       "target": "emails",
       "targetIndex": 0
     },
@@ -365,10 +424,18 @@
       "targetIndex": 0
     },
     {
-      "id": "e_decided_1_attach_0_main",
+      "id": "e_decided_1_same_0_main",
       "type": "main",
       "source": "decided",
       "sourceIndex": 1,
+      "target": "same",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_same_0_attach_0_main",
+      "type": "main",
+      "source": "same",
+      "sourceIndex": 0,
       "target": "attach",
       "targetIndex": 0
     }

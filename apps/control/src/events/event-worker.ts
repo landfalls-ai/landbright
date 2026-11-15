@@ -17,7 +17,13 @@ const TICK_MS = 2_000;
 const LOCK_MS = 30_000;
 const GIVE_UP_MS = 24 * 3600_000;
 const TIMEOUT_MS = 10_000;
-const WAKE_ACTIONS = new Set(['request.vote_recorded', 'request.decided', 'request.escalated']);
+const WAKE_ACTIONS = new Set([
+  'request.vote_recorded',
+  'request.decided',
+  'request.escalated',
+  'request.step_settled',
+  'request.step_started',
+]);
 
 /** 5 s, 10 s, 20 s … capped at an hour. */
 export const backoffMs = (attempts: number) => Math.min(5_000 * 2 ** Math.max(0, attempts - 1), 3600_000);

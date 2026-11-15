@@ -90,6 +90,11 @@ so.
 
 Next in wave 3: Shapes, when its schema comes (plan §11).
 
+**Seat costs (spec 008, slice 1)**, asked for by Landledger's wave 3: a bundle's target can cost a seat on a
+Landledger contract, and a policy can open with a **cost gate**, a step Landledger settles through Landflow
+(`steps:settle`) before people decide access ([access.md](access.md#a-cost-gate-seats-landledger-pays-for)). Next: seats
+used, live from grants (slice 2).
+
 ## Wave 4: what the first slice built (ahead of order)
 
 The user asked for two studies: Keycloak, reverse-engineered with Craft Anything, and the open-source just-in-time

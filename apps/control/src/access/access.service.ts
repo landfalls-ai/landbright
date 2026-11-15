@@ -12,6 +12,7 @@ import {
   type Bundle,
   BundleTarget,
   type CreateBundle,
+  EXTERNAL_STEP_DEADLINE_MINUTES,
   type CreateRequest,
   type DecideRequest,
   type ExtendGrant,
@@ -24,6 +25,8 @@ import {
   type ReportTarget,
   type RequestPreview,
   type ServiceCreateRequest,
+  type SettleStep,
+  type StepSettlement,
   type UpdateBundle,
 } from '@landbright/contracts';
 import { type Config } from '@landbright/platform';
@@ -58,8 +61,27 @@ const requestInclude = {
   grant: { include: { targets: { orderBy: { key: 'asc' } } } },
 } satisfies Prisma.AccessRequestInclude;
 
-/** The approvers a request named, per step (escalation appends to a step). */
-type StepSnapshot = { name: string; approvalsRequired: number; approvers: NamedApprover[]; allowRelayed?: boolean };
+/**
+ * The approvers a request named, per step (escalation appends to a step). An external step (spec 008) names no
+ * approvers: the application `settledBy` settles it, and its settlement is kept here.
+ */
+type StepSnapshot = {
+  kind?: 'people' | 'external';
+  name: string;
+  approvalsRequired: number;
+  approvers: NamedApprover[];
+  allowRelayed?: boolean;
+  settledBy?: string;
+  system?: string;
+  deadlineMinutes?: number;
+  /** An auto-approve rule that matched when the request was filed: it approves once the gate is passed. */
+  autoRule?: { rule: string; evaluatedAt: string };
+  settlement?: StepSettlement;
+  /** When it became the current step (a step after the first). */
+  startedAt?: string;
+  escalatedAt?: string;
+};
+const isExternal = (s: StepSnapshot | undefined) => s?.kind === 'external';
 
 export const refOf = (n: number) => `REQ-${n}`;
 const policyOf = (b: BundleRow) => AccessPolicy.parse(b.policy ?? {});
@@ -167,12 +189,33 @@ export class AccessService {
       const owner = await tx.identity.findFirst({ where: { id: input.ownerId, kind: 'person' } });
       if (!owner) throw new BadRequestException('The owner must be a person in the directory.');
     }
+    if (input.policy) await this.checkSteps(tx, input.policy.steps);
     if (input.targets) {
       const keys = input.targets.map((t) => t.key);
       if (new Set(keys).size !== keys.length) throw new BadRequestException('Two targets have the same key.');
       if (keys.some((k) => k.startsWith('group:')))
         throw new BadRequestException('Target keys can’t start with group:.');
     }
+  }
+
+  /**
+   * A step a system settles (spec 008) is a gate: at most one, first, with a people step after it, and settled by an
+   * application that isn't an agent's (agents never decide) or the console.
+   */
+  private async checkSteps(tx: Tx, steps: AccessPolicy['steps']) {
+    const external = steps.filter((s) => s.kind === 'external');
+    if (external.length === 0) return;
+    if (external.length > 1) throw new BadRequestException('A policy has at most one step a system settles.');
+    if (steps[0]?.kind !== 'external') throw new BadRequestException('The step a system settles comes first.');
+    if (steps.length < 2)
+      throw new BadRequestException('A step a system settles is a gate: a step people decide must follow it.');
+    const step = external[0]!;
+    if (!step.settledBy || !step.system)
+      throw new BadRequestException(`Name the application that settles “${step.name}”, and the system.`);
+    const app = await tx.oidcClient.findFirst({ where: { clientId: step.settledBy } });
+    if (!app) throw new BadRequestException(`No application has the client id ${step.settledBy}.`);
+    if (app.agentId) throw new BadRequestException('An agent’s application can’t settle a step: agents never decide.');
+    if (app.system) throw new BadRequestException('Landbright’s console can’t settle a step.');
   }
 
   private async toBundle(tx: Tx, b: BundleRow): Promise<Bundle> {
@@ -415,8 +458,21 @@ export class AccessService {
     const ctx = { requesterId, subjectId, actingForId, bundleOwnerId: bundle.ownerId };
     const steps: StepSnapshot[] = [];
     for (const step of policy.steps) {
+      if (step.kind === 'external') {
+        steps.push({
+          kind: 'external',
+          name: step.name,
+          approvalsRequired: 1,
+          approvers: [],
+          settledBy: step.settledBy,
+          system: step.system,
+          deadlineMinutes: step.deadlineMinutes ?? EXTERNAL_STEP_DEADLINE_MINUTES,
+        });
+        continue;
+      }
       const approvers = await resolveStep(tx, step, policy.approverFallback, ctx);
       steps.push({
+        kind: 'people',
         name: step.name,
         approvalsRequired: step.approvalsRequired,
         approvers,
@@ -424,11 +480,11 @@ export class AccessService {
       });
     }
     base.steps = steps;
-    const first = steps[0]?.approvers ?? [];
+    const first = steps.find((s) => !isExternal(s))?.approvers ?? [];
     const people = await tx.identity.findMany({ where: { id: { in: first.map((a) => a.id) } } });
     base.approverRefs = people.map(toRef);
     if (!base.autoRule && !input.breakGlass) {
-      const short = steps.find((s) => s.approvers.length < s.approvalsRequired);
+      const short = steps.find((s) => !isExternal(s) && s.approvers.length < s.approvalsRequired);
       if (short)
         return {
           ...base,
@@ -535,6 +591,11 @@ export class AccessService {
       if (plan.whyNot !== null || !plan.bundle || !plan.policy) throw new BadRequestException(plan.whyNot);
       const policy = plan.policy;
       const now = new Date();
+      // A gate (spec 008) comes first: the request waits on it for the gate's own time, and a rule that would approve
+      // it at once waits for the gate too. Break-glass skips it.
+      const gate = !input.breakGlass && isExternal(plan.steps[0]) ? plan.steps[0]! : null;
+      if (gate && plan.autoRule) gate.autoRule = { rule: plan.autoRule, evaluatedAt: now.toISOString() };
+      const costs = targetsOf(plan.bundle).flatMap((t) => (t.cost ? [t.cost.landbrightApp] : []));
       const last = await tx.accessRequest.findFirst({ orderBy: { number: 'desc' }, select: { number: true } });
       const number = (last?.number ?? 0) + 1;
       const request = await tx.accessRequest.create({
@@ -551,7 +612,7 @@ export class AccessService {
           ticket: (input.ticket ?? undefined) as Prisma.InputJsonValue | undefined,
           durationSeconds: plan.durationMinutes * 60,
           startsAt: input.startsAt ? new Date(input.startsAt) : null,
-          deadline: new Date(now.getTime() + policy.decisionDeadlineMinutes * MINUTE),
+          deadline: new Date(now.getTime() + (gate ? gate.deadlineMinutes! : policy.decisionDeadlineMinutes) * MINUTE),
           policySnapshot: policy as Prisma.InputJsonValue,
           approvers: plan.steps as unknown as Prisma.InputJsonValue,
         },
@@ -569,6 +630,8 @@ export class AccessService {
           source,
           breakGlass: input.breakGlass,
           ...(extendsGrantId && { extendsGrantId }),
+          ...(costs.length > 0 && { costs }),
+          ...(gate && { waitsOn: gate.system }),
         },
       });
       if (plan.pending) {
@@ -596,7 +659,7 @@ export class AccessService {
           targetId: request.id,
           data: { ref: refOf(number), reason: input.reason, reviewDueAt: reviewDueAt.toISOString() },
         });
-      } else if (plan.autoRule) {
+      } else if (plan.autoRule && !gate) {
         await this.approve(
           tx,
           request.id,
@@ -722,6 +785,7 @@ export class AccessService {
       if (!request) throw new NotFoundException('No such request.');
       if (request.status !== 'pending') throw new ConflictException(`${refOf(request.number)} is ${request.status}.`);
       const step = (request.approvers as unknown as StepSnapshot[])[request.currentStep];
+      if (isExternal(step)) throw new ConflictException(`${refOf(request.number)} is waiting on ${step!.system}.`);
       if (!step?.allowRelayed)
         throw new ForbiddenException('This step’s approvers decide on Landbright’s decision page only.');
       const voted = new Set(request.decisions.map((d) => d.deciderId));
@@ -855,17 +919,150 @@ export class AccessService {
         });
       } else if (step && approvals >= step.approvalsRequired) {
         if (request.currentStep + 1 < steps.length)
-          await tx.accessRequest.update({ where: { id: request.id }, data: { currentStep: request.currentStep + 1 } });
+          await this.startStep(tx, request, steps, request.currentStep + 1, who, new Date());
         else await this.approve(tx, request.id, 'reviewed', who);
       }
       return null;
     });
   }
 
+  /**
+   * Moves a request to its next step: the step starts now (escalation counts from here), and flows that ask approvers
+   * hear `request.step_started`.
+   */
+  private async startStep(
+    tx: Tx,
+    request: { id: string; number: number },
+    steps: StepSnapshot[],
+    index: number,
+    who: Who,
+    now: Date,
+    data: Prisma.AccessRequestUpdateInput = {},
+  ) {
+    steps[index]!.startedAt = now.toISOString();
+    await tx.accessRequest.update({
+      where: { id: request.id },
+      data: { ...data, currentStep: index, approvers: steps as unknown as Prisma.InputJsonValue },
+    });
+    await appendAudit(tx, this.tenantId, {
+      ...who,
+      action: 'request.step_started',
+      targetType: 'request',
+      targetId: request.id,
+      data: { ref: refOf(request.number), step: index, name: steps[index]!.name },
+    });
+  }
+
+  /**
+   * A system's answer to an external step (spec 008), from the application the step names: approve passes the request
+   * on to its people, who decide access; deny ends it. The same answer again is 200 (a retried flow); a different one,
+   * 409. Never a vote: the request keeps it on the step, with the system's reference.
+   */
+  async settle(
+    service: ServicePrincipal,
+    requestId: string,
+    stepIndex: number,
+    input: SettleStep,
+  ): Promise<AccessRequestView> {
+    if (service.agentId) throw new ForbiddenException('An agent never settles a step.');
+    await this.db.tx(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`request:${requestId}`}, 0))`;
+      const request = await tx.accessRequest.findFirst({ where: { id: requestId } });
+      if (!request) throw new NotFoundException('No such request.');
+      const ref = refOf(request.number);
+      const steps = request.approvers as unknown as StepSnapshot[];
+      const step = steps[stepIndex];
+      if (!step || !isExternal(step))
+        throw new BadRequestException(`Step ${stepIndex} of ${ref} isn’t settled by a system.`);
+      if (step.settledBy !== service.clientId)
+        throw new ForbiddenException(`“${step.name}” is settled by another application.`);
+      if (step.settlement) {
+        if (step.settlement.outcome === input.outcome && step.settlement.reference.id === input.reference.id) return;
+        throw new ConflictException(
+          `“${step.name}” of ${ref} was already settled: ${step.settlement.outcome}, ${step.settlement.reference.id}.`,
+        );
+      }
+      if (request.status !== 'pending')
+        throw new ConflictException(
+          request.method === 'break_glass'
+            ? `${ref} was granted by break-glass; “${step.name}” was skipped.`
+            : `${ref} is already ${request.status}.`,
+        );
+      const now = new Date();
+      if (request.deadline <= now) throw new ConflictException(`The time for “${step.name}” of ${ref} has run out.`);
+      if (request.currentStep !== stepIndex) throw new ConflictException(`${ref} is not at “${step.name}”.`);
+      const who = audited(service);
+      step.settlement = {
+        outcome: input.outcome,
+        reference: input.reference,
+        reason: input.reason ?? null,
+        by: service.clientId,
+        at: now.toISOString(),
+      };
+      await appendAudit(tx, this.tenantId, {
+        ...who,
+        action: 'request.step_settled',
+        targetType: 'request',
+        targetId: request.id,
+        data: {
+          ref,
+          step: stepIndex,
+          name: step.name,
+          system: step.system,
+          outcome: input.outcome,
+          reference: input.reference,
+          ...(input.reason && { reason: input.reason }),
+        },
+      });
+      if (input.outcome === 'deny') {
+        await tx.accessRequest.update({
+          where: { id: request.id },
+          data: {
+            status: 'denied',
+            decidedAt: now,
+            closingReason: 'step_denied',
+            approvers: steps as unknown as Prisma.InputJsonValue,
+          },
+        });
+        await appendAudit(tx, this.tenantId, {
+          ...who,
+          action: 'request.decided',
+          targetType: 'request',
+          targetId: request.id,
+          data: { ref, outcome: 'denied', by: step.system, reference: input.reference.id },
+        });
+        return;
+      }
+      // The people get the policy's whole decision time from now.
+      const policy = AccessPolicy.parse(request.policySnapshot ?? {});
+      await this.startStep(tx, request, steps, stepIndex + 1, who, now, {
+        deadline: new Date(now.getTime() + policy.decisionDeadlineMinutes * MINUTE),
+      });
+      if (step.autoRule)
+        await this.approve(
+          tx,
+          request.id,
+          'auto',
+          { actorId: null, actorLabel: 'policy' },
+          {
+            autoApproval: {
+              rule: step.autoRule.rule,
+              evaluatedAt: step.autoRule.evaluatedAt,
+              evidence: 'standing membership',
+              after: step.name,
+            },
+          },
+        );
+    });
+    return this.view(requestId, { service });
+  }
+
   /** Why this person may not vote on this request now, or null when they may. */
   private async whyNotDecide(tx: Tx, request: RequestRow, personId: string): Promise<string | null> {
     if (request.status !== 'pending') return `${refOf(request.number)} is already ${request.status}.`;
     if (request.deadline <= new Date()) return `The deadline for ${refOf(request.number)} has passed.`;
+    const current = (request.approvers as unknown as StepSnapshot[])[request.currentStep];
+    if (isExternal(current)) return `This step is settled by ${current!.system}, not by a vote.`;
     if (request.bundle.disabled) return 'The bundle is turned off.';
     if (personId === request.requesterId) return 'You can’t decide your own request.';
     if (personId === request.subjectId) return 'You can’t decide a request for your own access.';
@@ -1135,11 +1332,19 @@ export class AccessService {
       closingReason: r.closingReason,
       currentStep: r.currentStep,
       steps: steps.map((s, i) => ({
+        kind: s.kind ?? 'people',
         name: s.name,
         approvalsRequired: s.approvalsRequired,
-        approvals: r.decisions.filter((d) => d.stepIndex === i && d.outcome === 'approve').length,
+        approvals: isExternal(s)
+          ? s.settlement?.outcome === 'approve'
+            ? 1
+            : 0
+          : r.decisions.filter((d) => d.stepIndex === i && d.outcome === 'approve').length,
         approvers: s.approvers.map((a) => ref(a.id)),
         allowRelayed: s.allowRelayed ?? false,
+        system: s.system ?? null,
+        settledBy: s.settledBy ?? null,
+        settlement: s.settlement ?? null,
       })),
       votes: r.decisions.map((d) => ({
         decider: ref(d.deciderId),
@@ -1155,6 +1360,10 @@ export class AccessService {
         r.status === 'pending' && current
           ? current.approvers.filter((a) => !voted.has(a.id)).map((a) => ref(a.id))
           : [],
+      waitingOnSystem: r.status === 'pending' && isExternal(current) ? (current!.system ?? null) : null,
+      costs: targetsOf(r.bundle).flatMap((t) =>
+        t.cost ? [{ target: t.key, label: t.label, kind: t.cost.kind, landbrightApp: t.cost.landbrightApp }] : [],
+      ),
       autoApproval: r.autoApproval ?? null,
       breakGlass: r.breakGlass ?? null,
       grant: r.grant ? this.toGrantView(r.grant, await pushesOf(tx, r.grant)) : null,

@@ -7,6 +7,7 @@ export const MACHINE_API_SCOPES = {
   'directory:read': 'Read people and groups, and find who has been inactive',
   'directory:write': 'Deactivate people, set required actions, add and remove group members (lifecycle flows)',
   'decisions:relay': 'Relay votes approvers cast in a chat (Slack), with the ticket Landbright gave each of them',
+  'steps:settle': 'Settle the external policy steps that name it (a cost gate), with its own reference',
   'events:manage': 'Manage its own event subscriptions (to its own redirect origins)',
 } as const;
 export type MachineApiScope = keyof typeof MACHINE_API_SCOPES;

@@ -73,8 +73,9 @@ token is checked against the JWKS ([hr.md](hr.md#the-landbright-trigger)).
 - `group.*` (including `member_added` / `member_removed`)
 - `client.*`
 - `bundle.*`
-- `request.*`: created, vote_recorded (with `channel` and `assurance`), decision_refused, escalated, break_glass,
-  relay_tickets_issued, decided
+- `request.*`: created (with `costs` and `waitsOn` for a bundle with a seat cost or a gate), vote_recorded (with
+  `channel` and `assurance`), decision_refused, escalated, break_glass, relay_tickets_issued, step_settled (a system's
+  answer to a cost gate, with its reference), step_started (the request moved to its next step), decided
 - `grant.*`: activated, expiring, extended, expired, revoked, target_provisioned, target_failed, target_revoked,
   target_revoke_failed, target_verified, target_drift, revoke_overdue
 - `tenant.sign_in_changed`, `tenant.people_settings_changed` (the zones), `signing_key.rotated`

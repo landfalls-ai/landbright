@@ -153,50 +153,61 @@ export function RequestPage() {
             )}
             {r.startsAt && <Fact label="Starts">{formatTime(r.startsAt)}</Fact>}
             <Fact label="Through">{r.source}</Fact>
+            {r.costs.length > 0 && (
+              <Fact label="Costs">
+                <span data-testid="costs">
+                  {r.costs.map((c) => `a ${c.kind} on ${c.landbrightApp} (${c.label})`).join(', ')}
+                </span>
+              </Fact>
+            )}
           </dl>
         </Card>
 
         <section className="flex flex-col gap-2">
           <SectionLabel>Approval</SectionLabel>
-          {r.steps.map((s, i) => (
-            <Card key={i} className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-semibold text-t1">
-                  {r.steps.length > 1 ? `Step ${i + 1}: ` : ''}
-                  {s.name}
-                </span>
-                <Badge
-                  tone={
-                    s.approvals >= s.approvalsRequired
-                      ? 'success'
-                      : i === r.currentStep && r.status === 'pending'
-                        ? 'warning'
-                        : 'muted'
-                  }
-                >
-                  {s.approvals} of {s.approvalsRequired}
-                </Badge>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {s.approvers.map((a) => {
-                  const vote = r.votes.find((v) => v.decider.id === a.id && v.step === i);
-                  return (
-                    <Chip key={a.id} tone={vote ? (vote.outcome === 'approve' ? 'success' : 'danger') : 'muted'}>
-                      {vote ? (
-                        vote.outcome === 'approve' ? (
-                          <Check className="size-3" />
-                        ) : (
-                          <X className="size-3" />
-                        )
-                      ) : null}
-                      {a.displayName}
-                    </Chip>
-                  );
-                })}
-                {!s.approvers.length && <span className="text-[12px] text-t3">Nobody (approved by the policy)</span>}
-              </div>
-            </Card>
-          ))}
+          {r.steps.map((s, i) =>
+            s.kind === 'external' ? (
+              <GateCard key={i} r={r} index={i} />
+            ) : (
+              <Card key={i} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold text-t1">
+                    {r.steps.length > 1 ? `Step ${i + 1}: ` : ''}
+                    {s.name}
+                  </span>
+                  <Badge
+                    tone={
+                      s.approvals >= s.approvalsRequired
+                        ? 'success'
+                        : i === r.currentStep && r.status === 'pending'
+                          ? 'warning'
+                          : 'muted'
+                    }
+                  >
+                    {s.approvals} of {s.approvalsRequired}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {s.approvers.map((a) => {
+                    const vote = r.votes.find((v) => v.decider.id === a.id && v.step === i);
+                    return (
+                      <Chip key={a.id} tone={vote ? (vote.outcome === 'approve' ? 'success' : 'danger') : 'muted'}>
+                        {vote ? (
+                          vote.outcome === 'approve' ? (
+                            <Check className="size-3" />
+                          ) : (
+                            <X className="size-3" />
+                          )
+                        ) : null}
+                        {a.displayName}
+                      </Chip>
+                    );
+                  })}
+                  {!s.approvers.length && <span className="text-[12px] text-t3">Nobody (approved by the policy)</span>}
+                </div>
+              </Card>
+            ),
+          )}
           {r.votes.length > 0 && (
             <Table head={['Who', 'Decided', 'How', 'Comment', 'When']}>
               {r.votes.map((v, i) => (
@@ -475,5 +486,61 @@ function ExtendDialog({
         <FormError error={extend.error} />
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * A step a system settles (spec 008, a cost gate): its answer and the system's reference, never shown as a person's
+ * vote.
+ */
+function GateCard({ r, index }: { r: AccessRequestView; index: number }) {
+  const s = r.steps[index]!;
+  const settled = s.settlement;
+  const current = r.status === 'pending' && r.currentStep === index;
+  const skipped = !settled && r.method === 'break_glass';
+  return (
+    <div data-testid="gate">
+      <Card className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold text-t1">
+            {r.steps.length > 1 ? `Step ${index + 1}: ` : ''}
+            {s.name}
+          </span>
+          <Badge
+            tone={settled ? (settled.outcome === 'approve' ? 'success' : 'danger') : current ? 'warning' : 'muted'}
+          >
+            {settled
+              ? settled.outcome === 'approve'
+                ? `Approved by ${s.system}`
+                : `Denied by ${s.system}`
+              : skipped
+                ? 'Skipped (break-glass)'
+                : current
+                  ? `Waiting on ${s.system}`
+                  : 'Not settled'}
+          </Badge>
+        </div>
+        <p className="text-[12px] text-t3">
+          Settled by {s.system} through the application {s.settledBy}, not by a vote. It can end the request or pass it
+          on; the people after it decide access.
+        </p>
+        {settled && (
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-t2">
+            <span>
+              {settled.reference.system} ·{' '}
+              {settled.reference.url ? (
+                <a className="text-accent underline" href={settled.reference.url} target="_blank" rel="noreferrer">
+                  {settled.reference.id}
+                </a>
+              ) : (
+                <span className="font-mono">{settled.reference.id}</span>
+              )}
+            </span>
+            {settled.reason && <span>· {settled.reason}</span>}
+            <span className="font-mono text-t3">· {formatTime(settled.at)}</span>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
