@@ -156,6 +156,8 @@ own sign-out sends its logout tokens through the same queue, not inline.
   session; it ends every session of the token's `sub`): registered on `landledger-local`; Tal signed in to Landledger,
   then signed out at Landbright alone, and the logout token was taken on the first try (23 ms); her Landledger session
   was gone 1.2 seconds after she signed out. Landledger is the first of the land applications to take logout tokens.
+  Since Landledger's 4cf871f, a token whose `jti` it already processed is still verified in full and answered 200
+  (audited there as a replay, not a second logout), so a retry after a lost answer isn't recorded here as a failure.
 - Live, the same day, back-channel logout on the dev Landbright with a stand-in application (none of Landflow, Landfall
   or Clickland takes logout tokens yet): Tal signed in to it and signed out at Landbright, and **its logout token
   arrived 369 ms later** for that session; signed in again, then *Sign out everywhere else* on the account page: the
