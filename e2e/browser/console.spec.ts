@@ -995,6 +995,31 @@ test('a seat that costs: the cost gate in the catalog, and a request waiting on 
   await shot(page, '96-request-cost-approved', { fullPage: true });
 });
 
+test('Google Workspace’s sign-in: an application let off PKCE, its secret proving it', async () => {
+  // Spec 009: Google's OIDC SSO profile sends no PKCE it documents; only an application with a secret can be let off.
+  const google = await api<{ application: { id: string; clientId: string; pkceRequired: boolean } }>(
+    '/api/applications',
+    'POST',
+    {
+      name: 'Google Workspace',
+      clientId: `google-workspace-${stack.slug}`,
+      redirectUris: ['http://127.0.0.1:3000/google/oidc/callback'],
+      tokenEndpointAuthMethod: 'client_secret_post',
+    },
+  );
+  expect(google.application.pkceRequired).toBe(true);
+  await page.goto(`${stack.console}/applications`);
+  const select = page.getByTestId(`pkce-${google.application.clientId}`);
+  await select.selectOption('optional');
+  await expect(page.getByText('may sign people in without PKCE; its secret still proves it.')).toBeVisible();
+  await page.getByTestId(`app-${google.application.clientId}`).scrollIntoViewIfNeeded();
+  await shot(page, '97-application-pkce');
+  const after = await api<{ pkceRequired: boolean }>(`/api/applications/${google.application.id}`);
+  expect(after.pkceRequired).toBe(false);
+  await select.selectOption('required');
+  await expect(page.getByText('Google Workspace must use PKCE.')).toBeVisible();
+});
+
 test('signs out at the identity plane', async () => {
   const { redirect } = await api<{ redirect: string }>('/api/auth/logout', 'POST');
   await page.goto(redirect);

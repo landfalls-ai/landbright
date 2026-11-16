@@ -19,7 +19,7 @@ the environment win. An invalid value stops the process with every bad variable 
 | `LANDBRIGHT_TENANT_SLUG` / `_NAME` | `local` / `Local` | The tenant this deployment serves. The services refuse to start until it exists (`pnpm db:setup`). |
 | `LANDBRIGHT_ID_TOKEN_TTL_SECONDS` | `3600` | How long an ID token lives. A signing-key rotation keeps the replaced key published at least this long after it stops signing. The end-to-end tests use 15 to rotate twice in one run. |
 | `LANDBRIGHT_TRUST_PROXY` | `false` | Behind a TLS-terminating proxy: trust its `X-Forwarded-*` headers (secure cookies, `https` URLs, the client address for lockout and audit). Only with a proxy in front; the conformance run sets it. |
-| `LANDBRIGHT_PKCE_OPTIONAL_CLIENTS` | empty | Client ids that may skip PKCE, comma-separated. Every other client needs PKCE. Only the conformance run sets it, for its own clients. |
+| `LANDBRIGHT_PKCE_OPTIONAL_CLIENTS` | empty | Client ids that may skip PKCE, comma-separated. Every other client needs PKCE unless an administrator let it off (an application's `pkceRequired`, for one with a secret). Only the conformance run sets it, for its own clients. |
 | `LANDBRIGHT_SECRET_KEY` | a development value | Seals signing keys; derives client secrets and the identity plane's cookie keys. 32+ characters. Changing it ends every session, changes every client secret, and replaces the signing key. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_EMAIL` | `admin@landbright.test` | The first administrator, created by `pnpm db:setup` if missing. |
 | `LANDBRIGHT_BOOTSTRAP_ADMIN_PASSWORD` | `landbright-dev-only` | Their password (12+ characters). Used only when creating them. |
@@ -56,9 +56,15 @@ Traces, metrics and logs are off unless one of these is set. The standard `OTEL_
 
 | Variable | Default | Used by |
 |---|---|---|
-| `LANDFLOW_REGISTRY_URL` | `http://localhost:57300` with `pnpm plugins:start` (the SDK's own default is `http://127.0.0.1:3000`) | Both plugins: the Landflow host they announce to. `LANDFLOW_REGISTRY_SECRET` when the host asks for one (the throwaway Landflow doesn't). |
+| `LANDFLOW_REGISTRY_URL` | `http://localhost:57300` with `pnpm plugins:start` (the SDK's own default is `http://127.0.0.1:3000`) | Every plugin: the Landflow host they announce to. `LANDFLOW_REGISTRY_SECRET` when the host asks for one (the throwaway Landflow doesn't). |
 | `HRIS_HTTP_PORT` / `HRIS_GRPC_PORT` | `7141` / `7241` | The hris plugin. |
 | `LANDBRIGHT_PLUGIN_HTTP_PORT` / `LANDBRIGHT_PLUGIN_GRPC_PORT` | `7142` / `7242` | The landbright plugin. |
-| `LANDFLOW_HOST` | `127.0.0.1` | Both plugins: the interface they listen on. |
+| `GDIRECTORY_HTTP_PORT` / `GDIRECTORY_GRPC_PORT` | `7143` / `7243` | The gdirectory plugin (Google Workspace). |
+| `SHAPES_TOKEN_STORE` | `~/.config/landbright/shapes-tokens.json` | The hris plugin: where it keeps Shapes' rotating tokens (mode 600). One plugin process per store. |
+| `LANDFLOW_HOST` | `127.0.0.1` | Every plugin: the interface they listen on. |
 | `FAKE_HIBOB_PORT` | `57994` | The fake Bob. |
 | `HIBOB_BASE_URL`, `HIBOB_SERVICE_USER_ID`, `HIBOB_TOKEN`, `HIBOB_WEBHOOK_SECRET` | The fake Bob's (`http://127.0.0.1:57994/v1`, fake values) | The installer: the *HiBob* credential in Landflow. |
+| `FAKE_SHAPES_PORT` | `57996` | The fake Shapes. |
+| `SHAPES_BASE_URL`, `SHAPES_REFRESH_TOKEN`, `SHAPES_WEBHOOK_SECRET` | The fake Shapes' (`http://127.0.0.1:57996/v1`, fake values) | The installer: the *Shapes* credential. |
+| `FAKE_GOOGLE_PORT`, `FAKE_GOOGLE_KEY_OUT` | `57995`, `$TMPDIR/landbright-fake-google-key.json` | The fake Google, and where it writes its service account's key file. |
+| `GOOGLE_BASE_URL`, `GOOGLE_KEY_FILE`, `GOOGLE_ADMIN_EMAIL`, `GOOGLE_DOMAIN` | The fake Google's (`http://127.0.0.1:57995`, its key file, `it-admin@landbright.test`, `landbright.test`) | The installer: the *Google Directory* credential and the Google flow's domain. |

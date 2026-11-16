@@ -37,7 +37,10 @@ Everything binds to 127.0.0.1; idp and control also to [::1], since the issuer i
 | 57200 | OpenBao (dev mode), root token `landbright-dev-only` |
 | 7141 / 7241 | The hris Landflow plugin, HTTP / gRPC (`pnpm plugins:start`) |
 | 7142 / 7242 | The landbright Landflow plugin, HTTP / gRPC |
+| 7143 / 7243 | The gdirectory Landflow plugin (Google Workspace), HTTP / gRPC |
 | 57994 | The fake Bob (`pnpm fake-hibob`): HiBob's API with fictitious people, and signed deliveries |
+| 57995 | The fake Google (`pnpm fake-google`): the Directory API and its token endpoint, a fake service account |
+| 57996 | The fake Shapes (`pnpm fake-shapes`): Shapes' GraphQL API, fictitious people, signed workflow deliveries |
 
 ## Commands
 
@@ -55,8 +58,10 @@ Everything binds to 127.0.0.1; idp and control also to [::1], since the issuer i
 | `pnpm --filter @landbright/persistence migrate:dev` | Create a migration after changing `prisma/schema.prisma`. Never reset the database; add a migration. |
 | `pnpm --filter <project> test` | One project: `@landbright/control`, `@landbright/idp`, `@landbright/persistence`, `@landbright/platform`, `@landbright/contracts`, `@landbright/console`, `@land/tokens`. |
 | `pnpm format` | Prettier. |
-| `pnpm plugins:start` | The two Landflow plugins (`integrations/landflow/plugins/`), announcing to `LANDFLOW_REGISTRY_URL` (default the throwaway Landflow, `http://localhost:57300`) ([hr.md](hr.md)). Their `typecheck` and `test` run in `pnpm verify`; they need the Landflow checkout next to this one (`@landflow/sdk` is linked from it). |
+| `pnpm plugins:start` | The three Landflow plugins (hris, landbright, gdirectory) (`integrations/landflow/plugins/`), announcing to `LANDFLOW_REGISTRY_URL` (default the throwaway Landflow, `http://localhost:57300`) ([hr.md](hr.md)). Their `typecheck` and `test` run in `pnpm verify`; they need the Landflow checkout next to this one (`@landflow/sdk` is linked from it). |
 | `pnpm fake-hibob` | A fake HiBob on :57994 for the HR flows; `POST /_fake/deliver` sends a signed event ([hr.md](hr.md#run-it-locally)). |
+| `pnpm fake-shapes` | A fake Shapes on :57996; `POST /_fake/deliver` sends a signed workflow webhook ([hr.md](hr.md#shapes)). |
+| `pnpm fake-google` | A fake Google on :57995, and its service account's key file for the installer ([google-workspace.md](google-workspace.md#run-it-locally)). |
 
 ## Tests
 

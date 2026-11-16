@@ -9,7 +9,7 @@ and in the browser, and its bugs fixed in the same wave. The console's Home page
 | **0. Foundations** | ✓ Done 2026-11-12 ([spec 001](../specs/001-foundations/spec.md)) | `pnpm dev:up && pnpm serve` brings up a console in Landflow's shell with a health page |
 | **1. Identity core and sign-in** | In progress: identity core, the second step and passkeys done 2026-11-12 ([spec 002](../specs/002-identity-core/spec.md)) | A person created in the console signs into Landflow over OIDC and lands with the role their group maps to |
 | **2. Provisioning out** | Spec 006 done 2026-11-14: SCIM out, back-channel logout ([spec 006](../specs/006-provisioning-out/spec.md)) | Deactivating a person signs them out of Landflow within seconds |
-| **3. Landflow plugins and HR lifecycle** | First slice done 2026-11-14: a joiner from HiBob ([spec 007](../specs/007-hr-lifecycle/spec.md)) | A signed HiBob `employee.joined` creates the person and adds birthright groups |
+| **3. Landflow plugins and HR lifecycle** | First slice done 2026-11-14: a joiner from HiBob ([spec 007](../specs/007-hr-lifecycle/spec.md)); Google Workspace and Shapes 2026-11-16 ([spec 009](../specs/009-google-workspace/spec.md), [spec 010](../specs/010-shapes/spec.md)) | A signed HiBob `employee.joined` creates the person and adds birthright groups |
 | **4. Just-in-time access** | First slice done 2026-11-14, ahead of waves 2–3 ([spec 004](../specs/004-access-and-events/spec.md)) | Editor on a Landflow project for 2 hours: requested, approved in Slack, granted, removed at expiry |
 | **5. Agentic identity** | Planned | A Landflow agent gets 15 minutes of read access with its sponsor's approval; the token names both |
 | **6. Policy, reviews, signals** | Planned | A sev1 Landfall incident gives the on-call responder the incident bundle until the room closes |
@@ -88,12 +88,22 @@ leaver's agents*. Live: a mover's groups moved and SCIM followed; a leaver deact
 manager emailed about the agent they sponsored; a last day ended in London deactivated someone two seconds after HR said
 so.
 
-Next in wave 3: Shapes, when its schema comes (plan §11).
+Shapes followed in spec 010 (below).
 
 **Seat costs (spec 008, slice 1)**, asked for by Landledger's wave 3: a bundle's target can cost a seat on a
 Landledger contract, and a policy can open with a **cost gate**, a step Landledger settles through Landflow
 (`steps:settle`) before people decide access ([access.md](access.md#a-cost-gate-seats-landledger-pays-for)). Next: seats
 used, live from grants (slice 2).
+
+### Specs 009 and 010: Google Workspace and Shapes
+
+Asked by the user on 2026-11-16: a person created in Shapes HR gets a Google account. Shapes is the second HR system,
+in the hris plugin, with a webhook trigger, a changes poll and an action that output the same worker as HiBob's
+([hr.md](hr.md#shapes)). Google Workspace follows Landbright through a third plugin, Google Directory, and one flow on
+the Landbright Trigger: accounts, groups (birthright and grants), suspension and sign-out; Google signs people in through
+Landbright with an OIDC profile, for which an application with a secret can be let off PKCE
+([google-workspace.md](google-workspace.md)). Both against fakes that answer as the documents say; Shapes' API token
+comes later.
 
 ## Wave 4: what the first slice built (ahead of order)
 

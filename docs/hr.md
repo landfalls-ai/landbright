@@ -105,6 +105,9 @@ change nothing in Landflow. Their tests run in `pnpm verify` (`typecheck` and `t
 - **HiBob** (action): Employee → *Get* (by id or email; *When Not Found*: fail or output nothing) and *Search* (by
   email; *Include Inactive*). A 429 waits `Retry-After` (up to 10 s) and is tried twice more.
 
+**Shapes** ([spec 010](../specs/010-shapes/spec.md), [below](#shapes)) adds the *Shapes API* credential, the *Shapes
+Trigger*, the *Shapes Changes Trigger* and the *Shapes* action to this plugin.
+
 **The worker** is one shape whatever the HR system: `source`, `sourceId`, `email`, `givenName`, `familyName`,
 `displayName`, `department`, `title`, `site`, `managerEmail`, `startDate`, `endDate`, `status`, and from the trigger
 `event`, `changedFields`, `triggeredAt`, `triggeredBy`, `companyId`. It reads Bob's flat machine format
@@ -145,6 +148,71 @@ in one node.
 - The birthright groups stay with the *Onboard* flow, which now handles movers too. See
   [landflow-flows.md](landflow-flows.md#the-flows).
 
+## Shapes
+
+[Spec 010](../specs/010-shapes/spec.md) ([plan](../specs/010-shapes/plan.md), [research](../specs/010-shapes/research.md)).
+Shapes (shapes.co, formerly DreamTeam) is the second HR system. Its nodes are in the hris plugin and output the same
+worker, so everything after them is HiBob's path: pre-hires, start and last days, movers' birthright groups, and Google
+([google-workspace.md](google-workspace.md)). There is no Shapes account here yet: the nodes are built from Shapes'
+public schema and documents and checked against a fake Shapes that runs that schema.
+
+- **Shapes API** credential: the API URL (default `https://api.shapes.co/v1`), a system user's **refresh token**
+  (*My settings → API tokens*; a Super Admin, or an Admin covering every employee), and the **webhook secret** of the
+  workflow's *Send webhook* action. Shapes' access token lasts 15 minutes and every refresh spends the refresh token
+  for a new pair, so the plugin keeps the pair it gets back in a token store (`SHAPES_TOKEN_STORE`, default
+  `~/.config/landbright/shapes-tokens.json`, mode 600, keyed by a hash of the pasted token, which it never stores).
+  Give the token to this plugin only, and run one plugin process per store. A refused refresh says to create a new
+  token and paste it.
+- **Shapes Trigger** (an app webhook). Shapes has no event subscription: its **workflows** send webhooks. In Shapes, add
+  a workflow triggered by *Employee created* and by *Employee field value changed* (start date, termination date,
+  department, job, office, manager) with a *Send webhook* action to the URL the installer prints (or the Publish menu)
+  and a secret. Every delivery needs a valid `X-Webhook-Signature` (HMAC-SHA256 of the body) and a `timestamp` within
+  five minutes, else 401. With *Fetch Employee* (on), the employee is read and the item is the worker, with
+  `event: shapes.workflow`, the workflow's name and `changedFields`; a read that fails answers 503 rather than run with
+  half an employee. `X-Webhook-Id` makes the idempotency key.
+- **Shapes Changes Trigger** (a poll, every 15 minutes by default, at least 5): the employees whose names, email,
+  department, job, office, manager or dates changed since the last poll, with five minutes of overlap. Shapes tries a
+  webhook once, so this is the safety net. The first poll sets the baseline; a manual run shows a few from the last week.
+- **Shapes** (action): Employee → *Get* (Shapes id or email), *Search* (email), *Get Changed* (since a time).
+- `TOO_MANY_REQUESTS` waits `retryAfterSeconds` (up to 30 s) and is tried twice more.
+
+| Worker | Shapes |
+|---|---|
+| `sourceId`, `email`, `givenName`, `familyName`, `status` | the employee's `id`, `email`, `firstName`, `lastName`, `workStatus` |
+| `department` | the *department* field, else *team* |
+| `title`, `site` | *job*, *office* |
+| `managerEmail` | *reports to* (the manager's email, read in a second call) |
+| `startDate`, `endDate` | *start date*, *termination date* |
+
+**A leaver from Shapes** is a termination date: Landbright deactivates them after their last day in their zone. Shapes
+has no *terminated* trigger, so someone who must lose access at once is deactivated in the console.
+
+**The flows**: `people-from-shapes.json`, **People from Shapes** (Shapes Trigger → Landbright: Person → Create or
+Update), and `changes-from-shapes.json`, **Changes from Shapes** (Shapes Changes Trigger → the same). The installer
+creates the *Shapes* credential when Shapes' API answers (`SHAPES_BASE_URL`, `SHAPES_REFRESH_TOKEN`,
+`SHAPES_WEBHOOK_SECRET`; the fake Shapes' by default) and prints the webhook URL.
+
+```bash
+pnpm fake-shapes     # Shapes' API on http://127.0.0.1:57996/v1, fictitious people, the fake webhook secret
+curl -X POST http://127.0.0.1:57996/_fake/employees -H 'content-type: application/json' \
+  -d '{"id":"1003","firstName":"Yael","lastName":"Shamir","email":"yael.shamir@landbright.test","department":"Engineering","startDate":"2026-11-16"}'
+curl -X POST http://127.0.0.1:57996/_fake/deliver -H 'content-type: application/json' \
+  -d '{"url":"http://localhost:57300/api/webhook/app/<workflow id>/trigger","employeeId":"1003","contexts":["start_date"]}'
+```
+
+**Tests**: `integrations/landflow/plugins/hris/test/shapes.test.ts` (14): every query in the client validated against
+Shapes' published schema; the refresh token spent once, the pair kept (mode 600, without the pasted token), renewed on
+expiry, refused with the way out, one refresh for concurrent calls; the action (worker, manager by email, by email,
+not found, changed since, rate limit); the trigger (publish needs the secret, a signed delivery, bad and stale
+signatures, signature encodings, 503); the poll (baseline, changes, overlap).
+
+**Live check (2026-11-16)**: a joiner, a pre-hire, a mover and a leaver from the fake Shapes through to the fake Google
+([google-workspace.md](google-workspace.md#live-check-2026-11-16)).
+
+**With the first real token**, check what Shapes hasn't published
+([research.md](../specs/010-shapes/research.md#not-published-check-with-the-first-token)): how an expired access token
+is answered, the signature's encoding, whether the system user can read *reports to*.
+
 ## Run it locally
 
 ```bash
@@ -167,7 +235,7 @@ a new `department`, then `employee.updated`, a mover; a `terminationDate`, a las
 
 ## Tests
 
-- `integrations/landflow/plugins/hris/test` (24): the worker in both shapes, the credential, the HiBob node (429 retries,
+- `integrations/landflow/plugins/hris/test` (24, HiBob; Shapes' 14 above): the worker in both shapes, the credential, the HiBob node (429 retries,
   continue on fail), the trigger (ping, signatures, event filter, fetch, 503 for Bob to retry, idempotency key).
 - `integrations/landflow/plugins/landbright/test` (14): against a fake Landbright: the token (one per lifetime), upsert
   from an item or fields, get, deactivate, by HR record (not found: fail or nothing), birthright groups, groups by name;

@@ -78,9 +78,11 @@ Writes from a browser must come from the console's origin (`LANDBRIGHT_CONSOLE_U
 | Route | What |
 |---|---|
 | `GET /api/applications` | `{ items: Application[], issuer }`. |
-| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null, `tokenEndpointAuthMethod`: `client_secret_basic`, the default, or `client_secret_post`, `backchannelLogoutUri`: an
+| `POST /api/applications` | `CreateApplication` (`name`, optional `clientId`, `redirectUris`, `postLogoutRedirectUris`, `grantTypes`, `apiScopes`: the [machine API](#machine-api-apiv1) scopes it may get with client credentials, `minimumAcr`: the weakest sign-in it accepts, `urn:landbright:acr:pwd`, `:mfa` or `:phr`, or null, `tokenEndpointAuthMethod`: `client_secret_basic`, the default, or `client_secret_post`, `pkceRequired`: default
+true; false lets the application sign in without PKCE, its secret proving it, as Google Workspace's SSO profile does
+([google-workspace.md](../google-workspace.md#signing-in-to-google-through-landbright)), `backchannelLogoutUri`: an
 http(s) URL without a fragment, or null, where Landbright posts logout tokens) → 201 `ApplicationWithSecret`: `{ application, clientSecret, issuer }`. The only time the secret is shown, with rotation. 409 on a taken client id. |
-| `GET /api/applications/:id` · `PATCH` · `DELETE` | One application; delete revokes its tokens. The console's client answers 403 to changes. |
+| `GET /api/applications/:id` · `PATCH` · `DELETE` | One application; delete revokes its tokens. The console's client answers 403 to changes; `pkceRequired: false` on an agent's application answers 409. |
 | `POST /api/applications/:id/rotate-secret` | → `ApplicationWithSecret` with the new secret. 409 for an agent's application (it has keys, not a secret). |
 
 An `Application` says how it signs in (`tokenEndpointAuthMethod`), and an agent's has `agentId` and `keys` (how many). An agent's application can't change its grant types, redirects or auth method (409).

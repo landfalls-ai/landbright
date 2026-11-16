@@ -1,0 +1,199 @@
+# The part of Shapes' public schema (Apollo Studio graph DreamTeam-V1, variant Current, published 2026-11-12)
+# that the hris plugin uses: type and field names only, Shapes' descriptions left out. The tests validate the plugin's
+# queries against it, and the fake Shapes executes them with it. Source: specs/010-shapes/research.md.
+
+type Query {
+  me: User!
+  employees(ids: [ID], filters: EmployeeFilters, limit: Int, afterId: ID): [Employee]!
+  offices: [Office!]!
+  teams: [Team!]!
+  jobs: [Job!]!
+  employeeFieldValues(ids: [ID], filters: EmployeeFieldValueFilters): [EmployeeFieldValue]!
+  employeeFieldTypes(ids: [ID!], filters: EmployeeFieldTypeFilters): [EmployeeFieldType!]!
+}
+
+type Mutation {
+  refreshToken: AuthenticationResponse!
+}
+
+scalar Date
+
+scalar JSON
+
+input DateInterval {
+  start: Date
+  end: Date
+}
+
+type AuthenticationResponse {
+  accessToken: String!
+  refreshToken: String!
+}
+
+type User {
+  id: ID!
+  email: String!
+}
+
+type Employee {
+  id: ID!
+  firstName: String!
+  lastName: String!
+  email: String!
+  workStatus: String
+  profilePictureCdnUrl: String
+  employeeFieldValues: [EmployeeFieldValue]!
+}
+
+type Office {
+  id: ID!
+  name: String!
+}
+
+type Team {
+  id: ID!
+  name: String!
+}
+
+type Job {
+  id: ID!
+  name: String!
+}
+
+input EmployeeFilters {
+  email: [String]
+  office: [ID]
+  team: [ID]
+  job: [ID]
+  workStatus: [EmployeeWorkStatus]
+}
+
+enum EmployeeWorkStatus {
+  active
+  pending_arrival
+  pending_termination
+  terminated
+}
+
+type EmployeeFieldValue {
+  id: ID!
+  employeeId: ID!
+  fieldValue: JSON!
+  textValue: String
+  employeeFieldTypeId: ID!
+  employeeFieldType: EmployeeFieldType!
+  updatedAt: Date!
+  effectiveDate: Date
+  rowId: ID
+}
+
+input EmployeeFieldValueFilters {
+  fieldTypeContext: [EmployeeFieldTypeContext!]
+  employeeFieldTypeId: [ID!]
+  employeeId: [ID!]
+  updatedAt: DateInterval
+  includeAllEffectiveDates: Boolean
+  effectiveDate: DateInterval
+}
+
+type EmployeeFieldType {
+  id: ID!
+  fieldType: EmployeeFieldTypeKind!
+  context: EmployeeFieldTypeContext!
+  data: JSON
+  fieldName: String!
+  isEffectiveDated: Boolean!
+  subcategory: EmployeeFieldSubcategory
+}
+
+type EmployeeFieldSubcategory {
+  id: ID!
+  name: String!
+  type: EmployeeFieldSubcategoryType!
+}
+
+enum EmployeeFieldSubcategoryType {
+  basic
+  status
+  table
+}
+
+enum EmployeeFieldTypeContext {
+  address
+  city
+  contract_documents
+  contract_type
+  country
+  custom
+  date_of_birth
+  department
+  email
+  emergency_contact_full_name
+  emergency_contact_phone
+  emergency_contact_relationship
+  employee_capacity
+  employee_id
+  employee_phone
+  employee_profile_picture
+  first_name
+  gender
+  job
+  last_name
+  level
+  national_id
+  nationality
+  ni_number
+  office
+  original_start_date
+  passport_number
+  personal_email
+  reports_to
+  salaryType
+  salary_amount
+  salary_amount_currency
+  ssn
+  start_date
+  state_province
+  team
+  termination_date
+  termination_reason
+  unique_identifier
+  zip_code
+}
+
+enum EmployeeFieldTypeKind {
+  checkbox
+  city
+  country
+  currency
+  date
+  employee_email
+  file
+  first_day_of_working_week
+  job
+  link
+  long_text
+  multi_select
+  number
+  office
+  people
+  phone
+  profile_picture
+  rating
+  record
+  reports_to
+  shapes_object
+  single_select
+  start_date
+  state
+  team
+  termination_date
+  termination_reason
+  text
+  workflow_progress
+}
+
+input EmployeeFieldTypeFilters {
+  fieldType: [EmployeeFieldTypeKind!]
+  context: [EmployeeFieldTypeContext!]
+}

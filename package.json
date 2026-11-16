@@ -14,6 +14,8 @@
     "serve": "nx run-many -t serve --outputStyle=stream",
     "plugins:start": "LANDFLOW_REGISTRY_URL=${LANDFLOW_REGISTRY_URL:-http://localhost:57300} pnpm --parallel --filter './integrations/landflow/plugins/*' start",
     "fake-hibob": "pnpm --filter @landbright/plugin-hris fake-hibob",
+    "fake-shapes": "pnpm --filter @landbright/plugin-hris fake-shapes",
+    "fake-google": "pnpm --filter @landbright/plugin-google-directory fake-google",
     "build": "nx run-many -t build --outputStyle=static",
     "typecheck": "nx run-many -t typecheck --outputStyle=static",
     "test": "nx run-many -t test --outputStyle=static",

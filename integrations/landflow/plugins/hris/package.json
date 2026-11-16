@@ -7,15 +7,17 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "fake-hibob": "tsx test/fake-hibob.ts"
+    "fake-hibob": "tsx test/fake-hibob.ts",
+    "fake-shapes": "tsx test/fake-shapes.ts"
   },
   "dependencies": {
     "@landflow/sdk": "link:../../../../../landflow/packages/sdk"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "graphql": "^16.15.0",
     "tsx": "^4.23.15",
     "vitest": "^5.0.5"
   },
-  "description": "HiBob for Landflow: employee events and reads as worker records for Landbright."
+  "description": "HiBob and Shapes for Landflow: employee events, changes and reads as worker records for Landbright."
 }

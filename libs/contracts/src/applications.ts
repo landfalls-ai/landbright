@@ -22,6 +22,9 @@ export const Application = z.object({
   apiScopes: z.array(z.string()),
   /** The weakest sign-in it accepts (`acr`); null accepts any. */
   minimumAcr: Acr.nullable(),
+  /** Whether its authorization code flow needs PKCE. Off only for an application with a secret whose IdP-side peer
+   *  doesn't send PKCE (Google Workspace's OIDC SSO profile, spec 009). */
+  pkceRequired: z.boolean(),
   /** OpenID Back-Channel Logout: where Landbright posts a logout token when someone's session ends; null: not told. */
   backchannelLogoutUri: z.string().nullable(),
   /** Landbright's own console client: shown, not editable. */
@@ -57,6 +60,11 @@ export const CreateApplication = z.object({
   apiScopes: z.array(z.enum(MACHINE_API_SCOPE_NAMES as [string, ...string[]])).default([]),
   /** The weakest sign-in it accepts: people who signed in more weakly are asked for more (step-up). */
   minimumAcr: Acr.nullable().default(null),
+  /**
+   * PKCE on the authorization code flow (on by default). An application that proves itself with a secret may be let
+   * off, for a peer that doesn't send it (Google Workspace's OIDC SSO profile documents no PKCE).
+   */
+  pkceRequired: z.boolean().default(true),
   /**
    * OpenID Back-Channel Logout 1.0: Landbright posts a `logout_token` here when someone signed in to the application
    * signs out, ends their other sessions or is deactivated.

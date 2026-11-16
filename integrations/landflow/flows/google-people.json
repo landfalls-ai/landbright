@@ -1,0 +1,208 @@
+{
+  "name": "Google Workspace · Keep people in step",
+  "description": "On Landbright's identity and group-member events: an active person of the Google domain gets their Google account created or updated (names, department, title, manager, Landbright's id) and their Google groups set from the map in Plan; a deactivated person is suspended and signed out of Google. Pre-hires wait for their start date; agents get no account. One flow for every event, so a burst for one person converges. Needs the landbright and gdirectory plugins (spec 009).",
+  "tags": ["landbright", "google", "lifecycle", "joiner", "mover", "leaver"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Landbright event",
+      "type": "landbright.landbrightTrigger",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "events": "identity.created, identity.activated, identity.updated, identity.deactivated, identity.reactivated, group.member_added, group.member_removed"
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    },
+    {
+      "id": "who",
+      "name": "Who",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [280, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "// The person each event is about: the target of identity.*, the member of group.member_*.\nreturn $input.all()\n  .map((item) => item.json)\n  .map((e) => ({\n    event: e.type,\n    personId: e.type.startsWith('group.') ? e.data?.identityId : e.target?.id,\n    kind: e.data?.kind ?? 'person',\n  }))\n  .filter((x) => x.personId && x.kind === 'person');"
+      }
+    },
+    {
+      "id": "read",
+      "name": "Read the person",
+      "type": "landbright.landbright",
+      "typeVersion": 1,
+      "position": [560, 200],
+      "onError": "continue",
+      "parameters": {
+        "resource": "person",
+        "operation": "get",
+        "findBy": "id",
+        "personId": "{{ $json.personId }}"
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    },
+    {
+      "id": "plan",
+      "name": "Plan",
+      "type": "core.code",
+      "typeVersion": 1,
+      "position": [840, 200],
+      "parameters": {
+        "language": "javascript",
+        "mode": "all",
+        "code": "// Landbright groups → Google groups: the one place that says which Google groups follow which Landbright groups\n// (birthright groups from the Onboard flow and time-limited grants alike). Edit it here. Google groups not listed are\n// never touched, so memberships made by hand in Google stay.\nconst DOMAIN = '__GOOGLE_DOMAIN__';\nconst GOOGLE_GROUPS = {\n  Everyone: `everyone@${DOMAIN}`,\n  Engineers: `engineering@${DOMAIN}`,\n  Finance: `finance@${DOMAIN}`,\n  'Payments On-call': `payments-oncall@${DOMAIN}`,\n};\nconst event = $('Who').first().json.event;\nreturn $input.all()\n  .map((item) => item.json)\n  // An agent's id, or someone deleted since: Read the person failed (On error: continue) and there is no person.\n  .filter((p) => p.kind === 'person' && p.email)\n  // Only addresses of the Google domain get an account; everyone else is Landbright's alone.\n  .filter((p) => p.email.toLowerCase().endsWith(`@${DOMAIN}`))\n  .map((p) => {\n    const base = {\n      personId: p.id,\n      email: p.email.toLowerCase(),\n      givenName: p.givenName,\n      familyName: p.familyName,\n      department: p.department ?? '',\n      title: p.title ?? '',\n      managerEmail: p.manager?.email ?? '',\n      wanted: (p.groups ?? []).map((g) => GOOGLE_GROUPS[g.name]).filter(Boolean),\n      managed: Object.values(GOOGLE_GROUPS),\n      event,\n    };\n    // Active: their account and groups follow Landbright. Pre-hires wait for their start date (identity.activated).\n    if (p.status === 'active') return { ...base, action: 'upsert', unsuspend: event === 'identity.reactivated' };\n    // Deactivated: suspended and signed out of Google. A later group change of theirs changes nothing.\n    if (p.status === 'deactivated' && event === 'identity.deactivated') return { ...base, action: 'suspend' };\n    return { ...base, action: 'skip' };\n  })\n  .filter((x) => x.action !== 'skip');"
+      }
+    },
+    {
+      "id": "isUpsert",
+      "name": "Active?",
+      "type": "core.if",
+      "typeVersion": 1,
+      "position": [1120, 200],
+      "parameters": {
+        "conditions": {
+          "condition": [
+            {
+              "left": "{{ $json.action }}",
+              "operator": "equals",
+              "right": "upsert"
+            }
+          ]
+        },
+        "combinator": "and"
+      }
+    },
+    {
+      "id": "upsert",
+      "name": "Create or update their account",
+      "type": "gdirectory.googleDirectory",
+      "typeVersion": 1,
+      "position": [1400, 100],
+      "parameters": {
+        "resource": "user",
+        "operation": "upsert",
+        "email": "{{ $json.email }}",
+        "givenName": "{{ $json.givenName }}",
+        "familyName": "{{ $json.familyName }}",
+        "externalId": "{{ $json.personId }}",
+        "department": "{{ $json.department }}",
+        "title": "{{ $json.title }}",
+        "managerEmail": "{{ $json.managerEmail }}",
+        "unsuspend": "{{ $json.unsuspend }}"
+      },
+      "credentials": {
+        "googleDirectoryApi": {
+          "id": "__CRED_GOOGLE__",
+          "name": "Google Directory"
+        }
+      }
+    },
+    {
+      "id": "groups",
+      "name": "Set their groups",
+      "type": "gdirectory.googleDirectory",
+      "typeVersion": 1,
+      "position": [1680, 100],
+      "parameters": {
+        "resource": "user",
+        "operation": "setGroups",
+        "email": "{{ $('Plan').item.json.email }}",
+        "wanted": "{{ $('Plan').item.json.wanted }}",
+        "managed": "{{ $('Plan').item.json.managed }}"
+      },
+      "credentials": {
+        "googleDirectoryApi": {
+          "id": "__CRED_GOOGLE__",
+          "name": "Google Directory"
+        }
+      }
+    },
+    {
+      "id": "suspend",
+      "name": "Suspend and sign out",
+      "type": "gdirectory.googleDirectory",
+      "typeVersion": 1,
+      "position": [1400, 300],
+      "parameters": {
+        "resource": "user",
+        "operation": "suspend",
+        "email": "{{ $json.email }}",
+        "signOut": true
+      },
+      "credentials": {
+        "googleDirectoryApi": {
+          "id": "__CRED_GOOGLE__",
+          "name": "Google Directory"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_who_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "who",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_who_0_read_0_main",
+      "type": "main",
+      "source": "who",
+      "sourceIndex": 0,
+      "target": "read",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_read_0_plan_0_main",
+      "type": "main",
+      "source": "read",
+      "sourceIndex": 0,
+      "target": "plan",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_plan_0_isUpsert_0_main",
+      "type": "main",
+      "source": "plan",
+      "sourceIndex": 0,
+      "target": "isUpsert",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_isUpsert_0_upsert_0_main",
+      "type": "main",
+      "source": "isUpsert",
+      "sourceIndex": 0,
+      "target": "upsert",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_isUpsert_1_suspend_0_main",
+      "type": "main",
+      "source": "isUpsert",
+      "sourceIndex": 1,
+      "target": "suspend",
+      "targetIndex": 0
+    },
+    {
+      "id": "e_upsert_0_groups_0_main",
+      "type": "main",
+      "source": "upsert",
+      "sourceIndex": 0,
+      "target": "groups",
+      "targetIndex": 0
+    }
+  ]
+}

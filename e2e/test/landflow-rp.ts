@@ -16,6 +16,10 @@ export interface RpConfig {
   scopes: string;
   /** LANDFLOW_OIDC_ROLE_MAP, parsed: claim value → Landflow role. */
   roleMap: Record<string, 'admin' | 'member'>;
+  /** Whether to send PKCE (Landflow always does; Google Workspace's OIDC profile documents none). Default true. */
+  pkce?: boolean;
+  /** How the secret goes to the token endpoint: Landflow's Basic header (default), or form fields. */
+  clientAuth?: 'basic' | 'post';
 }
 
 type Claims = Record<string, unknown> & {
@@ -51,8 +55,10 @@ export class LandflowLikeRp {
     url.searchParams.set('scope', this.config.scopes);
     url.searchParams.set('state', this.pending.state);
     url.searchParams.set('nonce', this.pending.nonce);
-    url.searchParams.set('code_challenge', b64url(createHash('sha256').update(verifier).digest()));
-    url.searchParams.set('code_challenge_method', 'S256');
+    if (this.config.pkce !== false) {
+      url.searchParams.set('code_challenge', b64url(createHash('sha256').update(verifier).digest()));
+      url.searchParams.set('code_challenge_method', 'S256');
+    }
     for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
     return url.href;
   }
@@ -75,17 +81,16 @@ export class LandflowLikeRp {
       grant_type: 'authorization_code',
       code,
       redirect_uri: this.config.redirectUri,
-      code_verifier: pending.verifier,
       client_id: this.config.clientId,
     });
-    const basic = Buffer.from(
-      `${encodeURIComponent(this.config.clientId)}:${encodeURIComponent(this.config.clientSecret)}`,
-    ).toString('base64');
-    const response = await fetch(d.token_endpoint, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: `Basic ${basic}` },
-      body,
-    });
+    if (this.config.pkce !== false) body.set('code_verifier', pending.verifier);
+    const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded' };
+    if (this.config.clientAuth === 'post') body.set('client_secret', this.config.clientSecret);
+    else
+      headers.authorization = `Basic ${Buffer.from(
+        `${encodeURIComponent(this.config.clientId)}:${encodeURIComponent(this.config.clientSecret)}`,
+      ).toString('base64')}`;
+    const response = await fetch(d.token_endpoint, { method: 'POST', headers, body });
     const tokens = (await response.json()) as {
       id_token?: string;
       access_token?: string;

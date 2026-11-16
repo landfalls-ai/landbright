@@ -255,6 +255,8 @@ model OidcClient {
   apiScopes               String[] @default([]) @map("api_scopes")
   /// The weakest sign-in it accepts: urn:landbright:acr:pwd, :mfa or :phr (a passkey). Null: any.
   minimumAcr              String?  @map("minimum_acr")
+  /// Whether the authorization code flow needs PKCE. Only an application with a secret may be let off (spec 009).
+  pkceRequired            Boolean  @default(true) @map("pkce_required")
   /// OpenID Back-Channel Logout: where Landbright posts a logout token when someone's session with it ends.
   backchannelLogoutUri    String?  @map("backchannel_logout_uri")
   /// An agent's own application: bound to that agent (it acts as the agent only), authenticating with private_key_jwt

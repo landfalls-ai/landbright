@@ -1,0 +1,52 @@
+{
+  "name": "Landbright · People from Shapes",
+  "description": "A Shapes workflow's webhook (an employee created; a start date, termination date, department, job, office or manager changed) creates or updates the person in Landbright from the employee as Shapes has them now. A future start date makes a pre-hire; a termination date becomes their last day, after which Landbright deactivates them. Shapes tries a webhook once: the Shapes changes flow catches what one missed. Needs the hris and landbright plugins (spec 010).",
+  "tags": ["landbright", "hr", "shapes", "joiner", "mover", "leaver"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Shapes webhook",
+      "type": "hris.shapesTrigger",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "fetchEmployee": true
+      },
+      "credentials": {
+        "shapesApi": {
+          "id": "__CRED_SHAPES__",
+          "name": "Shapes"
+        }
+      }
+    },
+    {
+      "id": "upsert",
+      "name": "Create or update the person",
+      "type": "landbright.landbright",
+      "typeVersion": 1,
+      "position": [320, 200],
+      "parameters": {
+        "resource": "person",
+        "operation": "upsert",
+        "useInput": true,
+        "sendInvite": true
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_upsert_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "upsert",
+      "targetIndex": 0
+    }
+  ]
+}
