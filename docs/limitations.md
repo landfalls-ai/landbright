@@ -111,8 +111,8 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
 ## People from HR (spec 007)
 
 - **HiBob only, and checked against its documentation, not a tenant.** There is no HiBob account here: the fake Bob
-  answers as the docs say (the machine format, `humanReadable: "APPEND"`, `Bob-Signature`). Shapes waits for its schema
-  (plan §11); Workday and others aren't planned.
+  answers as the docs say (the machine format, `humanReadable: "APPEND"`, `Bob-Signature`). Shapes came with spec 010
+  (below); Workday and others aren't planned.
 - **Nothing is written back to HiBob**, and a rehire isn't automatic: HR never reactivates someone deactivated (409);
   an administrator does, in the console.
 - **Zones by site name.** Bob documents no zone field, so the sites and their zones are typed in Settings by the names
@@ -129,6 +129,37 @@ What Landbright doesn't do yet, and what each item waits for. [roadmap.md](roadm
   as separate processes (`pnpm plugins:start`). The core flows (*Onboard* among them) keep the Webhook trigger with a JWT
   credential, so they work without the plugins; the Landbright Trigger fetches the JWKS itself (cached ten minutes,
   refetched for an unknown key at most every 30 seconds).
+
+## Google Workspace (spec 009)
+
+- **Checked against Google's documents, not a tenant.** There is no Google Workspace here: the fake Google answers as
+  the Directory API and the JWT bearer grant are documented. The first real run should start with a test group.
+- **Groups and org units aren't created.** The flow adds and removes members of Google groups that exist, from a map
+  edited in the flow; new accounts go to the org unit given (the root by default), and a department doesn't move anyone
+  between org units.
+- **A leaver is suspended, not deleted**: no data transfer, no licence removed, no alias kept. Their Google groups stay
+  (Google keeps a suspended member), so a reactivation finds them in place.
+- **Agents and other domains get nothing**, and nobody is made a Google administrator. Super administrators never sign
+  in through an SSO profile (Google's rule).
+- **Google's own SCIM** (inbound, GA 2026-07) and SAML aren't used: the Directory API does more, and OIDC profiles
+  replace SAML on the editions that have them.
+- **The token is cached per plugin process**, and the plugin runs as one process: Landflow's plugin protocol sends the
+  credential on every call, and a second process just gets its own token.
+
+## Shapes (spec 010)
+
+- **No Shapes account yet.** The nodes follow Shapes' published schema and documents and are checked against a fake
+  Shapes that runs that schema. What Shapes hasn't published (how an expired token is answered, the signature's
+  encoding, which fields a system user can read) is to check with the first token ([research](../specs/010-shapes/research.md#not-published-check-with-the-first-token)).
+- **One plugin process per token store.** Shapes spends the refresh token at every refresh; two processes, or another
+  tool given the same token, would spend each other's. The store is a file of the plugin's host
+  (`SHAPES_TOKEN_STORE`), not Landflow's credential: a plugin can't write a credential back.
+- **A refresh token unused for seven days expires**: the plugin then says to create a new one. Each refresh brings a new
+  refresh token, so the changes poll (every 15 minutes) should keep it alive; to check with the first token.
+- **No immediate leaver.** Shapes has no *terminated* trigger: a termination date is the leaver path (deactivated after
+  their last day), and someone who must lose access at once is deactivated in the console.
+- **Standard fields only**: names, email, department (else team), job, office, manager, start and termination dates. No
+  custom fields, no write-back, no daily full reconciliation (the poll reads changes only).
 
 ## Seat costs (spec 008)
 

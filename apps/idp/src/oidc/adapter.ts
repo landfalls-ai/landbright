@@ -96,6 +96,8 @@ export async function findClient(
     token_endpoint_auth_method: client.tokenEndpointAuthMethod as ClientMetadata['token_endpoint_auth_method'],
     api_scopes: client.apiScopes,
     ...(client.minimumAcr && { minimum_acr: client.minimumAcr }),
+    // Off only for an application with a secret an administrator let off PKCE (spec 009: Google's OIDC profile).
+    ...(!client.pkceRequired && !client.agentId && { pkce_required: false }),
     // Back-channel logout: its logout tokens always carry `sid` (provider.ts queues them; the control plane sends).
     ...(client.backchannelLogoutUri && {
       backchannel_logout_uri: client.backchannelLogoutUri,

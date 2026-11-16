@@ -1,0 +1,52 @@
+{
+  "name": "Landbright · Changes from Shapes",
+  "description": "Every 15 minutes, the employees whose names, email, department, job, office, manager or dates changed in Shapes since the last poll are created or updated in Landbright: the safety net under the Shapes webhook, which Shapes tries once. An employee may come twice (the polls overlap by five minutes); the update is idempotent. Needs the hris and landbright plugins (spec 010).",
+  "tags": ["landbright", "hr", "shapes", "sync"],
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Shapes changes",
+      "type": "hris.shapesChangesTrigger",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "parameters": {
+        "pollInterval": 900
+      },
+      "credentials": {
+        "shapesApi": {
+          "id": "__CRED_SHAPES__",
+          "name": "Shapes"
+        }
+      }
+    },
+    {
+      "id": "upsert",
+      "name": "Create or update the person",
+      "type": "landbright.landbright",
+      "typeVersion": 1,
+      "position": [320, 200],
+      "parameters": {
+        "resource": "person",
+        "operation": "upsert",
+        "useInput": true,
+        "sendInvite": true
+      },
+      "credentials": {
+        "landbrightApi": {
+          "id": "__CRED_LANDBRIGHT_PLUGIN__",
+          "name": "Landbright (plugin)"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "id": "e_trigger_0_upsert_0_main",
+      "type": "main",
+      "source": "trigger",
+      "sourceIndex": 0,
+      "target": "upsert",
+      "targetIndex": 0
+    }
+  ]
+}

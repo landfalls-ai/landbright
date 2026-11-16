@@ -28,8 +28,10 @@ access engine; Landfall signs in with it.
   grant's pushes.
 - [agents.md](agents.md): agents' own applications (`private_key_jwt`), token exchange with `act`, CIBA through
   Landflow, the device grant, PAR and DPoP.
-- [hr.md](hr.md): people from HR: HiBob's events through two Landflow plugins (`hris`, `landbright`), pre-hires and
+- [hr.md](hr.md): people from HR: HiBob's events and Shapes' webhooks and changes through two Landflow plugins (`hris`, `landbright`), pre-hires and
   start dates, the person's source.
+- [google-workspace.md](google-workspace.md): Google Workspace follows Landbright: accounts, groups (birthright and
+  grants), suspension through the gdirectory Landflow plugin; signing in to Google through Landbright (OIDC).
 - [landflow-flows.md](landflow-flows.md): the Landflow flows that run the approval conversation, provisioning and the
   inactive-people lifecycle, and how to install them.
 
@@ -46,6 +48,8 @@ access engine; Landfall signs in with it.
 | People, agents, groups, applications, audit, OIDC sign-in | [sign-in.md](sign-in.md), [directory.md](directory.md) | [002-identity-core](../specs/002-identity-core/spec.md) | 1 (first slice ✓) |
 | SCIM provisioning to Landflow, Landfall and Clickland | [provisioning.md](provisioning.md) | [006-provisioning-out](../specs/006-provisioning-out/spec.md) | 2 (✓) |
 | Landflow plugins (`landbright`, `hris`), HR lifecycle | [hr.md](hr.md) | [007-hr-lifecycle](../specs/007-hr-lifecycle/spec.md) | 3 (two slices ✓) |
+| Google Workspace: accounts, groups, suspension; signing in through Landbright | [google-workspace.md](google-workspace.md) | [009-google-workspace](../specs/009-google-workspace/spec.md) | 3 (✓) |
+| Shapes HR (the hris plugin) | [hr.md](hr.md#shapes) | [010-shapes](../specs/010-shapes/spec.md) | 3 (✓, against a fake Shapes) |
 | Seat costs and the cost gate (Landledger) | [access.md](access.md#a-cost-gate-seats-landledger-pays-for) | [008-seat-costs](../specs/008-seat-costs/spec.md) | 3 (slice 1 ✓) |
 | Access requests, the Landbright Trigger, approval flows in Landflow | | [003-access-requests-and-approvals](../specs/003-access-requests-and-approvals/spec.md) (design; first slice built by 004) | 3–4 |
 | Just-in-time access, events out, the machine API, Landflow flows (from the Keycloak and open-source JIT studies) | [access.md](access.md), [events.md](events.md), [landflow-flows.md](landflow-flows.md) | [004-access-and-events](../specs/004-access-and-events/spec.md) | 4 (first slice ✓) |

@@ -72,6 +72,9 @@ export function ApplicationsPage() {
   const strength = useWrite(({ id, minimumAcr }: { id: string; minimumAcr: Acr | null }) =>
     send('PATCH', `/api/applications/${id}`, { minimumAcr }, Application),
   );
+  const pkce = useWrite(({ id, pkceRequired }: { id: string; pkceRequired: boolean }) =>
+    send('PATCH', `/api/applications/${id}`, { pkceRequired }, Application),
+  );
   const items = apps.data?.items ?? [];
   const add = (
     <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
@@ -168,6 +171,37 @@ export function ApplicationsPage() {
                     />
                   )}
                 </span>
+                {!a.agentId && a.grantTypes.includes('authorization_code') && (
+                  <>
+                    <span className="self-center text-t3">PKCE</span>
+                    <span>
+                      {a.system ? (
+                        <span className="text-t2">{a.pkceRequired ? 'Required' : 'Not required'}</span>
+                      ) : (
+                        <PkceSelect
+                          value={a.pkceRequired}
+                          aria-label={`Whether ${a.name} must use PKCE`}
+                          data-testid={`pkce-${a.clientId}`}
+                          disabled={pkce.isPending}
+                          onChange={(pkceRequired) =>
+                            pkce.mutate(
+                              { id: a.id, pkceRequired },
+                              {
+                                onSuccess: () =>
+                                  toast.success(
+                                    pkceRequired
+                                      ? `${a.name} must use PKCE.`
+                                      : `${a.name} may sign people in without PKCE; its secret still proves it.`,
+                                  ),
+                                onError: (e) => toast.error(e.message),
+                              },
+                            )
+                          }
+                        />
+                      )}
+                    </span>
+                  </>
+                )}
                 {(a.backchannelLogoutUri || !a.system) && (
                   <>
                     <span className="text-t3">Sign-out reaches</span>
@@ -263,6 +297,7 @@ function RegisterDialog({
   const [grantTypes, setGrantTypes] = useState<Grant[]>(['authorization_code', 'refresh_token']);
   const [minimumAcr, setMinimumAcr] = useState<Acr | null>(null);
   const [authMethod, setAuthMethod] = useState<SecretAuthMethod>('client_secret_basic');
+  const [pkceRequired, setPkceRequired] = useState(true);
   const create = useWrite(() =>
     send(
       'POST',
@@ -274,6 +309,7 @@ function RegisterDialog({
         postLogoutRedirectUris: lines(form.postLogoutRedirectUris),
         grantTypes,
         minimumAcr,
+        pkceRequired,
         backchannelLogoutUri: form.backchannelLogoutUri.trim() || null,
         tokenEndpointAuthMethod: authMethod,
       },
@@ -362,9 +398,35 @@ function RegisterDialog({
             <option value="client_secret_post">As form fields (client_secret_post)</option>
           </Select>
         </Field>
+        <Field label="PKCE" hint={PKCE_HINT}>
+          <PkceSelect value={pkceRequired} onChange={setPkceRequired} aria-label="PKCE" />
+        </Field>
         <FormError error={create.error} />
       </div>
     </Dialog>
+  );
+}
+
+const PKCE_HINT =
+  'Keep it required. Let an application off only when it can’t send PKCE (Google Workspace’s sign-in profile doesn’t say it does); its secret still proves it.';
+
+/** PKCE on or off for an application with a secret (spec 009). */
+function PkceSelect({
+  value,
+  onChange,
+  ...rest
+}: {
+  value: boolean;
+  onChange: (required: boolean) => void;
+  disabled?: boolean;
+  'aria-label'?: string;
+  'data-testid'?: string;
+}) {
+  return (
+    <Select value={value ? 'required' : 'optional'} onChange={(e) => onChange(e.target.value === 'required')} {...rest}>
+      <option value="required">Required</option>
+      <option value="optional">Not required (the secret proves it)</option>
+    </Select>
   );
 }
 

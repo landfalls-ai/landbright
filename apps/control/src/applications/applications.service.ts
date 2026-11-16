@@ -14,6 +14,7 @@ import { TenantDb, uniquely } from '../common/tenant-db';
 
 type ClientRow = Prisma.OidcClientGetPayload<object>;
 
+const PKCE_NEEDS_SECRET = 'Only an application with a secret can be let off PKCE.';
 const toApplication = (c: ClientRow): Application => ({
   id: c.id,
   clientId: c.clientId,
@@ -23,6 +24,7 @@ const toApplication = (c: ClientRow): Application => ({
   grantTypes: c.grantTypes,
   apiScopes: c.apiScopes,
   minimumAcr: (c.minimumAcr as Application['minimumAcr']) ?? null,
+  pkceRequired: c.pkceRequired,
   backchannelLogoutUri: c.backchannelLogoutUri,
   system: c.system,
   agentId: c.agentId,
@@ -83,6 +85,7 @@ export class ApplicationsService {
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
             minimumAcr: input.minimumAcr ?? null,
+            pkceRequired: input.pkceRequired ?? true,
             backchannelLogoutUri: input.backchannelLogoutUri ?? null,
             tokenEndpointAuthMethod: input.tokenEndpointAuthMethod ?? 'client_secret_basic',
           },
@@ -98,6 +101,7 @@ export class ApplicationsService {
             grantTypes: input.grantTypes,
             apiScopes: input.apiScopes,
             minimumAcr: input.minimumAcr ?? null,
+            pkceRequired: input.pkceRequired ?? true,
             tokenEndpointAuthMethod: input.tokenEndpointAuthMethod ?? 'client_secret_basic',
             backchannelLogoutUri: input.backchannelLogoutUri ?? null,
           },
@@ -187,6 +191,10 @@ export class ApplicationsService {
         throw new ConflictException(
           'An agent’s application has no redirects or secret, and its grant types are set with it.',
         );
+      // PKCE may be off only where a secret proves the client: an agent's application has none (private_key_jwt),
+      // and the API creates no public client.
+      if (input.pkceRequired === false && (row.agentId || row.tokenEndpointAuthMethod === 'none'))
+        throw new ConflictException(PKCE_NEEDS_SECRET);
       const updated = await tx.oidcClient.update({
         where: { id },
         data: {
@@ -196,6 +204,7 @@ export class ApplicationsService {
           grantTypes: input.grantTypes,
           apiScopes: input.apiScopes,
           minimumAcr: input.minimumAcr,
+          pkceRequired: input.pkceRequired,
           backchannelLogoutUri: input.backchannelLogoutUri,
           tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
         },
@@ -209,6 +218,7 @@ export class ApplicationsService {
           fields: Object.keys(input),
           ...(input.apiScopes && { apiScopes: input.apiScopes }),
           ...(input.minimumAcr !== undefined && { minimumAcr: input.minimumAcr }),
+          ...(input.pkceRequired !== undefined && { pkceRequired: input.pkceRequired }),
           ...(input.backchannelLogoutUri !== undefined && { backchannelLogoutUri: input.backchannelLogoutUri }),
         },
       });

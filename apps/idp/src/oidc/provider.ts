@@ -35,8 +35,14 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
     scopes: ['openid', 'offline_access', 'email', 'profile', 'roles'],
     // Put the scope's claims in the ID token too: relying parties such as Landflow read email and roles from it.
     conformIdTokenClaims: false,
-    // PKCE for every client (OAuth 2.1), except client ids the conformance run names (LANDBRIGHT_PKCE_OPTIONAL_CLIENTS).
-    pkce: { required: (_ctx, client) => !pkceOptional.has(client.clientId) },
+    // PKCE for every client (OAuth 2.1), except client ids the conformance run names (LANDBRIGHT_PKCE_OPTIONAL_CLIENTS)
+    // and an application with a secret an administrator let off (`pkce_required: false`, spec 009: Google Workspace's
+    // OIDC profile documents no PKCE). A public client never is: it has no secret to stand in for PKCE.
+    pkce: {
+      required: (_ctx, client) =>
+        !pkceOptional.has(client.clientId) &&
+        !(client['pkce_required'] === false && client.tokenEndpointAuthMethod !== 'none'),
+    },
     // `none`: only the account page's own client uses it (sign in, come back, no tokens).
     responseTypes: ['code', 'none'],
     // What an application may do as itself on the machine API (client credentials), from its `apiScopes`; the weakest
@@ -47,6 +53,7 @@ export function createProvider(config: Config, prisma: PrismaClient, tenant: Ten
       properties: [
         'api_scopes',
         'minimum_acr',
+        'pkce_required',
         'agent_id',
         'agent_name',
         'agent_ttl',

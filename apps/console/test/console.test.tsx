@@ -148,6 +148,7 @@ describe('Applications', () => {
             grantTypes: ['authorization_code', 'refresh_token'],
             apiScopes: [],
             minimumAcr: null,
+            pkceRequired: true,
             backchannelLogoutUri: null,
             agentId: null,
             tokenEndpointAuthMethod: 'client_secret_basic',

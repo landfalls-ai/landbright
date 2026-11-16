@@ -256,6 +256,7 @@ terminal with a device code (`pnpm screenshots`, [agents.md](agents.md)).
 | ![A cost gate](screenshots/94-bundle-cost-gate.png) | **94** Catalog → *Linear seat*: a cost gate settled by Landledger through the *Landflow flows* application, before the tool owner. |
 | ![Waiting on Landledger](screenshots/95-request-waiting-on-landledger.png) | **95** A request for a Linear seat waiting on Landledger: what it costs, and nobody can vote yet. |
 | ![Approved by Landledger](screenshots/96-request-cost-approved.png) | **96** The gate approved by Landledger with its reference; the tool owner decides next. |
+| ![PKCE let off](screenshots/97-application-pkce.png) | **97** Applications → *Google Workspace*: PKCE *Not required (the secret proves it)*, for Google's OIDC sign-in profile ([google-workspace.md](google-workspace.md#signing-in-to-google-through-landbright)). |
 
 ## In the real Landflow
 

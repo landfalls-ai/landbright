@@ -11,8 +11,9 @@
 //
 // Development credentials only: Landbright's bootstrap administrator and Landflow's owner from their .env.example
 // files, and the client secret Landflow already signs in with (LANDFLOW_OIDC_ENV_FILE).
-import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Browser, formAction } from '../test/browser.ts';
 
@@ -58,6 +59,24 @@ const HIBOB = {
   serviceUserId: env.HIBOB_SERVICE_USER_ID ?? 'SERVICE-FAKE-1',
   token: env.HIBOB_TOKEN ?? 'fake-hibob-token-0123456789',
   webhookSecret: env.HIBOB_WEBHOOK_SECRET ?? 'fake-hibob-webhook-secret-0123456789',
+};
+/**
+ * The Google Workspace flow (spec 009) needs the gdirectory plugin; without it it is skipped. Its credential defaults to
+ * the fake Google (integrations/landflow/plugins/google-directory, `pnpm fake-google`), whose service account key file
+ * it reads: there is no Google tenant here.
+ */
+const GOOGLE_DOMAIN = env.GOOGLE_DOMAIN ?? 'landbright.test';
+const GOOGLE_URL = env.GOOGLE_BASE_URL ?? 'http://127.0.0.1:57995';
+const GOOGLE_KEY_FILE = env.GOOGLE_KEY_FILE ?? join(tmpdir(), 'landbright-fake-google-key.json');
+const GOOGLE_ADMIN = env.GOOGLE_ADMIN_EMAIL ?? `it-admin@${GOOGLE_DOMAIN}`;
+/**
+ * The Shapes flows (spec 010) default to the fake Shapes (`pnpm fake-shapes`) and are installed only when its API
+ * answers. With a real account: SHAPES_BASE_URL, SHAPES_REFRESH_TOKEN (a system user's) and SHAPES_WEBHOOK_SECRET.
+ */
+const SHAPES = {
+  baseUrl: env.SHAPES_BASE_URL ?? 'http://127.0.0.1:57996/v1',
+  refreshToken: env.SHAPES_REFRESH_TOKEN ?? 'fake-shapes-refresh-token-0',
+  webhookSecret: env.SHAPES_WEBHOOK_SECRET ?? 'fake-shapes-webhook-secret-0123456789',
 };
 const here = dirname(fileURLToPath(import.meta.url));
 const flowsDir = resolve(here, '../../integrations/landflow/flows');
@@ -277,6 +296,31 @@ const lbPluginCred = hrPlugins
     })
   : '';
 if (hrPlugins) console.log(`Landflow: credentials HiBob (${HIBOB.baseUrl}), Landbright (plugin)`);
+const shapesUp = await fetch(SHAPES.baseUrl, { method: 'POST', body: '{}' }).then(
+  () => true,
+  () => false,
+);
+const shapesCred = hrPlugins && shapesUp ? await credential('Shapes', 'hris.shapesApi', SHAPES) : '';
+if (shapesCred) console.log(`Landflow: credential Shapes (${SHAPES.baseUrl})`);
+const googlePlugin = hrPlugins && plugins.has('gdirectory') && existsSync(GOOGLE_KEY_FILE);
+const googleKey = googlePlugin
+  ? (JSON.parse(readFileSync(GOOGLE_KEY_FILE, 'utf8')) as {
+      client_email: string;
+      private_key: string;
+      token_uri?: string;
+    })
+  : undefined;
+const googleCred = googleKey
+  ? await credential('Google Directory', 'gdirectory.googleDirectoryApi', {
+      serviceAccountEmail: googleKey.client_email,
+      privateKey: googleKey.private_key,
+      adminEmail: GOOGLE_ADMIN,
+      customer: 'my_customer',
+      baseUrl: GOOGLE_URL,
+      tokenUrl: googleKey.token_uri ?? 'https://oauth2.googleapis.com/token',
+    })
+  : '';
+if (googleKey) console.log(`Landflow: credential Google Directory (${GOOGLE_URL}, acting as ${GOOGLE_ADMIN})`);
 
 const existing = ((await lf('/api/workflows')).workflows ?? []) as Array<{ id: string; name: string }>;
 /** Flows installed before under another name: updated in place, not installed twice. */
@@ -295,8 +339,21 @@ for (const file of readdirSync(flowsDir)
     console.log(`Landflow: skipped ${file} (start the hris and landbright plugins: pnpm plugins:start)`);
     continue;
   }
+  if (raw.includes('__CRED_SHAPES__') && !shapesCred) {
+    console.log(`Landflow: skipped ${file} (start the hris plugin and the fake Shapes, or set SHAPES_BASE_URL)`);
+    continue;
+  }
+  if (raw.includes('__CRED_GOOGLE__') && !googleCred) {
+    console.log(
+      `Landflow: skipped ${file} (start the gdirectory plugin and the fake Google, or set GOOGLE_KEY_FILE: ${GOOGLE_KEY_FILE})`,
+    );
+    continue;
+  }
   const text = raw
     .replaceAll('__LANDBRIGHT_API__', CONTROL)
+    .replaceAll('__CRED_GOOGLE__', googleCred)
+    .replaceAll('__CRED_SHAPES__', shapesCred)
+    .replaceAll('__GOOGLE_DOMAIN__', GOOGLE_DOMAIN)
     .replaceAll('__LANDFLOW_API__', LANDFLOW)
     .replaceAll('__MAIL_API__', MAIL_API)
     .replaceAll('__CRED_JWT__', jwtCred)
@@ -325,6 +382,8 @@ for (const file of readdirSync(flowsDir)
     body: JSON.stringify({ note: 'Installed by Landbright' }),
   });
   console.log(`Landflow: published "${flow.name}" (${id})`);
+  if (raw.includes('hris.shapesTrigger'))
+    console.log(`  The Send webhook URL for the Shapes workflow: ${LANDFLOW}/api/webhook/app/${id}/trigger`);
   if (raw.includes('hris.hibobTrigger'))
     console.log(
       `  HiBob's webhook URL (Bob → Settings → Integrations → Webhooks): ${LANDFLOW}/api/webhook/app/${id}/trigger`,

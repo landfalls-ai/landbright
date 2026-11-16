@@ -1,9 +1,11 @@
 # The Landflow flows
 
-Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Ten flows
+Landbright decides and records; Landflow flows do the talking, the provisioning and the lifecycle work. Thirteen flows
 ship in [`integrations/landflow/flows/`](../integrations/landflow/flows/). Each is plain Landflow workflow JSON. Seven are built
 from core nodes (Webhook, Code, If, HTTP Request, Set, Wait, Schedule), so they import into any Landflow, edit on the
-canvas, and need no Landflow change; the three HR flows (*Joiners and movers from HiBob*, *Leavers from HiBob*, *Hand over a leaver's agents*) use this repository's two Landflow plugins ([hr.md](hr.md)).
+canvas, and need no Landflow change; the five HR flows (*Joiners and movers from HiBob*, *Leavers from HiBob*, *People from Shapes*, *Changes from Shapes*,
+*Hand over a leaver's agents*) use this repository's hris and landbright plugins ([hr.md](hr.md)), and *Google Workspace ·
+Keep people in step* the gdirectory plugin too ([google-workspace.md](google-workspace.md)).
 
 | Flow | Starts on | Does |
 |---|---|---|
@@ -16,6 +18,9 @@ canvas, and need no Landflow change; the three HR flows (*Joiners and movers fro
 | **Joiners and movers from HiBob** | HiBob's `employee.created`, `employee.joined` and `employee.updated` (the hris plugin's HiBob Trigger; Bob-Signature checked) | Reads the employee from HiBob and creates or updates them in Landbright (the landbright plugin's Person → Create or Update): a pre-hire until their start date, then active with their invite; a mover's new department, title, manager or site; a last day, after which Landbright deactivates them. The *Onboard* flow follows on `identity.created` and `identity.updated` ([hr.md](hr.md)) |
 | **Leavers from HiBob** | HiBob's `employee.left` (after the last day, at midnight in the site's zone) and `employee.access.revoked.immediately` | Deactivates them in Landbright, found by their HiBob id (Person → Deactivate, *Find By: HR Record*); someone Landbright doesn't have is skipped. Not `employee.inactivated`: Bob sends it for a leave too |
 | **Hand over a leaver's agents** | `identity.deactivated` (the landbright plugin's **Landbright Trigger**, which subscribes itself) | When agents were suspended with the person: emails their manager that the agents wait for a new sponsor |
+| **People from Shapes** | A Shapes workflow's *Send webhook* (the hris plugin's **Shapes Trigger**; `X-Webhook-Signature` checked) | Reads the employee from Shapes and creates or updates them in Landbright, as from HiBob: a pre-hire, a mover, a termination date as their last day ([hr.md](hr.md#shapes)) |
+| **Changes from Shapes** | Every 15 minutes (the **Shapes Changes Trigger**, a poll) | The employees changed in Shapes since the last poll, created or updated in Landbright: the safety net under Shapes' webhook, which Shapes tries once |
+| **Google Workspace · Keep people in step** | `identity.created`, `.activated`, `.updated`, `.deactivated`, `.reactivated`, `group.member_added`, `group.member_removed` (the Landbright Trigger) | Reads the person. Active, in the Google domain, not an agent: creates or updates their Google account and sets their Google groups from the map in its *Plan* node (birthright and grants alike); reactivated: unsuspends. Deactivated: suspends and signs them out of Google. Pre-hires wait ([google-workspace.md](google-workspace.md)) |
 | **Disable inactive people** | Every day at 9:00 | Finds people who haven't signed in for 90 days (administrators excepted), emails their manager, waits 7 days, checks again, and deactivates who is still inactive. Keycloak's *disable inactive users* workflow, as a flow |
 
 Each flow reaches Landbright only through the [machine API](reference/api.md#machine-api-apiv1), with the scopes its
@@ -58,8 +63,13 @@ cd e2e && LANDFLOW_OIDC_ENV_FILE=/path/to/landflow-oidc.env node landflow/instal
   `HIBOB_TOKEN`, `HIBOB_WEBHOOK_SECRET`; the fake Bob's values by default) and *Landbright (plugin)* (the same
   application's client credentials, with `events:manage` for the Landbright Trigger); without them, the three HR flows
   are skipped;
+- with the hris plugin online and Shapes' API answering, creates *Shapes* (`SHAPES_BASE_URL`, `SHAPES_REFRESH_TOKEN`,
+  `SHAPES_WEBHOOK_SECRET`; the fake Shapes' values by default); without it, the two Shapes flows are skipped;
+- with the gdirectory plugin online and a service account key (`GOOGLE_KEY_FILE`, the fake Google's by default),
+  creates *Google Directory* (`GOOGLE_BASE_URL`, `GOOGLE_ADMIN_EMAIL`) and puts `GOOGLE_DOMAIN` into the Google flow;
+  without it, that flow is skipped;
 - imports and publishes the flows (publishing *Hand over a leaver's agents* makes its Landbright Trigger subscribe itself),
-  and prints the URLs to give HiBob for the two HiBob flows.
+  and prints the URLs to give HiBob for the two HiBob flows and Shapes for its webhook.
 
 Run it again to update: it finds everything by name first.
 
